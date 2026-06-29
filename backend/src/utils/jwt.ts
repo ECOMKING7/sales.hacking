@@ -26,3 +26,17 @@ export function signToken(payload: JwtPayload): string {
 export function verifyTokenString(token: string): JwtPayload {
   return jwt.verify(token, JWT_SECRET as string) as JwtPayload;
 }
+
+// ---- OAuth state (CSRF + workspace binding for the FB callback) ----
+export interface OAuthStatePayload {
+  userId: string;
+  workspaceId: string | null;
+}
+
+export function signOAuthState(payload: OAuthStatePayload): string {
+  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: '10m' });
+}
+
+export function verifyOAuthState(token: string): OAuthStatePayload {
+  return jwt.verify(token, JWT_SECRET as string) as OAuthStatePayload;
+}

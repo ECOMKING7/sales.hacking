@@ -6,6 +6,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import authRoutes from './routes/auth';
+import facebookRoutes from './routes/facebook';
+import workspaceRoutes from './routes/workspace';
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
@@ -27,6 +29,8 @@ app.get('/', (_req: Request, res: Response) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/facebook', facebookRoutes);
+app.use('/api/workspace', workspaceRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

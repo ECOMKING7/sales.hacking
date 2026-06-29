@@ -54,3 +54,26 @@ Content-Type: application/json
 
 ### Access /me without token (expect 401)
 GET {{baseUrl}}/api/auth/me
+
+### --- Facebook OAuth / Workspace ---
+
+### Get FB OAuth connect URL (protected) — open the returned url in a browser
+GET {{baseUrl}}/api/auth/facebook/connect
+Authorization: Bearer {{login.response.body.token}}
+
+### FB connection status (protected)
+GET {{baseUrl}}/api/workspace/fb-status
+Authorization: Bearer {{login.response.body.token}}
+
+### List ad accounts (protected; requires FB connected)
+GET {{baseUrl}}/api/workspace/ad-accounts
+Authorization: Bearer {{login.response.body.token}}
+
+### Select an ad account (protected)
+POST {{baseUrl}}/api/workspace/select-ad-account
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "adAccountId": "act_123456789"
+}
