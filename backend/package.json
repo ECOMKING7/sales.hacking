@@ -24,7 +24,8 @@
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.5.0",
     "pg": "^8.22.0",
-    "redis": "^6.0.1"
+    "redis": "^6.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

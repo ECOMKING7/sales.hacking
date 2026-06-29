@@ -1,0 +1,56 @@
+### Attribution Platform — Auth endpoints
+### Use with the VS Code "REST Client" extension.
+@baseUrl = http://localhost:4000
+
+### Register a new user
+# @name register
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Test",
+  "email": "test@test.com",
+  "password": "password123"
+}
+
+### Login
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "password123"
+}
+
+### Get current user (protected) — uses token from the login response
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{login.response.body.token}}
+
+### Logout
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer {{login.response.body.token}}
+
+### --- Negative cases ---
+
+### Register with short password (expect 400)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Bad",
+  "email": "bad@test.com",
+  "password": "short"
+}
+
+### Login with wrong password (expect 401)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "wrongpassword"
+}
+
+### Access /me without token (expect 401)
+GET {{baseUrl}}/api/auth/me

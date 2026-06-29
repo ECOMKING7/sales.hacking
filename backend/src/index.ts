@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+import authRoutes from './routes/auth';
+
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
 
@@ -22,6 +24,9 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/', (_req: Request, res: Response) => {
   res.json({ message: 'Attribution Platform API' });
 });
+
+// Routes
+app.use('/api/auth', authRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
