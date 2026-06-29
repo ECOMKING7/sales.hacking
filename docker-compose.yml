@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: attribution
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: attribution_db
     ports:
       - "5432:5432"
     volumes:
