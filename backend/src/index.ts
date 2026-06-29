@@ -8,6 +8,8 @@ dotenv.config();
 import authRoutes from './routes/auth';
 import facebookRoutes from './routes/facebook';
 import workspaceRoutes from './routes/workspace';
+import syncRoutes from './routes/sync';
+import { startSyncCron } from './jobs/syncJob';
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
@@ -31,9 +33,12 @@ app.get('/', (_req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/facebook', facebookRoutes);
 app.use('/api/workspace', workspaceRoutes);
+app.use('/api/sync', syncRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  // Schedule automatic FB sync every 15 minutes.
+  startSyncCron();
 });
 
 export default app;

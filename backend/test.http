@@ -77,3 +77,18 @@ Content-Type: application/json
 {
   "adAccountId": "act_123456789"
 }
+
+### --- Sync ---
+
+### Trigger a manual sync (protected; requires FB connected + ad account)
+POST {{baseUrl}}/api/sync/trigger
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "datePreset": "last_30d"
+}
+
+### Sync status (protected)
+GET {{baseUrl}}/api/sync/status
+Authorization: Bearer {{login.response.body.token}}
