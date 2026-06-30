@@ -245,11 +245,13 @@ export interface RecordTouchpointData {
   ipHash?: string | null;
   userAgent?: string | null;
   occurredAt?: string | null;
+  emailHash?: string | null;
+  phoneHash?: string | null;
 }
 
 /**
- * Record a touchpoint, linking it to an existing lead (matched by fbclid) and
- * assigning the next touch_number in that lead's path.
+ * Record a touchpoint, linking it to an existing lead (matched by fbclid, then
+ * by hashed email/phone) and assigning the next touch_number in that path.
  */
 export async function recordTouchpoint(data: RecordTouchpointData): Promise<{ id: string }> {
   // Find a lead already associated with this fbclid via a prior touchpoint.
@@ -262,6 +264,19 @@ export async function recordTouchpoint(data: RecordTouchpointData): Promise<{ id
       [data.workspaceId, data.fbclid]
     );
     leadId = found.rows[0]?.lead_id ?? null;
+  }
+
+  // Fall back to matching a lead by hashed email/phone (CRM-sourced leads).
+  if (!leadId && (data.emailHash || data.phoneHash)) {
+    const found = await pool.query<{ id: string }>(
+      `SELECT id FROM leads
+        WHERE workspace_id = $1
+          AND ( ($2::text IS NOT NULL AND email_hash = $2)
+             OR ($3::text IS NOT NULL AND phone_hash = $3) )
+        ORDER BY created_at DESC LIMIT 1`,
+      [data.workspaceId, data.emailHash ?? null, data.phoneHash ?? null]
+    );
+    leadId = found.rows[0]?.id ?? null;
   }
 
   // Next touch_number within the path (per lead, else per fbclid).

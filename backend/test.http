@@ -133,3 +133,25 @@ Content-Type: application/json
 {
   "model": "time_decay"
 }
+
+### --- Pixel Tracking (public, CORS *) ---
+
+### Get the pixel script (replace workspaceId)
+GET {{baseUrl}}/api/pixel/script.js?workspaceId=WORKSPACE_ID
+
+### 1x1 tracking gif
+GET {{baseUrl}}/api/pixel/1x1.gif?workspaceId=WORKSPACE_ID
+
+### Track an event (always returns 200)
+POST {{baseUrl}}/api/pixel/event
+Content-Type: application/json
+
+{
+  "workspaceId": "WORKSPACE_ID",
+  "eventType": "purchase",
+  "fbclid": "abc123",
+  "email": "buyer@example.com",
+  "phone": "+998901234567",
+  "value": 99.0,
+  "currency": "USD"
+}

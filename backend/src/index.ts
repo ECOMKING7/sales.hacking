@@ -1,4 +1,4 @@
-import express, { Application, Request, Response } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
@@ -12,6 +12,7 @@ import workspaceRoutes from './routes/workspace';
 import syncRoutes from './routes/sync';
 import webhookRoutes from './routes/webhooks';
 import attributionRoutes from './routes/attribution';
+import pixelRoutes from './routes/pixel';
 import { startSyncCron } from './jobs/syncJob';
 
 const app: Application = express();
@@ -40,6 +41,22 @@ app.use('/api/workspace', workspaceRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/attribution', attributionRoutes);
+app.use('/api/pixel', pixelRoutes);
+
+// Error handler. Pixel endpoints must never surface an error to the client
+// (e.g. malformed JSON from a customer site) — always 200.
+app.use((err: Error & { status?: number }, req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith('/api/pixel')) {
+    res.status(200).json({ success: true, eventId: null });
+    return;
+  }
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  console.error('Unhandled error:', err.message);
+  res.status(err.status || 500).json({ error: err.message || 'Internal error' });
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
