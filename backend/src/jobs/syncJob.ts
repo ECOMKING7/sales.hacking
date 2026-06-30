@@ -5,6 +5,10 @@ import { syncWorkspace, DateRange } from '../services/facebookAdsService';
 
 const QUEUE_NAME = 'fb-sync';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+// Only use the Bull/Redis queue when explicitly enabled. Without a running Redis,
+// constructing the queue spawns worker connections that can crash the process on
+// ECONNREFUSED, so we default to running syncs inline.
+const QUEUE_ENABLED = process.env.USE_REDIS === 'true';
 
 interface SyncJobData {
   workspaceId: string;
@@ -79,6 +83,11 @@ export async function enqueueSync(
   workspaceId: string,
   range?: DateRange
 ): Promise<{ queued: boolean }> {
+  if (!QUEUE_ENABLED) {
+    // No Redis configured — run inline.
+    await runSync(workspaceId, range);
+    return { queued: false };
+  }
   try {
     const q = getQueue();
     await q.add({ workspaceId, range });

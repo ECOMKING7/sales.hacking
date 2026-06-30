@@ -17,6 +17,15 @@ import pixelRoutes from './routes/pixel';
 import dashboardRoutes from './routes/dashboard';
 import { startSyncCron } from './jobs/syncJob';
 
+// Safety net: never let a stray async error (e.g. Redis ECONNREFUSED from the
+// optional queue) take down the whole API.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
+
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
 const isProd = process.env.NODE_ENV === 'production';
