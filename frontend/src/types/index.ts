@@ -51,3 +51,27 @@ export interface Pipeline {
   name: string;
   statuses: PipelineStatus[];
 }
+
+export interface EntityRow {
+  id: string;
+  name: string | null;
+  status: string | null;
+  spend: string | number;
+  clicks: string | number;
+  cpc: string | number | null;
+  leads: number;
+  costPerLead: string | number | null;
+  purchases: number;
+  costPerPurchase: string | number | null;
+  revenue: string | number;
+  roas: string | number | null;
+  thumbnailUrl?: string | null;
+  creativeType?: string | null;
+}
+
+export interface Paginated<T> {
+  data: T[];
+  page: number;
+  limit: number;
+  total: number;
+}

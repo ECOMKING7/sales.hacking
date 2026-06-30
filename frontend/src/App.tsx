@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import SettingsPage from './pages/SettingsPage';
+import DashboardPage from './pages/DashboardPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 function App() {
@@ -28,7 +29,7 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/dashboard" element={<PlaceholderPage title="Dashboard" />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/purchases" element={<PlaceholderPage title="Purchases" />} />
         <Route path="/leads" element={<PlaceholderPage title="Leads" />} />
         <Route path="/reports" element={<PlaceholderPage title="Reports" />} />

@@ -8,6 +8,8 @@ import type {
   AdAccount,
   AmocrmStatus,
   Pipeline,
+  EntityRow,
+  Paginated,
 } from '../types';
 
 const api = axios.create({
@@ -83,13 +85,37 @@ export interface DashboardOverview {
   revenueBySource: { metaAds: number; direct: number; igOrganic: number; fbOrganic: number };
 }
 
+export type TopMetric = 'roas' | 'revenue' | 'sales';
+
 export const dashboardApi = {
   overview: (from?: string, to?: string) =>
     api
       .get<DashboardOverview>('/api/dashboard/overview', { params: { from, to } })
       .then((r) => r.data),
   campaigns: (params?: Record<string, string>) =>
-    api.get('/api/dashboard/campaigns', { params }).then((r) => r.data),
+    api
+      .get<Paginated<EntityRow>>('/api/dashboard/campaigns', { params })
+      .then((r) => r.data),
+  campaignAdsets: (campaignId: string, params?: Record<string, string>) =>
+    api
+      .get<Paginated<EntityRow>>(`/api/dashboard/campaigns/${campaignId}/adsets`, { params })
+      .then((r) => r.data),
+  adsetAds: (adsetId: string, params?: Record<string, string>) =>
+    api
+      .get<Paginated<EntityRow>>(`/api/dashboard/adsets/${adsetId}/ads`, { params })
+      .then((r) => r.data),
+  topCampaigns: (metric: TopMetric) =>
+    api
+      .get<{ data: EntityRow[] }>('/api/dashboard/top-campaigns', { params: { metric } })
+      .then((r) => r.data.data),
+  topAdsets: (metric: TopMetric) =>
+    api
+      .get<{ data: EntityRow[] }>('/api/dashboard/top-adsets', { params: { metric } })
+      .then((r) => r.data.data),
+  topAds: (metric: TopMetric) =>
+    api
+      .get<{ data: EntityRow[] }>('/api/dashboard/top-ads', { params: { metric } })
+      .then((r) => r.data.data),
   wonDeals: (params?: Record<string, string | number>) =>
     api.get('/api/dashboard/won-deals', { params }).then((r) => r.data),
 };
