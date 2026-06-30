@@ -1,6 +1,7 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -18,16 +19,25 @@ import { startSyncCron } from './jobs/syncJob';
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
+const isProd = process.env.NODE_ENV === 'production';
+
+// Behind Railway's proxy — needed for correct req.ip / rate limiting.
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(compression());
+// In production, restrict CORS to the configured frontend origin.
+// (The pixel router opens CORS to '*' for its own routes.)
+app.use(
+  cors(isProd && process.env.FRONTEND_URL ? { origin: process.env.FRONTEND_URL } : {})
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Health check route
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', service: 'attribution-platform-backend' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 app.get('/', (_req: Request, res: Response) => {
