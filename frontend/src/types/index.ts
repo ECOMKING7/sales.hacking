@@ -98,6 +98,27 @@ export interface JourneyEvent {
   campaignName: string | null;
 }
 
+export type Plan = 'free' | 'pro' | 'agency';
+
+export interface Usage {
+  plan: Plan;
+  limits: {
+    adAccounts: number;
+    leadsPerMonth: number | null;
+    export: boolean;
+    whiteLabel: boolean;
+  };
+  usage: { leadsThisMonth: number; adAccounts: number };
+}
+
+export interface Member {
+  user_id: string | null;
+  email: string;
+  name: string | null;
+  role: string;
+  status: string;
+}
+
 export interface LeadDetailData {
   lead: {
     id: string;

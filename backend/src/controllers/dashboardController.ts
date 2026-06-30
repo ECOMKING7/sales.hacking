@@ -410,3 +410,45 @@ export async function leadDetail(req: Request, res: Response): Promise<void> {
     res.status(500).json({ error: 'Failed to load lead' });
   }
 }
+
+// ---------- GET /api/dashboard/won-deals/export (protected + plan-gated) ----------
+export async function exportWonDeals(req: Request, res: Response): Promise<void> {
+  const workspaceId = ws(req);
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const range = parseRange(req);
+  try {
+    const rows = await pool.query(
+      `SELECT
+         COALESCE(l.crm_contact_id, l.crm_lead_id) AS customer,
+         CASE WHEN l.first_click_ad_id IS NOT NULL THEN 'Meta Ads' ELSE 'Direct' END AS source,
+         c.name AS campaign, s.name AS adset, a.name AS ad,
+         l.revenue, l.deal_time_days, l.won_at
+       FROM leads l
+       LEFT JOIN ads a       ON a.id = l.first_click_ad_id
+       LEFT JOIN adsets s    ON s.id = a.adset_id
+       LEFT JOIN campaigns c ON c.id = a.campaign_id
+       WHERE l.workspace_id = $1 AND l.status = 'won' AND l.won_at >= $2 AND l.won_at < $3
+       ORDER BY l.won_at DESC`,
+      [workspaceId, range.from, range.to]
+    );
+    const header = ['Customer', 'Source', 'Campaign', 'Ad Set', 'Ad', 'Revenue', 'Deal Time (days)', 'Won At'];
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [
+      header.join(','),
+      ...rows.rows.map((r) =>
+        [r.customer, r.source, r.campaign, r.adset, r.ad, r.revenue, r.deal_time_days, r.won_at]
+          .map(esc)
+          .join(',')
+      ),
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="won-deals.csv"');
+    res.status(200).send(csv);
+  } catch (err) {
+    console.error('exportWonDeals error:', (err as Error).message);
+    res.status(500).json({ error: 'Failed to export' });
+  }
+}

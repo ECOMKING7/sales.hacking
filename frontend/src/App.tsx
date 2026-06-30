@@ -7,6 +7,8 @@ import RegisterPage from './pages/RegisterPage';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
 import PurchasesPage from './pages/PurchasesPage';
+import OnboardingPage from './pages/OnboardingPage';
+import UpgradePage from './pages/UpgradePage';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 function App() {
@@ -23,6 +25,16 @@ function App() {
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
       />
 
+      {/* Onboarding is protected but outside the main Layout (full-screen wizard) */}
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <OnboardingPage />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         element={
           <ProtectedRoute>
@@ -31,6 +43,7 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/upgrade" element={<UpgradePage />} />
         <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/leads" element={<PlaceholderPage title="Leads" />} />
         <Route path="/reports" element={<PlaceholderPage title="Reports" />} />

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { dashboardApi } from '../services/api';
+import { AlertTriangle } from 'lucide-react';
+import { dashboardApi, facebookApi, amocrmApi } from '../services/api';
 import KpiCard from '../components/KpiCard';
 import SourceDonut from '../components/dashboard/SourceDonut';
 import EntityTable from '../components/dashboard/EntityTable';
@@ -65,6 +67,14 @@ export default function DashboardPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const fbStatus = useQuery({ queryKey: ['fb-status'], queryFn: facebookApi.status });
+  const crmStatus = useQuery({ queryKey: ['amocrm-status'], queryFn: amocrmApi.status });
+  const setupIncomplete =
+    !fbStatus.isLoading &&
+    !crmStatus.isLoading &&
+    !fbStatus.data?.connected &&
+    !crmStatus.data?.connected;
+
   const d = overview.data;
   const loading = overview.isLoading;
   const metaPct = d && d.revenue > 0 ? Math.round((d.revenueBySource.metaAds / d.revenue) * 100) : 0;
@@ -91,6 +101,21 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {setupIncomplete && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-amber-800">
+            <AlertTriangle className="h-4 w-4" />
+            Setup incomplete — connect Facebook Ads and your CRM to see real data.
+          </div>
+          <Link
+            to="/onboarding"
+            className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+          >
+            Finish setup
+          </Link>
+        </div>
+      )}
+
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>

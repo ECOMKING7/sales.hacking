@@ -12,6 +12,8 @@ import type {
   Paginated,
   WonDeal,
   LeadDetailData,
+  Usage,
+  Member,
 } from '../types';
 
 const api = axios.create({
@@ -124,6 +126,17 @@ export const dashboardApi = {
       .then((r) => r.data),
   leadDetail: (leadId: string) =>
     api.get<LeadDetailData>(`/api/dashboard/leads/${leadId}`).then((r) => r.data),
+};
+
+// ---- Workspace / SaaS ----
+export const workspaceApi = {
+  usage: () => api.get<Usage>('/api/workspace/usage').then((r) => r.data),
+  members: () =>
+    api.get<{ members: Member[] }>('/api/workspace/members').then((r) => r.data.members),
+  invite: (email: string, role?: string) =>
+    api.post('/api/workspace/invite', { email, role }).then((r) => r.data),
+  removeMember: (userId: string) =>
+    api.delete(`/api/workspace/members/${userId}`).then((r) => r.data),
 };
 
 // ---- Attribution ----

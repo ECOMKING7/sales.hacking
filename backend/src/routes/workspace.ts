@@ -3,6 +3,10 @@ import {
   listAdAccounts,
   selectAdAccount,
   fbStatus,
+  invite,
+  members,
+  removeMember,
+  usage,
 } from '../controllers/workspaceController';
 import {
   status as amocrmStatus,
@@ -24,5 +28,11 @@ router.get('/fb-status', verifyToken, fbStatus);
 router.get('/amocrm-status', verifyToken, amocrmStatus);
 router.get('/amocrm-pipelines', verifyToken, amocrmListPipelines);
 router.post('/amocrm-pipeline', verifyToken, amocrmSavePipeline);
+
+// Team / SaaS
+router.post('/invite', verifyToken, invite);
+router.get('/members', verifyToken, members);
+router.delete('/members/:userId', verifyToken, removeMember);
+router.get('/usage', verifyToken, usage);
 
 export default router;

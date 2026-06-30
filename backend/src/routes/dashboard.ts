@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth';
+import { requireFeature } from '../middleware/planLimits';
 import {
   overview,
   campaigns,
@@ -9,6 +10,7 @@ import {
   topAdsets,
   topAds,
   wonDeals,
+  exportWonDeals,
   leadDetail,
 } from '../controllers/dashboardController';
 
@@ -25,6 +27,7 @@ router.get('/top-campaigns', topCampaigns);
 router.get('/top-adsets', topAdsets);
 router.get('/top-ads', topAds);
 router.get('/won-deals', wonDeals);
+router.get('/won-deals/export', requireFeature('export'), exportWonDeals);
 router.get('/leads/:id', leadDetail);
 
 export default router;
