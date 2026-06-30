@@ -1,32 +1,43 @@
-import { Routes, Route, Link } from 'react-router-dom';
-import { BarChart3 } from 'lucide-react';
-
-function Home() {
-  return (
-    <div className="p-8">
-      <h2 className="text-2xl font-semibold text-gray-800">Dashboard</h2>
-      <p className="mt-2 text-gray-600">
-        Welcome to the Attribution Platform.
-      </p>
-    </div>
-  );
-}
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './store/authStore';
+import ProtectedRoute from './components/ProtectedRoute';
+import Layout from './components/Layout';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import SettingsPage from './pages/SettingsPage';
+import PlaceholderPage from './pages/PlaceholderPage';
 
 function App() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-8 py-4">
-        <BarChart3 className="h-6 w-6 text-indigo-600" />
-        <Link to="/" className="text-lg font-bold text-gray-900">
-          Attribution Platform
-        </Link>
-      </header>
-      <main>
-        <Routes>
-          <Route path="/" element={<Home />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+      />
+      <Route
+        path="/register"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
+      />
+
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/dashboard" element={<PlaceholderPage title="Dashboard" />} />
+        <Route path="/purchases" element={<PlaceholderPage title="Purchases" />} />
+        <Route path="/leads" element={<PlaceholderPage title="Leads" />} />
+        <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
   );
 }
 

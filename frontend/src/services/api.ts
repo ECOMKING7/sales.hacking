@@ -1,0 +1,95 @@
+import axios from 'axios';
+import { useAuthStore } from '../store/authStore';
+import type {
+  AuthResponse,
+  User,
+  Workspace,
+  FbStatus,
+  AdAccount,
+  AmocrmStatus,
+  Pipeline,
+} from '../types';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000',
+});
+
+// Attach the bearer token to every request.
+api.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// On 401, clear auth and bounce to login.
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (error.response?.status === 401) {
+      useAuthStore.getState().logout();
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+
+// ---- Auth ----
+export const authApi = {
+  login: (email: string, password: string) =>
+    api.post<AuthResponse>('/api/auth/login', { email, password }).then((r) => r.data),
+  register: (name: string, email: string, password: string) =>
+    api.post<AuthResponse>('/api/auth/register', { name, email, password }).then((r) => r.data),
+  me: () =>
+    api.get<{ user: User; workspaces: Workspace[] }>('/api/auth/me').then((r) => r.data),
+  logout: () => api.post('/api/auth/logout').then((r) => r.data),
+};
+
+// ---- Facebook ----
+export const facebookApi = {
+  connect: () => api.get<{ url: string }>('/api/auth/facebook/connect').then((r) => r.data),
+  status: () => api.get<FbStatus>('/api/workspace/fb-status').then((r) => r.data),
+  adAccounts: () =>
+    api.get<{ adAccounts: AdAccount[] }>('/api/workspace/ad-accounts').then((r) => r.data),
+  selectAdAccount: (adAccountId: string) =>
+    api.post('/api/workspace/select-ad-account', { adAccountId }).then((r) => r.data),
+};
+
+// ---- AmoCRM ----
+export const amocrmApi = {
+  connect: () => api.get<{ url: string }>('/api/auth/amocrm/connect').then((r) => r.data),
+  status: () => api.get<AmocrmStatus>('/api/workspace/amocrm-status').then((r) => r.data),
+  pipelines: () =>
+    api.get<{ pipelines: Pipeline[] }>('/api/workspace/amocrm-pipelines').then((r) => r.data),
+  savePipeline: (pipelineId: string, wonStageId: string) =>
+    api.post('/api/workspace/amocrm-pipeline', { pipelineId, wonStageId }).then((r) => r.data),
+};
+
+// ---- Dashboard ----
+export interface DashboardOverview {
+  amountSpent: number;
+  revenue: number;
+  roas: number;
+  cac: number;
+  conversionRate: number;
+  dealTime: number;
+  arpl: number;
+  revenueGrowth: number;
+  revenueBySource: { metaAds: number; direct: number; igOrganic: number; fbOrganic: number };
+}
+
+export const dashboardApi = {
+  overview: (from?: string, to?: string) =>
+    api
+      .get<DashboardOverview>('/api/dashboard/overview', { params: { from, to } })
+      .then((r) => r.data),
+  campaigns: (params?: Record<string, string>) =>
+    api.get('/api/dashboard/campaigns', { params }).then((r) => r.data),
+  wonDeals: (params?: Record<string, string | number>) =>
+    api.get('/api/dashboard/won-deals', { params }).then((r) => r.data),
+};
