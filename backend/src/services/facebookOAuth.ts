@@ -30,6 +30,7 @@ export interface AdAccount {
   name: string;
   account_status: number;
   currency: string;
+  business_name?: string;
 }
 
 export interface LongLivedToken {
@@ -90,7 +91,7 @@ export async function exchangeCodeForToken(code: string): Promise<LongLivedToken
 export async function getAdAccounts(accessToken: string): Promise<AdAccount[]> {
   const res = await axios.get(`${GRAPH_URL}/me/adaccounts`, {
     params: {
-      fields: 'id,account_id,name,account_status,currency',
+      fields: 'id,account_id,name,account_status,currency,business_name',
       access_token: accessToken,
       limit: 100,
     },

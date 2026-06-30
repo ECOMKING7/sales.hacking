@@ -62,6 +62,8 @@ export const facebookApi = {
   status: () => api.get<FbStatus>('/api/workspace/fb-status').then((r) => r.data),
   adAccounts: () =>
     api.get<{ adAccounts: AdAccount[] }>('/api/workspace/ad-accounts').then((r) => r.data),
+  fbAdAccounts: () =>
+    api.get<{ adAccounts: AdAccount[] }>('/api/workspace/fb-ad-accounts').then((r) => r.data),
   selectAdAccount: (adAccountId: string) =>
     api.post('/api/workspace/select-ad-account', { adAccountId }).then((r) => r.data),
 };

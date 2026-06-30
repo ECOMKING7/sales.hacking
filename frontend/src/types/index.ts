@@ -31,6 +31,7 @@ export interface AdAccount {
   name: string;
   status: number;
   currency: string;
+  businessName?: string | null;
 }
 
 export interface AmocrmStatus {
@@ -58,7 +59,10 @@ export interface EntityRow {
   status: string | null;
   spend: string | number;
   clicks: string | number;
+  impressions: string | number;
   cpc: string | number | null;
+  cpm: string | number | null;
+  ctr: string | number | null;
   leads: number;
   costPerLead: string | number | null;
   purchases: number;

@@ -21,6 +21,7 @@ const router = Router();
 
 // Facebook
 router.get('/ad-accounts', verifyToken, listAdAccounts);
+router.get('/fb-ad-accounts', verifyToken, listAdAccounts); // lists ALL accessible accounts
 router.post('/select-ad-account', verifyToken, selectAdAccount);
 router.get('/fb-status', verifyToken, fbStatus);
 

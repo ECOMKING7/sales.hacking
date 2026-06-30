@@ -53,6 +53,7 @@ export async function listAdAccounts(req: Request, res: Response): Promise<void>
         name: a.name,
         status: a.account_status,
         currency: a.currency,
+        businessName: a.business_name ?? null,
       })),
     });
   } catch (err) {
