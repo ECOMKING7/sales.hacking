@@ -10,6 +10,8 @@ import type {
   Pipeline,
   EntityRow,
   Paginated,
+  WonDeal,
+  LeadDetailData,
 } from '../types';
 
 const api = axios.create({
@@ -117,5 +119,17 @@ export const dashboardApi = {
       .get<{ data: EntityRow[] }>('/api/dashboard/top-ads', { params: { metric } })
       .then((r) => r.data.data),
   wonDeals: (params?: Record<string, string | number>) =>
-    api.get('/api/dashboard/won-deals', { params }).then((r) => r.data),
+    api
+      .get<Paginated<WonDeal>>('/api/dashboard/won-deals', { params })
+      .then((r) => r.data),
+  leadDetail: (leadId: string) =>
+    api.get<LeadDetailData>(`/api/dashboard/leads/${leadId}`).then((r) => r.data),
+};
+
+// ---- Attribution ----
+export const attributionApi = {
+  reprocess: (leadId: string, model?: string) =>
+    api
+      .post(`/api/attribution/reprocess/${leadId}`, model ? { model } : {})
+      .then((r) => r.data),
 };

@@ -75,3 +75,40 @@ export interface Paginated<T> {
   limit: number;
   total: number;
 }
+
+export interface WonDeal {
+  id: string;
+  customerName: string | null;
+  source: string;
+  campaignName: string | null;
+  adsetName: string | null;
+  adName: string | null;
+  revenue: string | number;
+  dealTime: number | null;
+  wonAt: string;
+}
+
+export interface JourneyEvent {
+  id: string;
+  eventType: 'view' | 'click' | 'lead' | 'purchase';
+  touchNumber: number | null;
+  attributionWeight: string | number | null;
+  occurredAt: string | null;
+  adName: string | null;
+  campaignName: string | null;
+}
+
+export interface LeadDetailData {
+  lead: {
+    id: string;
+    status: string;
+    revenue: string | number;
+    total_touches: number;
+    deal_time_days: number | null;
+    won_at: string | null;
+    created_at: string;
+  };
+  journey: JourneyEvent[];
+  clicks: JourneyEvent[];
+  purchases: JourneyEvent[];
+}

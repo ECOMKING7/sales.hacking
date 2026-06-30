@@ -39,15 +39,39 @@ interface AmoContactEvent {
   id?: string;
 }
 
-async function findWorkspaceBySubdomain(subdomain: string): Promise<{
+interface WorkspaceCrmConfig {
   id: string;
   amocrm_won_stage_id: string | null;
-} | null> {
-  const { rows } = await pool.query<{ id: string; amocrm_won_stage_id: string | null }>(
-    `SELECT id, amocrm_won_stage_id FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
+  amocrm_pipeline_id: string | null;
+}
+
+async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrmConfig | null> {
+  const { rows } = await pool.query<WorkspaceCrmConfig>(
+    `SELECT id, amocrm_won_stage_id, amocrm_pipeline_id
+       FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Fetch the authoritative deal value from the AmoCRM API. The webhook payload's
+ * price can be missing or stale, so when a deal is won we pull the full lead and
+ * use its price. Falls back to the webhook price if the API call fails.
+ */
+async function resolveWonRevenue(
+  workspaceId: string,
+  leadId: string,
+  webhookPrice: number
+): Promise<number> {
+  try {
+    const full = await getLead(workspaceId, leadId);
+    const apiPrice = num(full.price);
+    if (apiPrice > 0) return apiPrice;
+  } catch (err) {
+    console.error('could not fetch full lead price, using webhook price:', (err as Error).message);
+  }
+  return webhookPrice;
 }
 
 async function handleLeadAdd(workspaceId: string, lead: AmoLeadEvent): Promise<void> {
@@ -95,17 +119,28 @@ async function handleLeadAdd(workspaceId: string, lead: AmoLeadEvent): Promise<v
 async function handleLeadStatus(
   workspaceId: string,
   lead: AmoLeadEvent,
-  wonStageId: string | null
+  config: WorkspaceCrmConfig
 ): Promise<void> {
   if (!lead.id) return;
   const statusId = lead.status_id ? String(lead.status_id) : null;
-  const revenue = num(lead.price);
+  const pipelineId = lead.pipeline_id ? String(lead.pipeline_id) : null;
+  let revenue = num(lead.price);
+
+  // A deal is "won" when it lands on the customer-selected won stage. When a
+  // pipeline is configured, the event must also belong to that pipeline.
+  const wonStageId = config.amocrm_won_stage_id;
+  const pipelineMatches = !config.amocrm_pipeline_id || pipelineId === config.amocrm_pipeline_id;
 
   let newStatus: 'won' | 'lost' | 'in_progress' = 'in_progress';
-  if (wonStageId && statusId === wonStageId) {
+  if (wonStageId && statusId === wonStageId && pipelineMatches) {
     newStatus = 'won';
   } else if (statusId === DEFAULT_LOST_STATUS_ID) {
     newStatus = 'lost';
+  }
+
+  // For a won deal, pull the authoritative deal value from the API.
+  if (newStatus === 'won') {
+    revenue = await resolveWonRevenue(workspaceId, lead.id, revenue);
   }
 
   const result = await pool.query(
@@ -195,7 +230,7 @@ export async function amocrmWebhook(req: Request, res: Response): Promise<void> 
       await handleLeadAdd(workspace.id, lead);
     }
     for (const lead of body.leads?.status ?? []) {
-      await handleLeadStatus(workspace.id, lead, workspace.amocrm_won_stage_id);
+      await handleLeadStatus(workspace.id, lead, workspace);
     }
     for (const contact of body.contacts?.add ?? []) {
       await handleContactAdd(workspace.id, contact);

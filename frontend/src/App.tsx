@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
+import PurchasesPage from './pages/PurchasesPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 function App() {
@@ -30,7 +31,7 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/purchases" element={<PlaceholderPage title="Purchases" />} />
+        <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/leads" element={<PlaceholderPage title="Leads" />} />
         <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
         <Route path="/settings" element={<SettingsPage />} />
