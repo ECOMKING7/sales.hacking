@@ -207,6 +207,8 @@ interface FbAd {
   id: string;
   name?: string;
   status?: string;
+  adset_id?: string;
+  campaign_id?: string;
   creative?: FbCreative;
 }
 
@@ -219,21 +221,24 @@ function creativeType(creative?: FbCreative): string | null {
 
 // ---------- sync functions ----------
 
+// All sync functions fetch at the AD-ACCOUNT level (one paginated call each)
+// instead of per-entity, so a full sync is ~6 Graph calls total — avoids the
+// "Ad Account Has Too Many API Calls" rate limit (error code 17).
+
 export async function syncCampaigns(
   workspaceId: string,
-  adAccountId: string,
+  actId: string,
   token: string,
   range: DateRange
-): Promise<Array<{ dbId: string; fbId: string }>> {
-  const actId = normalizeActId(adAccountId);
+): Promise<Map<string, string>> {
   const campaigns = await fetchAll<FbCampaign>(
     `${actId}/campaigns`,
-    { fields: 'id,name,status,objective,daily_budget,start_time' },
+    { fields: 'id,name,status,objective,daily_budget,start_time', limit: 200 },
     token
   );
   const ins = await insightsMap(actId, 'campaign', token, range);
 
-  const result: Array<{ dbId: string; fbId: string }> = [];
+  const map = new Map<string, string>(); // fbCampaignId -> dbId
   for (const c of campaigns) {
     const m = metricsFromInsight(ins.get(c.id));
     const row = await pool.query<{ id: string }>(
@@ -252,26 +257,28 @@ export async function syncCampaigns(
        m.clicks, m.leads, m.purchases, m.revenue, roasOf(m.revenue, m.spend),
        cacOf(m.spend, m.purchases)]
     );
-    result.push({ dbId: row.rows[0].id, fbId: c.id });
+    map.set(c.id, row.rows[0].id);
   }
-  return result;
+  return map;
 }
 
 export async function syncAdSets(
   workspaceId: string,
-  campaign: { dbId: string; fbId: string },
+  actId: string,
   token: string,
-  range: DateRange
-): Promise<Array<{ dbId: string; fbId: string }>> {
+  range: DateRange,
+  campaignMap: Map<string, string>
+): Promise<Map<string, { dbId: string; campaignDbId: string | null }>> {
   const adsets = await fetchAll<FbAdSet>(
-    `${campaign.fbId}/adsets`,
-    { fields: 'id,name,status,campaign_id,daily_budget' },
+    `${actId}/adsets`,
+    { fields: 'id,name,status,campaign_id,daily_budget', limit: 200 },
     token
   );
-  const ins = await insightsMap(campaign.fbId, 'adset', token, range);
+  const ins = await insightsMap(actId, 'adset', token, range);
 
-  const result: Array<{ dbId: string; fbId: string }> = [];
+  const map = new Map<string, { dbId: string; campaignDbId: string | null }>();
   for (const a of adsets) {
+    const campaignDbId = a.campaign_id ? campaignMap.get(a.campaign_id) ?? null : null;
     const m = metricsFromInsight(ins.get(a.id));
     const costPerLead = m.leads > 0 ? m.spend / m.leads : null;
     const row = await pool.query<{ id: string }>(
@@ -286,30 +293,40 @@ export async function syncAdSets(
           revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, cost_per_lead=EXCLUDED.cost_per_lead,
           synced_at=now()
        RETURNING id`,
-      [workspaceId, campaign.dbId, a.id, a.name ?? null, a.status ?? null, m.spend,
+      [workspaceId, campaignDbId, a.id, a.name ?? null, a.status ?? null, m.spend,
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
        roasOf(m.revenue, m.spend), costPerLead]
     );
-    result.push({ dbId: row.rows[0].id, fbId: a.id });
+    map.set(a.id, { dbId: row.rows[0].id, campaignDbId });
   }
-  return result;
+  return map;
 }
 
 export async function syncAds(
   workspaceId: string,
-  campaignDbId: string,
-  adset: { dbId: string; fbId: string },
+  actId: string,
   token: string,
-  range: DateRange
+  range: DateRange,
+  adsetMap: Map<string, { dbId: string; campaignDbId: string | null }>,
+  campaignMap: Map<string, string>
 ): Promise<number> {
   const ads = await fetchAll<FbAd>(
-    `${adset.fbId}/ads`,
-    { fields: 'id,name,status,creative{thumbnail_url,video_id,object_story_spec}' },
+    `${actId}/ads`,
+    {
+      fields: 'id,name,status,adset_id,campaign_id,creative{thumbnail_url,video_id,object_story_spec}',
+      limit: 200,
+    },
     token
   );
-  const ins = await insightsMap(adset.fbId, 'ad', token, range);
+  const ins = await insightsMap(actId, 'ad', token, range);
 
   for (const ad of ads) {
+    const adsetInfo = ad.adset_id ? adsetMap.get(ad.adset_id) : undefined;
+    const adsetDbId = adsetInfo?.dbId ?? null;
+    const campaignDbId =
+      (ad.campaign_id ? campaignMap.get(ad.campaign_id) : undefined) ??
+      adsetInfo?.campaignDbId ??
+      null;
     const m = metricsFromInsight(ins.get(ad.id));
     await pool.query(
       `INSERT INTO ads
@@ -324,7 +341,7 @@ export async function syncAds(
           impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
           leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
           revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, synced_at=now()`,
-      [workspaceId, adset.dbId, campaignDbId, ad.id, ad.name ?? null, ad.status ?? null,
+      [workspaceId, adsetDbId, campaignDbId, ad.id, ad.name ?? null, ad.status ?? null,
        creativeType(ad.creative), ad.creative?.thumbnail_url ?? null, m.spend,
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
        roasOf(m.revenue, m.spend)]
@@ -360,20 +377,14 @@ export async function syncWorkspace(
   }
 
   const token = decrypt(ws.fb_access_token);
+  const actId = normalizeActId(ws.fb_ad_account_id);
 
-  let adsetCount = 0;
-  let adCount = 0;
-
-  const campaigns = await syncCampaigns(workspaceId, ws.fb_ad_account_id, token, range);
-  for (const campaign of campaigns) {
-    const adsets = await syncAdSets(workspaceId, campaign, token, range);
-    adsetCount += adsets.length;
-    for (const adset of adsets) {
-      adCount += await syncAds(workspaceId, campaign.dbId, adset, token, range);
-    }
-  }
+  // Account-level bulk sync: campaigns → adsets → ads (≈6 Graph calls total).
+  const campaignMap = await syncCampaigns(workspaceId, actId, token, range);
+  const adsetMap = await syncAdSets(workspaceId, actId, token, range, campaignMap);
+  const adCount = await syncAds(workspaceId, actId, token, range, adsetMap, campaignMap);
 
   await pool.query(`UPDATE workspaces SET updated_at = now() WHERE id = $1`, [workspaceId]);
 
-  return { campaigns: campaigns.length, adsets: adsetCount, ads: adCount };
+  return { campaigns: campaignMap.size, adsets: adsetMap.size, ads: adCount };
 }

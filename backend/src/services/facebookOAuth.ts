@@ -4,7 +4,9 @@ const GRAPH_VERSION = 'v19.0';
 const GRAPH_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const OAUTH_DIALOG = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
 
-const SCOPES = ['ads_management', 'ads_read', 'business_management', 'email'];
+// Read-only scope is enough to list ad accounts and pull insights.
+// (email isn't needed and isn't a standard scope for the Marketing API app.)
+const SCOPES = ['ads_read'];
 
 function appId(): string {
   const id = process.env.FB_APP_ID;
