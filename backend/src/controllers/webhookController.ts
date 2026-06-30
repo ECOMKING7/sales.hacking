@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { getLead, getContact, hashPhone, hashEmail } from '../services/amocrmService';
 import { processLeadAttribution } from '../services/attributionEngine';
+import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 
 // AmoCRM's default "closed - lost" status id.
 const DEFAULT_LOST_STATUS_ID = '143';
@@ -136,6 +137,8 @@ async function handleLeadStatus(
       if (rows[0]) {
         await processLeadAttribution(rows[0].id, workspaceId);
       }
+      // Fresh won deal — invalidate cached dashboard overviews.
+      await cacheDelPattern(overviewCachePattern(workspaceId));
     } catch (err) {
       console.error('attribution after won failed:', (err as Error).message);
     }

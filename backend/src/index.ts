@@ -13,6 +13,7 @@ import syncRoutes from './routes/sync';
 import webhookRoutes from './routes/webhooks';
 import attributionRoutes from './routes/attribution';
 import pixelRoutes from './routes/pixel';
+import dashboardRoutes from './routes/dashboard';
 import { startSyncCron } from './jobs/syncJob';
 
 const app: Application = express();
@@ -42,6 +43,7 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/attribution', attributionRoutes);
 app.use('/api/pixel', pixelRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Error handler. Pixel endpoints must never surface an error to the client
 // (e.g. malformed JSON from a customer site) — always 200.
