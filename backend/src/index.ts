@@ -11,6 +11,7 @@ import amocrmRoutes from './routes/amocrm';
 import workspaceRoutes from './routes/workspace';
 import syncRoutes from './routes/sync';
 import webhookRoutes from './routes/webhooks';
+import attributionRoutes from './routes/attribution';
 import { startSyncCron } from './jobs/syncJob';
 
 const app: Application = express();
@@ -38,6 +39,7 @@ app.use('/api/auth/amocrm', amocrmRoutes);
 app.use('/api/workspace', workspaceRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/attribution', attributionRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

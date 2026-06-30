@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { getLead, getContact, hashPhone, hashEmail } from '../services/amocrmService';
+import { processLeadAttribution } from '../services/attributionEngine';
 
 // AmoCRM's default "closed - lost" status id.
 const DEFAULT_LOST_STATUS_ID = '143';
@@ -125,7 +126,20 @@ async function handleLeadStatus(
     );
   }
 
-  // TODO(qadam-7): trigger attribution calculation when a lead is won.
+  // When a lead is won, run the attribution engine to credit the ads.
+  if (newStatus === 'won') {
+    try {
+      const { rows } = await pool.query<{ id: string }>(
+        `SELECT id FROM leads WHERE workspace_id = $1 AND crm_lead_id = $2`,
+        [workspaceId, lead.id]
+      );
+      if (rows[0]) {
+        await processLeadAttribution(rows[0].id, workspaceId);
+      }
+    } catch (err) {
+      console.error('attribution after won failed:', (err as Error).message);
+    }
+  }
 }
 
 async function handleContactAdd(workspaceId: string, contact: AmoContactEvent): Promise<void> {

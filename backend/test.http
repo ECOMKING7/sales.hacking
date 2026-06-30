@@ -122,3 +122,14 @@ POST {{baseUrl}}/api/webhooks/amocrm?secret=dev_amocrm_webhook_secret_change_me
 Content-Type: application/x-www-form-urlencoded
 
 account[subdomain]=example&leads[status][0][id]=100&leads[status][0][status_id]=142&leads[status][0][price]=5000
+
+### --- Attribution ---
+
+### Reprocess attribution for a lead (protected). Optional body: {"model":"linear"}
+POST {{baseUrl}}/api/attribution/reprocess/LEAD_UUID_HERE
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "model": "time_decay"
+}
