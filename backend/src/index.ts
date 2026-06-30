@@ -7,8 +7,10 @@ dotenv.config();
 
 import authRoutes from './routes/auth';
 import facebookRoutes from './routes/facebook';
+import amocrmRoutes from './routes/amocrm';
 import workspaceRoutes from './routes/workspace';
 import syncRoutes from './routes/sync';
+import webhookRoutes from './routes/webhooks';
 import { startSyncCron } from './jobs/syncJob';
 
 const app: Application = express();
@@ -32,8 +34,10 @@ app.get('/', (_req: Request, res: Response) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/facebook', facebookRoutes);
+app.use('/api/auth/amocrm', amocrmRoutes);
 app.use('/api/workspace', workspaceRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

@@ -92,3 +92,33 @@ Content-Type: application/json
 ### Sync status (protected)
 GET {{baseUrl}}/api/sync/status
 Authorization: Bearer {{login.response.body.token}}
+
+### --- AmoCRM ---
+
+### Get AmoCRM OAuth connect URL (protected)
+GET {{baseUrl}}/api/auth/amocrm/connect
+Authorization: Bearer {{login.response.body.token}}
+
+### AmoCRM status (protected)
+GET {{baseUrl}}/api/workspace/amocrm-status
+Authorization: Bearer {{login.response.body.token}}
+
+### List AmoCRM pipelines (protected; requires connected)
+GET {{baseUrl}}/api/workspace/amocrm-pipelines
+Authorization: Bearer {{login.response.body.token}}
+
+### Save pipeline + won stage (protected)
+POST {{baseUrl}}/api/workspace/amocrm-pipeline
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "pipelineId": "7486112",
+  "wonStageId": "142"
+}
+
+### Simulate AmoCRM webhook (form-urlencoded) — replace secret + subdomain
+POST {{baseUrl}}/api/webhooks/amocrm?secret=dev_amocrm_webhook_secret_change_me
+Content-Type: application/x-www-form-urlencoded
+
+account[subdomain]=example&leads[status][0][id]=100&leads[status][0][status_id]=142&leads[status][0][price]=5000
