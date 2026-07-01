@@ -4,7 +4,10 @@ import { decrypt } from '../utils/encryption';
 
 const GRAPH = 'https://graph.facebook.com/v19.0';
 const MAX_RETRIES = 3;
-const INSIGHT_FIELDS = 'spend,impressions,clicks,actions,action_values';
+// campaign_id/adset_id/ad_id must be requested explicitly — Facebook does not
+// include them by default, even though insightsMap() keys its results by them.
+const INSIGHT_FIELDS =
+  'campaign_id,adset_id,ad_id,spend,impressions,clicks,actions,action_values';
 
 // Action types Facebook uses for leads / purchases (varies by pixel setup).
 const LEAD_ACTIONS = [
