@@ -96,12 +96,22 @@ function normalizeActId(id: string): string {
   return id.startsWith('act_') ? id : `act_${id}`;
 }
 
+function fbErrorCode(err: AxiosError): number | undefined {
+  const data = err.response?.data as { error?: { code?: number } } | undefined;
+  return data?.error?.code;
+}
+
 function isRateLimit(err: AxiosError): boolean {
   if (err.response?.status === 429) return true;
-  const data = err.response?.data as { error?: { code?: number } } | undefined;
-  const code = data?.error?.code;
+  const code = fbErrorCode(err);
   // 4 = app rate limit, 17 = user rate limit, 32/613 = page/custom rate limits
   return code === 4 || code === 17 || code === 32 || code === 613;
+}
+
+// Ad-account "too many calls" (code 17) has a long cooldown — retrying within the
+// same request only makes it worse, so we fail fast and let a later sync retry.
+function isHardAccountLimit(err: AxiosError): boolean {
+  return fbErrorCode(err) === 17;
 }
 
 /**
@@ -119,7 +129,8 @@ async function fbGet<T = unknown>(
       return res.data as T;
     } catch (e) {
       const err = e as AxiosError;
-      if (isRateLimit(err) && attempt < MAX_RETRIES) {
+      // Fail fast on the ad-account hard limit — don't burn time retrying.
+      if (isRateLimit(err) && !isHardAccountLimit(err) && attempt < MAX_RETRIES) {
         const backoff = 2 ** attempt * 1000; // 1s, 2s, 4s
         await sleep(backoff);
         attempt += 1;

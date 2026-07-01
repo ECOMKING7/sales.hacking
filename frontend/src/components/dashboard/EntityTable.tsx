@@ -33,7 +33,7 @@ function DeliveryBadge({ status }: { status: string | null }) {
   );
 }
 
-function renderCell(row: EntityRow, key: string) {
+function renderCell(row: EntityRow, key: string, drillable: boolean) {
   switch (key) {
     case 'name':
       return (
@@ -41,7 +41,16 @@ function renderCell(row: EntityRow, key: string) {
           {row.thumbnailUrl && (
             <img src={row.thumbnailUrl} alt="" className="h-8 w-8 rounded object-cover" />
           )}
-          <span className="font-medium text-gray-900">{row.name ?? '—'}</span>
+          <span
+            className={
+              drillable
+                ? 'font-medium text-indigo-600 hover:underline'
+                : 'font-medium text-gray-900'
+            }
+          >
+            {row.name ?? '—'}
+          </span>
+          {drillable && <ChevronRight className="h-3.5 w-3.5 text-gray-300" />}
         </div>
       );
     case 'status':
@@ -241,7 +250,7 @@ export default function EntityTable({
                       key={c.key}
                       className={`whitespace-nowrap px-4 py-3 ${c.align === 'right' ? 'text-right' : ''}`}
                     >
-                      {renderCell(r, c.key)}
+                      {renderCell(r, c.key, c.key === 'name' && rowClickable)}
                     </td>
                   ))}
                 </tr>
