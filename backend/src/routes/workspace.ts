@@ -7,6 +7,9 @@ import {
   members,
   removeMember,
   usage,
+  createWorkspace,
+  switchWorkspace,
+  listWorkspaces,
 } from '../controllers/workspaceController';
 import {
   status as amocrmStatus,
@@ -29,6 +32,11 @@ router.get('/fb-status', verifyToken, fbStatus);
 router.get('/amocrm-status', verifyToken, amocrmStatus);
 router.get('/amocrm-pipelines', verifyToken, amocrmListPipelines);
 router.post('/amocrm-pipeline', verifyToken, amocrmSavePipeline);
+
+// Workspace management
+router.get('/list', verifyToken, listWorkspaces);
+router.post('/create', verifyToken, createWorkspace);
+router.post('/switch/:id', verifyToken, switchWorkspace);
 
 // Team / SaaS
 router.post('/invite', verifyToken, invite);

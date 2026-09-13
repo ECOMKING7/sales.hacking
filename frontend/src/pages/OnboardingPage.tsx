@@ -1,19 +1,40 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Check, ExternalLink, Target, LineChart, Zap } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  BarChart3,
+  Check,
+  Database,
+  ExternalLink,
+  LineChart,
+  Megaphone,
+  Target,
+  Zap,
+} from 'lucide-react';
 import { facebookApi, amocrmApi } from '../services/api';
+import { Badge, Button, Card, CardHeader, EmptyState, Skeleton, cn } from '../components/ui';
 
-function StepDots({ step }: { step: number }) {
+const SELECT_CLASS =
+  'h-10 w-full rounded-sm border-[1.5px] border-line-2 bg-surface px-3 text-sm text-ink';
+const FIELD_LABEL = 'mb-1.5 block text-xs font-semibold text-ink-2';
+
+function Steps({ step }: { step: number }) {
   return (
-    <div className="mb-8 flex items-center justify-center gap-2">
+    <div className="mb-7 flex items-center justify-center gap-2">
       {[1, 2, 3].map((s) => (
         <span
           key={s}
-          className={`h-2 rounded-full transition-all ${
-            s === step ? 'w-8 bg-indigo-600' : s < step ? 'w-2 bg-indigo-300' : 'w-2 bg-gray-200'
-          }`}
-        />
+          aria-current={s === step ? 'step' : undefined}
+          className={cn(
+            'grid h-8 w-8 place-items-center rounded-sm border-[1.5px]',
+            'font-mono text-xs tabular-nums transition-[box-shadow,border-color] duration-200',
+            s < step && 'border-ok/30 bg-ok/12 text-ok',
+            s === step && 'border-edge bg-tint text-accent shadow-glow-xs',
+            s > step && 'border-line text-ink-3'
+          )}
+        >
+          {s < step ? <Check className="h-4 w-4" /> : s}
+        </span>
       ))}
     </div>
   );
@@ -21,6 +42,7 @@ function StepDots({ step }: { step: number }) {
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const [adAccount, setAdAccount] = useState('');
   const [pipelineId, setPipelineId] = useState('');
@@ -39,15 +61,17 @@ export default function OnboardingPage() {
     enabled: step === 3 && Boolean(crm.data?.connected),
   });
 
-  // Re-check connection when the OAuth popup returns focus to this tab.
+  // OAuth oynasi yopilib, fokus shu tabga qaytganda ulanish holatini qayta o'qiymiz.
+  // Deps sifatida `fb`/`crm` obyektlari ISHLATILMAYDI — ular har renderda yangi,
+  // ya'ni listener har renderda qayta o'rnatilardi. queryClient esa barqaror havola.
   useEffect(() => {
     const onFocus = () => {
-      fb.refetch();
-      crm.refetch();
+      queryClient.invalidateQueries({ queryKey: ['onb-fb'] });
+      queryClient.invalidateQueries({ queryKey: ['onb-crm'] });
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [fb, crm]);
+  }, [queryClient]);
 
   const openOAuth = async (which: 'fb' | 'crm') => {
     const { url } = which === 'fb' ? await facebookApi.connect() : await amocrmApi.connect();
@@ -68,20 +92,30 @@ export default function OnboardingPage() {
   const stages =
     pipelines.data?.pipelines.find((p) => String(p.id) === pipelineId)?.statuses ?? [];
 
+  const adAccounts = fbAccounts.data?.adAccounts ?? [];
+  const pipelineList = pipelines.data?.pipelines ?? [];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-ground px-4 py-10">
+      <div className="w-full max-w-lg">
         <div className="mb-6 flex justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600">
-            <BarChart3 className="h-6 w-6 text-white" />
-          </div>
+          <span
+            aria-hidden
+            className="grid h-12 w-12 place-items-center rounded-md border-[1.5px] border-edge bg-tint text-accent shadow-glow-sm"
+          >
+            <BarChart3 className="h-6 w-6" />
+          </span>
         </div>
-        <StepDots step={step} />
+
+        <Steps step={step} />
 
         {step === 1 && (
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Welcome to Attribution</h1>
-            <p className="mt-1 text-sm text-gray-500">Know which ads actually drive revenue.</p>
+          <Card padding="lg">
+            <div className="text-center">
+              <h1 className="text-xl font-bold text-ink">Welcome to Attribution</h1>
+              <p className="mt-1 text-sm text-ink-2">Know which ads actually drive revenue.</p>
+            </div>
+
             <ul className="mt-6 space-y-3 text-left">
               {[
                 { icon: Target, text: 'Connect Facebook Ads to pull campaign spend & performance.' },
@@ -89,149 +123,233 @@ export default function OnboardingPage() {
                 { icon: Zap, text: 'See true ROAS, CAC and revenue by source — multi-touch attribution.' },
               ].map(({ icon: Icon, text }, i) => (
                 <li key={i} className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                  <span
+                    aria-hidden
+                    className="mt-0.5 grid h-7 w-7 flex-none place-items-center rounded-sm border-[1.5px] border-edge bg-tint text-accent"
+                  >
                     <Icon className="h-4 w-4" />
                   </span>
-                  <span className="text-sm text-gray-700">{text}</span>
+                  <span className="text-sm text-ink-2">{text}</span>
                 </li>
               ))}
             </ul>
-            <button
-              onClick={() => setStep(2)}
-              className="mt-8 w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
+
+            <Button className="mt-8" variant="primary" fullWidth onClick={() => setStep(2)}>
               Get Started
-            </button>
-          </div>
+            </Button>
+          </Card>
         )}
 
         {step === 2 && (
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Connect Facebook Ads</h2>
-            <p className="mt-1 text-sm text-gray-500">We'll import your campaigns and spend.</p>
+          <Card padding="lg">
+            <CardHeader
+              icon={<Megaphone className="h-5 w-5" />}
+              title="Connect Facebook Ads"
+              description="We'll import your campaigns and spend."
+            />
 
-            {fb.data?.connected ? (
-              <div className="mt-6 space-y-4">
-                <p className="flex items-center gap-2 text-sm text-green-700">
-                  <Check className="h-4 w-4" /> Facebook connected
-                </p>
+            {fb.isLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : fb.isError ? (
+              <div className="space-y-3">
+                <p className="text-sm text-bad">Could not check the Facebook connection.</p>
+                <Button variant="secondary" size="sm" onClick={() => fb.refetch()}>
+                  Retry
+                </Button>
+              </div>
+            ) : fb.data?.connected ? (
+              <div className="space-y-4">
+                <Badge tone="ok" dot>
+                  Facebook connected
+                </Badge>
+
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Ad account</label>
-                  <select
-                    value={adAccount}
-                    onChange={(e) => setAdAccount(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">— choose —</option>
-                    {(fbAccounts.data?.adAccounts ?? []).map((a) => (
-                      <option key={a.id} value={a.accountId || a.id}>
-                        {a.name} ({a.accountId || a.id})
-                      </option>
-                    ))}
-                  </select>
+                  <label htmlFor="onb-ad-account" className={FIELD_LABEL}>
+                    Ad account
+                  </label>
+
+                  {fbAccounts.isLoading ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : fbAccounts.isError ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-bad">Could not load ad accounts.</p>
+                      <Button variant="secondary" size="sm" onClick={() => fbAccounts.refetch()}>
+                        Retry
+                      </Button>
+                    </div>
+                  ) : adAccounts.length === 0 ? (
+                    <EmptyState
+                      icon={<Megaphone />}
+                      title="No ad accounts found"
+                      hint="xarajat yo'q · ROAS hisoblanmaydi"
+                      action={
+                        <Button variant="secondary" size="sm" onClick={() => fbAccounts.refetch()}>
+                          Refresh
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <select
+                      id="onb-ad-account"
+                      value={adAccount}
+                      onChange={(e) => setAdAccount(e.target.value)}
+                      className={SELECT_CLASS}
+                    >
+                      <option value="">— choose —</option>
+                      {adAccounts.map((a) => (
+                        <option key={a.id} value={a.accountId || a.id}>
+                          {a.name} ({a.accountId || a.id})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-                <button
+
+                <Button
+                  variant="primary"
+                  fullWidth
                   onClick={async () => {
                     if (adAccount) await facebookApi.selectAdAccount(adAccount);
                     setStep(3);
                   }}
-                  className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                   Continue
-                </button>
+                </Button>
               </div>
             ) : (
-              <div className="mt-6 space-y-3">
-                <button
+              <div className="space-y-3">
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  icon={<Megaphone className="h-4 w-4" />}
+                  iconRight={<ExternalLink className="h-4 w-4" />}
                   onClick={() => openOAuth('fb')}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1877F2] py-2.5 text-sm font-semibold text-white hover:opacity-90"
                 >
-                  Connect Facebook Ads <ExternalLink className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => fb.refetch()}
-                  className="w-full text-sm text-gray-500 hover:text-gray-700"
-                >
+                  Connect Facebook Ads
+                </Button>
+                <Button variant="ghost" fullWidth onClick={() => fb.refetch()}>
                   I've connected — refresh
-                </button>
-                <button onClick={() => setStep(3)} className="w-full text-sm text-gray-400 hover:text-gray-600">
+                </Button>
+                <Button variant="ghost" fullWidth size="sm" onClick={() => setStep(3)}>
                   Skip for now
-                </button>
+                </Button>
               </div>
             )}
-          </div>
+          </Card>
         )}
 
         {step === 3 && (
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Connect amoCRM</h2>
-            <p className="mt-1 text-sm text-gray-500">Map your won deals back to ads.</p>
+          <Card padding="lg">
+            <CardHeader
+              icon={<Database className="h-5 w-5" />}
+              title="Connect amoCRM"
+              description="Map your won deals back to ads."
+            />
 
-            {crm.data?.connected ? (
-              <div className="mt-6 space-y-4">
-                <p className="flex items-center gap-2 text-sm text-green-700">
-                  <Check className="h-4 w-4" /> amoCRM connected
-                </p>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Pipeline</label>
-                  <select
-                    value={pipelineId}
-                    onChange={(e) => {
-                      setPipelineId(e.target.value);
-                      setWonStageId('');
-                    }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">— choose —</option>
-                    {(pipelines.data?.pipelines ?? []).map((p) => (
-                      <option key={p.id} value={String(p.id)}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Won stage</label>
-                  <select
-                    value={wonStageId}
-                    onChange={(e) => setWonStageId(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">— choose —</option>
-                    {stages.map((s) => (
-                      <option key={s.id} value={String(s.id)}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={finish}
-                  className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                >
+            {crm.isLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : crm.isError ? (
+              <div className="space-y-3">
+                <p className="text-sm text-bad">Could not check the amoCRM connection.</p>
+                <Button variant="secondary" size="sm" onClick={() => crm.refetch()}>
+                  Retry
+                </Button>
+              </div>
+            ) : crm.data?.connected ? (
+              <div className="space-y-4">
+                <Badge tone="ok" dot>
+                  amoCRM connected
+                </Badge>
+
+                {pipelines.isLoading ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : pipelines.isError ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-bad">Could not load pipelines.</p>
+                    <Button variant="secondary" size="sm" onClick={() => pipelines.refetch()}>
+                      Retry
+                    </Button>
+                  </div>
+                ) : pipelineList.length === 0 ? (
+                  <EmptyState
+                    icon={<Database />}
+                    title="No pipelines found"
+                    hint="sotuv etapi yo'q · atribusiya yopilmaydi"
+                    action={
+                      <Button variant="secondary" size="sm" onClick={() => pipelines.refetch()}>
+                        Refresh
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <>
+                    <div>
+                      <label htmlFor="onb-pipeline" className={FIELD_LABEL}>
+                        Pipeline
+                      </label>
+                      <select
+                        id="onb-pipeline"
+                        value={pipelineId}
+                        onChange={(e) => {
+                          setPipelineId(e.target.value);
+                          setWonStageId('');
+                        }}
+                        className={SELECT_CLASS}
+                      >
+                        <option value="">— choose —</option>
+                        {pipelineList.map((p) => (
+                          <option key={p.id} value={String(p.id)}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="onb-won-stage" className={FIELD_LABEL}>
+                        Won stage
+                      </label>
+                      <select
+                        id="onb-won-stage"
+                        value={wonStageId}
+                        onChange={(e) => setWonStageId(e.target.value)}
+                        className={SELECT_CLASS}
+                      >
+                        <option value="">— choose —</option>
+                        {stages.map((s) => (
+                          <option key={s.id} value={String(s.id)}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                <Button variant="primary" fullWidth onClick={finish}>
                   Finish Setup
-                </button>
+                </Button>
               </div>
             ) : (
-              <div className="mt-6 space-y-3">
-                <button
+              <div className="space-y-3">
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  icon={<Database className="h-4 w-4" />}
+                  iconRight={<ExternalLink className="h-4 w-4" />}
                   onClick={() => openOAuth('crm')}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
                 >
-                  Connect amoCRM <ExternalLink className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => crm.refetch()}
-                  className="w-full text-sm text-gray-500 hover:text-gray-700"
-                >
+                  Connect amoCRM
+                </Button>
+                <Button variant="ghost" fullWidth onClick={() => crm.refetch()}>
                   I've connected — refresh
-                </button>
-                <button onClick={finish} className="w-full text-sm text-gray-400 hover:text-gray-600">
+                </Button>
+                <Button variant="ghost" fullWidth size="sm" onClick={finish}>
                   Finish later
-                </button>
+                </Button>
               </div>
             )}
-          </div>
+          </Card>
         )}
       </div>
     </div>

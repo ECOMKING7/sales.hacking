@@ -6,8 +6,20 @@ import type { WonDeal } from '../types';
 import { formatCurrency, formatDays, n } from '../utils/format';
 import SourceBadge from '../components/SourceBadge';
 import LeadDetailPanel from '../components/LeadDetailPanel';
+import {
+  Button,
+  Input,
+  Skeleton,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+  Tr,
+  TableEmpty,
+} from '../components/ui';
 
 const LIMIT = 20;
+const COLS = 7;
 
 export default function PurchasesPage() {
   const [searchInput, setSearchInput] = useState('');
@@ -68,122 +80,146 @@ export default function PurchasesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Purchases</h1>
-          <p className="text-sm text-gray-500">
-            Total revenue:{' '}
-            <span className="font-semibold text-gray-900">
-              {overview.isLoading ? '…' : formatCurrency(overview.data?.revenue)}
-            </span>
+          <h1 className="text-xl font-bold text-ink">Purchases</h1>
+          <p className="mt-1.5 font-mono text-label uppercase tracking-[0.1em] text-ink-3">
+            Total revenue
           </p>
+          {overview.isLoading ? (
+            <Skeleton className="mt-1.5 h-7 w-32" />
+          ) : overview.isError ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-3">
+              <p className="text-sm text-bad">Failed to load total revenue.</p>
+              <Button variant="secondary" size="sm" onClick={() => void overview.refetch()}>
+                Qayta urinish
+              </Button>
+            </div>
+          ) : (
+            <p className="mt-0.5 text-2xl font-bold tabular-nums text-ink">
+              {formatCurrency(overview.data?.revenue)}
+            </p>
+          )}
         </div>
+
         <div className="flex items-center gap-2">
-          <form onSubmit={submitSearch} className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-            <input
+          <form onSubmit={submitSearch} className="w-56">
+            <Input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search name or phone…"
-              className="rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              aria-label="Search name or phone"
+              icon={<Search className="h-4 w-4" />}
             />
           </form>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={exportCsv}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            icon={<Download className="h-4 w-4" />}
           >
-            <Download className="h-4 w-4" />
             Export CSV
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-2.5 font-medium">Customer</th>
-                <th className="px-4 py-2.5 font-medium">Source</th>
-                <th className="px-4 py-2.5 font-medium">Campaign</th>
-                <th className="px-4 py-2.5 font-medium">Ad Set</th>
-                <th className="px-4 py-2.5 font-medium">Ad</th>
-                <th className="px-4 py-2.5 text-right font-medium">Revenue</th>
-                <th className="px-4 py-2.5 text-right font-medium">Deal Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.isLoading &&
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-50">
-                    {Array.from({ length: 7 }).map((_, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 w-full animate-pulse rounded bg-gray-100" />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+      <TableWrap>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Customer</Th>
+              <Th>Source</Th>
+              <Th>Campaign</Th>
+              <Th>Ad Set</Th>
+              <Th>Ad</Th>
+              <Th numeric>Revenue</Th>
+              <Th numeric>Deal Time</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {query.isLoading &&
+              Array.from({ length: 6 }).map((_, i) => (
+                <Tr key={i}>
+                  {Array.from({ length: COLS }).map((_, j) => (
+                    <Td key={j}>
+                      <Skeleton className="h-3.5 w-full" />
+                    </Td>
+                  ))}
+                </Tr>
+              ))}
 
-              {!query.isLoading && deals.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
-                    No purchases found.
-                  </td>
-                </tr>
-              )}
+            {!query.isLoading && query.isError && (
+              <TableEmpty colSpan={COLS}>
+                <span className="text-bad">Failed to load purchases.</span>
+                <span className="mt-3 block">
+                  <Button variant="secondary" size="sm" onClick={() => void query.refetch()}>
+                    Qayta urinish
+                  </Button>
+                </span>
+              </TableEmpty>
+            )}
 
-              {!query.isLoading &&
-                deals.map((d) => (
-                  <tr
-                    key={d.id}
-                    onClick={() => setSelectedLead(d.id)}
-                    className="cursor-pointer border-b border-gray-50 hover:bg-gray-50"
-                  >
-                    <td className="px-4 py-3">
-                      <span className="select-none font-medium text-gray-900 blur-sm">
-                        {d.customerName ?? 'Customer'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3"><SourceBadge source={d.source} /></td>
-                    <td className="px-4 py-3 text-gray-700">{d.campaignName ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{d.adsetName ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{d.adName ?? '—'}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">
-                      {formatCurrency(d.revenue)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600">
-                      {d.dealTime != null ? formatDays(d.dealTime) : '—'}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+            {!query.isLoading && !query.isError && deals.length === 0 && (
+              <TableEmpty colSpan={COLS}>No purchases found.</TableEmpty>
+            )}
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-gray-600">
-          <span>
-            {total} {total === 1 ? 'deal' : 'deals'}
+            {!query.isLoading &&
+              !query.isError &&
+              deals.map((d) => (
+                <Tr
+                  key={d.id}
+                  onClick={() => setSelectedLead(d.id)}
+                  selected={selectedLead === d.id}
+                  className="cursor-pointer"
+                >
+                  <Td>
+                    <span className="select-none font-medium text-ink blur-sm">
+                      {d.customerName ?? 'Customer'}
+                    </span>
+                  </Td>
+                  <Td>
+                    <SourceBadge source={d.source} />
+                  </Td>
+                  <Td className="text-ink-2">{d.campaignName ?? '—'}</Td>
+                  <Td className="text-ink-2">{d.adsetName ?? '—'}</Td>
+                  <Td className="text-ink-2">{d.adName ?? '—'}</Td>
+                  <Td numeric>{formatCurrency(d.revenue)}</Td>
+                  <Td numeric className="text-ink-2">
+                    {d.dealTime != null ? formatDays(d.dealTime) : '—'}
+                  </Td>
+                </Tr>
+              ))}
+          </tbody>
+        </Table>
+      </TableWrap>
+
+      {/* Pagination */}
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-ink-2">
+        <span className="tabular-nums">
+          {total} {total === 1 ? 'deal' : 'deals'}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            icon={<ChevronLeft className="h-4 w-4" />}
+          >
+            Prev
+          </Button>
+          <span className="tabular-nums">
+            Page {page} / {totalPages}
           </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 disabled:opacity-40"
-            >
-              <ChevronLeft className="h-4 w-4" /> Prev
-            </button>
-            <span>
-              Page {page} / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 disabled:opacity-40"
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            iconRight={<ChevronRight className="h-4 w-4" />}
+          >
+            Next
+          </Button>
         </div>
       </div>
 

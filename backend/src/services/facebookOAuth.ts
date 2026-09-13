@@ -87,6 +87,21 @@ export async function exchangeCodeForToken(code: string): Promise<LongLivedToken
   };
 }
 
+export interface FbUserProfile {
+  id: string;
+  name: string;
+}
+
+/**
+ * Fetch the Facebook user's basic profile (id + name).
+ */
+export async function getFbUserProfile(accessToken: string): Promise<FbUserProfile> {
+  const res = await axios.get(`${GRAPH_URL}/me`, {
+    params: { fields: 'id,name', access_token: accessToken },
+  });
+  return res.data as FbUserProfile;
+}
+
 /**
  * Fetch the ad accounts the authenticated user can access.
  */

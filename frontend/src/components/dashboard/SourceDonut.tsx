@@ -1,5 +1,7 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { PieChart as PieChartIcon } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
+import { Card, EmptyState, Skeleton, SkeletonText } from '../ui';
 
 interface SourceData {
   metaAds: number;
@@ -8,7 +10,21 @@ interface SourceData {
   fbOrganic: number;
 }
 
-const COLORS = ['#3b82f6', '#9ca3af', '#ec4899', '#6366f1'];
+/**
+ * Diagramma ranglari dizayn tokenlaridan olinadi — qotgan hex yo'q.
+ * SVG `fill` ichida CSS o'zgaruvchisi ishlaydi: token qiymati "37 99 235"
+ * ko'rinishida saqlanadi, shuning uchun rgb(...) ga o'raymiz.
+ *
+ * Diqqat: qorong'i mavzuda --accent va --edge bir xil qiymatga ega,
+ * shuning uchun ikkinchi bo'lak uchun --edge-soft olinadi.
+ */
+const COLORS = [
+  'rgb(var(--accent))',
+  'rgb(var(--edge-soft))',
+  'rgb(var(--ok))',
+  'rgb(var(--warn))',
+  'rgb(var(--ink-3))',
+];
 
 export default function SourceDonut({ data, loading }: { data?: SourceData; loading?: boolean }) {
   const slices = [
@@ -21,45 +37,73 @@ export default function SourceDonut({ data, loading }: { data?: SourceData; load
   const top = [...slices].sort((a, b) => b.value - a.value)[0];
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h3 className="mb-4 text-sm font-semibold text-gray-900">Revenue by Source</h3>
+    <Card padding="md">
+      <h3 className="mb-4 text-sm font-semibold text-ink">Revenue by Source</h3>
+
       {loading ? (
-        <div className="mx-auto h-44 w-44 animate-pulse rounded-full bg-gray-200" />
-      ) : (
-        <div className="relative">
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie
-                data={slices}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={55}
-                outerRadius={80}
-                paddingAngle={2}
-              >
-                {slices.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i]} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xs text-gray-500">{total > 0 ? top.name : 'No data'}</span>
-            <span className="text-lg font-bold text-gray-900">{formatCurrency(top.value)}</span>
+        <div role="status" aria-label="Yuklanmoqda">
+          <Skeleton className="mx-auto h-44 w-44 rounded-full" />
+          <div className="mt-4">
+            <SkeletonText lines={4} />
           </div>
         </div>
+      ) : (
+        <>
+          {total > 0 ? (
+            <div className="relative">
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={slices}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    stroke="none"
+                  >
+                    {slices.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="font-mono text-label uppercase tracking-[0.1em] text-ink-3">
+                  {top.name}
+                </span>
+                <span className="mt-1 text-lg font-bold tabular-nums text-ink">
+                  {formatCurrency(top.value)}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={<PieChartIcon />}
+              title="No data"
+              hint="daromad yo'q · manba bo'yicha taqsimot hisoblanmaydi"
+            />
+          )}
+
+          <ul className="mt-4 space-y-1.5">
+            {slices.map((s, i) => (
+              <li key={s.name} className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-ink-2">
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-2.5 flex-none rounded-full"
+                    style={{ background: COLORS[i % COLORS.length] }}
+                  />
+                  {s.name}
+                </span>
+                <span className="font-medium tabular-nums text-ink">
+                  {formatCurrency(s.value)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-      <ul className="mt-4 space-y-1.5">
-        {slices.map((s, i) => (
-          <li key={s.name} className="flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2 text-gray-600">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLORS[i] }} />
-              {s.name}
-            </span>
-            <span className="font-medium text-gray-900">{formatCurrency(s.value)}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    </Card>
   );
 }

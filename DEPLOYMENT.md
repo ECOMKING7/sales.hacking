@@ -72,7 +72,7 @@ railway run npm run migrate:prod
 ```
 
 `migrate:prod` runs the compiled `dist/db/migrate.js` against `DATABASE_URL`
-(the production image has no `ts-node`). This applies all 9 migrations and is
+(the production image has no `ts-node`). This applies all 10 migrations and is
 idempotent.
 
 ## 7. Deploy the frontend on Vercel

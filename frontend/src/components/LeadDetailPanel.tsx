@@ -13,6 +13,20 @@ import { dashboardApi, attributionApi } from '../services/api';
 import type { JourneyEvent } from '../types';
 import { formatCurrency, formatDays } from '../utils/format';
 import SourceBadge from './SourceBadge';
+import {
+  Badge,
+  Button,
+  Card,
+  Skeleton,
+  SkeletonText,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+  Tr,
+  TableEmpty,
+  cn,
+} from './ui';
 
 type Tab = 'journey' | 'clicks' | 'purchases' | 'phones';
 
@@ -30,29 +44,44 @@ function eventSource(e: JourneyEvent): string {
   return e.adName ? 'Meta Ads' : 'Direct';
 }
 
-function EventIcon({ type }: { type: JourneyEvent['eventType'] }) {
-  const base = 'flex h-8 w-8 items-center justify-center rounded-full';
+/**
+ * Zanjir nuqtasi. Faol (oxirgi) nuqta havorang — "bu yerdasiz".
+ * Sotuv har doim yashil: u natija, holat emas.
+ */
+function EventIcon({
+  type,
+  active = false,
+}: {
+  type: JourneyEvent['eventType'];
+  active?: boolean;
+}) {
+  const base =
+    'grid h-8 w-8 flex-none place-items-center rounded-full border-[1.5px] bg-surface';
+
   if (type === 'purchase')
     return (
-      <span className={`${base} bg-green-100 text-green-600`}>
-        <DollarSign className="h-4 w-4" />
+      <span className={cn(base, 'border-ok/30 bg-ok/12 text-ok')}>
+        <DollarSign aria-hidden className="h-4 w-4" />
       </span>
     );
+
+  const tone = active ? 'border-edge bg-tint text-accent' : 'border-line text-ink-2';
+
   if (type === 'click')
     return (
-      <span className={`${base} bg-blue-100 text-blue-600`}>
-        <MousePointerClick className="h-4 w-4" />
+      <span className={cn(base, tone)}>
+        <MousePointerClick aria-hidden className="h-4 w-4" />
       </span>
     );
   if (type === 'lead')
     return (
-      <span className={`${base} bg-indigo-100 text-indigo-600`}>
-        <UserPlus className="h-4 w-4" />
+      <span className={cn(base, tone)}>
+        <UserPlus aria-hidden className="h-4 w-4" />
       </span>
     );
   return (
-    <span className={`${base} bg-gray-100 text-gray-500`}>
-      <Eye className="h-4 w-4" />
+    <span className={cn(base, tone)}>
+      <Eye aria-hidden className="h-4 w-4" />
     </span>
   );
 }
@@ -89,11 +118,13 @@ export default function LeadDetailPanel({
   const tabBtn = (key: Tab, label: string) => (
     <button
       onClick={() => setTab(key)}
-      className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+      aria-selected={tab === key}
+      className={cn(
+        'border-b-2 px-3 py-2 text-sm font-semibold transition-colors duration-200',
         tab === key
-          ? 'border-indigo-600 text-indigo-600'
-          : 'border-transparent text-gray-500 hover:text-gray-700'
-      }`}
+          ? 'border-edge text-accent'
+          : 'border-transparent text-ink-2 hover:text-ink'
+      )}
     >
       {label}
     </button>
@@ -104,41 +135,58 @@ export default function LeadDetailPanel({
       {/* Overlay */}
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${
+        className={cn(
+          'fixed inset-0 z-40 bg-ink/40 transition-opacity duration-300',
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
-        }`}
+        )}
       />
 
       {/* Drawer */}
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-md transform flex-col bg-white shadow-xl transition-transform duration-300 ${
+        className={cn(
+          'fixed inset-y-0 right-0 z-50 flex w-full max-w-md transform flex-col',
+          'border-l border-line bg-surface shadow-glow-lg',
+          'transition-transform duration-300',
           open ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Lead details</h2>
+        <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+          <h2 className="text-lg font-bold text-ink">Lead details</h2>
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={reprocess.isPending}
+              icon={<RefreshCw className="h-3.5 w-3.5" />}
               onClick={() => reprocess.mutate()}
-              disabled={reprocess.isPending}
-              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${reprocess.isPending ? 'animate-spin' : ''}`} />
               Reprocess Lead
-            </button>
-            <button onClick={onClose} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100">
-              <X className="h-5 w-5" />
-            </button>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Close"
+              onClick={onClose}
+              icon={<X className="h-5 w-5" />}
+              className="px-2"
+            />
           </div>
         </div>
 
+        {reprocess.isError && (
+          <p className="border-b border-line px-5 py-2 text-xs text-bad">
+            Reprocess failed. Try again.
+          </p>
+        )}
+
         {/* Customer */}
-        <div className="border-b border-gray-100 px-5 py-4">
-          <p className="text-sm font-medium text-gray-900">Customer</p>
-          <p className="select-none text-sm text-gray-500 blur-sm">+998 90 123 45 67</p>
+        <div className="border-b border-line px-5 py-4">
+          <p className="text-sm font-semibold text-ink">Customer</p>
+          <p className="select-none text-sm text-ink-2 blur-sm">+998 90 123 45 67</p>
+          {detail.isLoading && <Skeleton className="mt-2 h-3.5 w-48" />}
           {data && (
-            <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs tabular-nums text-ink-2">
               <span>{data.lead.total_touches} touches</span>
               {data.lead.deal_time_days != null && (
                 <span>· {formatDays(data.lead.deal_time_days)} to close</span>
@@ -149,7 +197,7 @@ export default function LeadDetailPanel({
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-gray-200 px-3">
+        <div className="flex gap-1 border-b border-line px-3">
           {tabBtn('journey', 'Journey')}
           {tabBtn('clicks', 'Clicks')}
           {tabBtn('purchases', 'Purchases')}
@@ -158,34 +206,39 @@ export default function LeadDetailPanel({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5">
-          {detail.isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+          {detail.isLoading && <SkeletonText lines={5} />}
 
-          {!detail.isLoading && tab === 'journey' && (
-            <ol className="relative space-y-5 before:absolute before:left-4 before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-gray-200">
-              {journey.length === 0 && <p className="text-sm text-gray-400">No events.</p>}
+          {!detail.isLoading && detail.isError && (
+            <div className="space-y-3">
+              <p className="text-sm text-bad">Could not load this lead.</p>
+              <Button variant="secondary" size="sm" onClick={() => detail.refetch()}>
+                Retry
+              </Button>
+            </div>
+          )}
+
+          {!detail.isLoading && !detail.isError && tab === 'journey' && (
+            <ol className="relative space-y-5 before:absolute before:left-4 before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-line">
+              {journey.length === 0 && <p className="text-sm text-ink-3">No events.</p>}
               {journey.map((e, i) => (
                 <li key={e.id} className="relative flex gap-3">
-                  <EventIcon type={e.eventType} />
+                  <EventIcon type={e.eventType} active={i === lastIdx} />
                   <div className="pt-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium capitalize text-gray-900">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold capitalize text-ink">
                         {e.eventType === 'purchase' ? 'Purchase Won' : e.eventType}
                       </span>
                       {e.eventType === 'click' && i === 0 && (
-                        <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
-                          First click
-                        </span>
+                        <Badge tone="neutral">First click</Badge>
                       )}
                       {e.eventType === 'click' && i === lastIdx && i !== 0 && (
-                        <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">
-                          Last click
-                        </span>
+                        <Badge tone="accent">Last click</Badge>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500">{fmtDate(e.occurredAt)}</p>
-                    {e.adName && <p className="text-xs text-gray-600">{e.adName}</p>}
+                    <p className="text-xs tabular-nums text-ink-3">{fmtDate(e.occurredAt)}</p>
+                    {e.adName && <p className="text-xs text-ink-2">{e.adName}</p>}
                     {e.eventType === 'purchase' && data && (
-                      <p className="text-sm font-semibold text-green-600">
+                      <p className="text-sm font-semibold tabular-nums text-ok">
                         {formatCurrency(data.lead.revenue)}
                       </p>
                     )}
@@ -194,66 +247,70 @@ export default function LeadDetailPanel({
               ))}
               {data?.lead.status === 'lost' && (
                 <li className="relative flex gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600">
-                    <XCircle className="h-4 w-4" />
+                  <span className="grid h-8 w-8 flex-none place-items-center rounded-full border-[1.5px] border-bad/28 bg-bad/10 text-bad">
+                    <XCircle aria-hidden className="h-4 w-4" />
                   </span>
-                  <div className="pt-1 text-sm font-medium text-gray-900">Lost</div>
+                  <div className="pt-1 text-sm font-semibold text-ink">Lost</div>
                 </li>
               )}
             </ol>
           )}
 
-          {!detail.isLoading && tab === 'clicks' && (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase text-gray-500">
-                  <th className="py-2">Date</th>
-                  <th className="py-2">Source</th>
-                  <th className="py-2">Campaign</th>
-                  <th className="py-2">Ad</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.clicks ?? []).map((c) => (
-                  <tr key={c.id} className="border-t border-gray-50">
-                    <td className="py-2 text-gray-600">{fmtDate(c.occurredAt)}</td>
-                    <td className="py-2"><SourceBadge source={eventSource(c)} /></td>
-                    <td className="py-2 text-gray-700">{c.campaignName ?? '—'}</td>
-                    <td className="py-2 text-gray-700">{c.adName ?? '—'}</td>
-                  </tr>
-                ))}
-                {(data?.clicks ?? []).length === 0 && (
+          {!detail.isLoading && !detail.isError && tab === 'clicks' && (
+            <TableWrap>
+              <Table>
+                <thead>
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-gray-400">No clicks.</td>
+                    <Th>Date</Th>
+                    <Th>Source</Th>
+                    <Th>Campaign</Th>
+                    <Th>Ad</Th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(data?.clicks ?? []).map((c) => (
+                    <Tr key={c.id}>
+                      <Td className="tabular-nums text-ink-2">{fmtDate(c.occurredAt)}</Td>
+                      <Td>
+                        <SourceBadge source={eventSource(c)} />
+                      </Td>
+                      <Td>{c.campaignName ?? '—'}</Td>
+                      <Td>{c.adName ?? '—'}</Td>
+                    </Tr>
+                  ))}
+                  {(data?.clicks ?? []).length === 0 && (
+                    <TableEmpty colSpan={4}>No clicks.</TableEmpty>
+                  )}
+                </tbody>
+              </Table>
+            </TableWrap>
           )}
 
-          {!detail.isLoading && tab === 'purchases' && (
+          {!detail.isLoading && !detail.isError && tab === 'purchases' && (
             <div className="space-y-3">
               {data && data.lead.status === 'won' ? (
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                <Card padding="sm" className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-green-600">
+                    <p className="text-sm font-semibold tabular-nums text-ok">
                       {formatCurrency(data.lead.revenue)}
                     </p>
-                    <p className="text-xs text-gray-500">{fmtDate(data.lead.won_at)}</p>
+                    <p className="text-xs tabular-nums text-ink-3">{fmtDate(data.lead.won_at)}</p>
                   </div>
-                  <SourceBadge source={data.purchases[0] ? eventSource(data.purchases[0]) : 'Direct'} />
-                </div>
+                  <SourceBadge
+                    source={data.purchases[0] ? eventSource(data.purchases[0]) : 'Direct'}
+                  />
+                </Card>
               ) : (
-                <p className="text-sm text-gray-400">No purchases yet.</p>
+                <p className="text-sm text-ink-3">No purchases yet.</p>
               )}
             </div>
           )}
 
-          {!detail.isLoading && tab === 'phones' && (
+          {!detail.isLoading && !detail.isError && tab === 'phones' && (
             <div className="space-y-2">
-              <p className="select-none text-sm text-gray-600 blur-sm">+998 90 123 45 67</p>
-              <p className="select-none text-sm text-gray-600 blur-sm">+998 91 765 43 21</p>
-              <p className="text-xs text-gray-400">Phone numbers are stored hashed for privacy.</p>
+              <p className="select-none text-sm text-ink-2 blur-sm">+998 90 123 45 67</p>
+              <p className="select-none text-sm text-ink-2 blur-sm">+998 91 765 43 21</p>
+              <p className="text-xs text-ink-3">Phone numbers are stored hashed for privacy.</p>
             </div>
           )}
         </div>

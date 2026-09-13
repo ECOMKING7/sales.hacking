@@ -28,10 +28,14 @@ export function formatDays(v: unknown): string {
   return `${d.toFixed(d % 1 === 0 ? 0 : 1)} ${d === 1 ? 'day' : 'days'}`;
 }
 
-/** ROAS badge colour: green > 5x, yellow 2–5x, red < 2x. */
-export function roasColor(v: unknown): string {
+/**
+ * ROAS uchun Badge ohangi: >= 5x kuchli, 2–5x o'rtacha, < 2x zaif.
+ * Havorang qaytarilmaydi — natija ranglari faqat ok/warn/bad.
+ * Ishlatish: <Badge tone={roasTone(row.roas)}>{formatRoas(row.roas)}</Badge>
+ */
+export function roasTone(v: unknown): 'ok' | 'warn' | 'bad' {
   const r = n(v);
-  if (r >= 5) return 'bg-green-100 text-green-700';
-  if (r >= 2) return 'bg-yellow-100 text-yellow-700';
-  return 'bg-red-100 text-red-700';
+  if (r >= 5) return 'ok';
+  if (r >= 2) return 'warn';
+  return 'bad';
 }

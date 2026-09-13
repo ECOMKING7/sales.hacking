@@ -15,6 +15,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@vercel/functions": "^3.9.7",
     "axios": "^1.18.1",
     "bcrypt": "^6.0.0",
     "bull": "^4.16.5",

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { TrendingUp } from 'lucide-react';
 import { dashboardApi, TopMetric } from '../../services/api';
 import type { EntityRow } from '../../types';
 import { formatCurrency, formatRoas, formatNumber, n } from '../../utils/format';
+import { Button, Card, EmptyState, Skeleton, cn } from '../ui';
 
 const METRICS: TopMetric[] = ['roas', 'revenue', 'sales'];
 const LABELS: Record<TopMetric, string> = { roas: 'ROAS', revenue: 'Revenue', sales: 'Sales' };
@@ -39,17 +41,22 @@ function TopList({
   const max = Math.max(1, ...rows.map((r) => metricValue(r, metric)));
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-        <div className="flex gap-1">
+    <Card padding="md">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <div className="flex gap-1" role="group" aria-label={`${title} metric`}>
           {METRICS.map((m) => (
             <button
               key={m}
+              type="button"
               onClick={() => setMetric(m)}
-              className={`rounded px-2 py-0.5 text-xs font-medium ${
-                metric === m ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100'
-              }`}
+              aria-pressed={metric === m}
+              className={cn(
+                'rounded-sm border-[1.5px] border-transparent px-2 py-0.5 text-xs font-semibold transition-colors duration-150',
+                metric === m
+                  ? 'border-edge bg-tint text-accent'
+                  : 'text-ink-2 hover:bg-tint hover:text-accent'
+              )}
             >
               {LABELS[m]}
             </button>
@@ -58,24 +65,42 @@ function TopList({
       </div>
 
       {query.isLoading ? (
-        <div className="space-y-3">
+        <div className="space-y-3" role="status" aria-label="Yuklanmoqda">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-8 animate-pulse rounded bg-gray-100" />
+            <Skeleton key={i} className="h-8 w-full" />
           ))}
         </div>
+      ) : query.isError ? (
+        <div className="py-4 text-center">
+          <p className="text-sm text-bad">Could not load {title.toLowerCase()}.</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            onClick={() => query.refetch()}
+          >
+            Retry
+          </Button>
+        </div>
       ) : rows.length === 0 ? (
-        <p className="py-4 text-center text-sm text-gray-400">No data</p>
+        <EmptyState
+          icon={<TrendingUp />}
+          title="No data"
+          hint={`${LABELS[metric]} · tanlangan oraliqda natija yo'q`}
+        />
       ) : (
         <ul className="space-y-3">
           {rows.map((r) => (
             <li key={r.id}>
               <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="truncate pr-2 text-gray-700">{r.name ?? '—'}</span>
-                <span className="font-medium text-gray-900">{metricLabel(r, metric)}</span>
+                <span className="truncate pr-2 text-ink-2">{r.name ?? '—'}</span>
+                <span className="flex-none font-medium tabular-nums text-ink">
+                  {metricLabel(r, metric)}
+                </span>
               </div>
-              <div className="h-1.5 w-full rounded-full bg-gray-100">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
                 <div
-                  className="h-1.5 rounded-full bg-indigo-500"
+                  className="h-1.5 rounded-full bg-edge"
                   style={{ width: `${Math.min(100, (metricValue(r, metric) / max) * 100)}%` }}
                 />
               </div>
@@ -83,7 +108,7 @@ function TopList({
           ))}
         </ul>
       )}
-    </div>
+    </Card>
   );
 }
 

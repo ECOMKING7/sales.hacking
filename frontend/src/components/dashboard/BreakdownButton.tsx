@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { Button, cn } from '../ui';
 
 const BREAKDOWNS = ['Placement', 'Age', 'Gender', 'Region'];
 
@@ -25,22 +26,34 @@ export default function BreakdownButton() {
 
   return (
     <div className="relative" ref={ref}>
-      <button
+      <Button
+        variant="secondary"
+        size="md"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        icon={<SlidersHorizontal className="h-4 w-4" />}
+        iconRight={<ChevronDown className="h-4 w-4" />}
+        className={cn(
+          'border-line-2 text-ink-2 hover:border-edge hover:text-accent',
+          open && 'border-edge text-accent shadow-glow-xs'
+        )}
       >
-        <SlidersHorizontal className="h-4 w-4 text-gray-500" />
         Breakdown
-        <ChevronDown className="h-4 w-4 text-gray-400" />
-      </button>
+      </Button>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-44 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-2 w-44 rounded-md border-[1.5px] border-line-2 bg-surface p-2 shadow-glow-sm"
+        >
           {BREAKDOWNS.map((b) => (
             <button
               key={b}
+              type="button"
+              role="menuitem"
               onClick={() => pick(b)}
-              className="block w-full rounded-lg px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100"
+              className="block w-full rounded-sm px-3 py-1.5 text-left text-sm text-ink-2 transition-colors duration-150 hover:bg-tint hover:text-accent"
             >
               By {b}
             </button>
@@ -49,7 +62,10 @@ export default function BreakdownButton() {
       )}
 
       {note && (
-        <div className="absolute right-0 top-full z-30 mt-2 w-56 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg">
+        <div
+          role="status"
+          className="absolute right-0 top-full z-30 mt-2 w-56 rounded-sm border-[1.5px] border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn"
+        >
           {note}
         </div>
       )}

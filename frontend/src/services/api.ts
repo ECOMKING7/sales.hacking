@@ -139,6 +139,12 @@ export const workspaceApi = {
     api.post('/api/workspace/invite', { email, role }).then((r) => r.data),
   removeMember: (userId: string) =>
     api.delete(`/api/workspace/members/${userId}`).then((r) => r.data),
+  list: () =>
+    api.get<{ workspaces: (Workspace & { role: string })[] }>('/api/workspace/list').then((r) => r.data),
+  create: (name: string) =>
+    api.post<{ token: string; workspace: Workspace }>('/api/workspace/create', { name }).then((r) => r.data),
+  switch: (id: string) =>
+    api.post<{ token: string; workspace: Workspace }>(`/api/workspace/switch/${id}`).then((r) => r.data),
 };
 
 // ---- Attribution ----

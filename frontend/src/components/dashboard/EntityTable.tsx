@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { ChevronRight, ChevronLeft, ArrowUpDown } from 'lucide-react';
 import { dashboardApi } from '../../services/api';
@@ -9,9 +9,20 @@ import {
   formatNumber,
   formatPercent,
   formatRoas,
-  roasColor,
   n,
 } from '../../utils/format';
+import {
+  Badge,
+  Button,
+  Skeleton,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+  Tr,
+  TableEmpty,
+  cn,
+} from '../ui';
 import { ALL_COLUMNS } from './columns';
 
 export type View = 'campaigns' | 'adsets' | 'ads';
@@ -22,14 +33,9 @@ const LIMIT = 50;
 function DeliveryBadge({ status }: { status: string | null }) {
   const active = (status ?? '').toUpperCase() === 'ACTIVE';
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-        active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-      }`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}`} />
+    <Badge tone={active ? 'ok' : 'neutral'} dot>
       {status ?? '—'}
-    </span>
+    </Badge>
   );
 }
 
@@ -39,18 +45,22 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
       return (
         <div className="flex items-center gap-2">
           {row.thumbnailUrl && (
-            <img src={row.thumbnailUrl} alt="" className="h-8 w-8 rounded object-cover" />
+            <img
+              src={row.thumbnailUrl}
+              alt=""
+              className="h-8 w-8 flex-none rounded-sm border border-line object-cover"
+            />
           )}
           <span
             className={
               drillable
-                ? 'font-medium text-indigo-600 hover:underline'
-                : 'font-medium text-gray-900'
+                ? 'font-semibold text-accent hover:underline'
+                : 'font-medium text-ink'
             }
           >
             {row.name ?? '—'}
           </span>
-          {drillable && <ChevronRight className="h-3.5 w-3.5 text-gray-300" />}
+          {drillable && <ChevronRight aria-hidden className="h-3.5 w-3.5 text-ink-3" />}
         </div>
       );
     case 'status':
@@ -69,7 +79,7 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
       return formatNumber(row.impressions);
     case 'reach':
     case 'frequency':
-      return <span className="text-gray-300">—</span>;
+      return <span className="text-ink-3">—</span>;
     case 'leads':
       return formatNumber(row.leads);
     case 'costPerLead':
@@ -81,8 +91,14 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
     case 'revenue':
       return formatCurrency(row.revenue);
     case 'roas':
+      // Natija rangi: 1x — pulni qaytarish chegarasi. Havorang ishlatilmaydi.
       return (
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${roasColor(row.roas)}`}>
+        <span
+          className={cn(
+            'font-semibold tabular-nums',
+            n(row.roas) >= 1 ? 'text-ok' : 'text-bad'
+          )}
+        >
           {formatRoas(n(row.roas))}
         </span>
       );
@@ -117,6 +133,12 @@ export default function EntityTable({
   const [sort, setSort] = useState('spend');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
+
+  // A stale page number from a previous view/search/filter would otherwise be
+  // sent to the API as-is, showing an empty page even though matches exist.
+  useEffect(() => {
+    setPage(1);
+  }, [view, campaign?.id, adset?.id, search, filter]);
 
   const params: Record<string, string> = {
     sort,
@@ -162,19 +184,19 @@ export default function EntityTable({
   const rowClickable = view !== 'ads';
 
   return (
-    <div className="w-full rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="w-full overflow-hidden rounded-md border-[1.5px] border-line bg-surface">
       {/* Breadcrumb */}
       {view !== 'campaigns' && (
-        <div className="flex items-center gap-1 border-b border-gray-100 px-4 py-2 text-xs text-gray-500">
-          <button onClick={() => onNavigate('campaigns')} className="hover:text-indigo-600">
+        <div className="flex items-center gap-1 border-b border-line px-4 py-2 text-xs text-ink-2">
+          <button onClick={() => onNavigate('campaigns')} className="hover:text-accent">
             Campaigns
           </button>
           {campaign && (
             <>
-              <ChevronRight className="h-3 w-3" />
+              <ChevronRight aria-hidden className="h-3 w-3 text-ink-3" />
               <button
                 onClick={() => onNavigate('adsets')}
-                className={view === 'adsets' ? 'text-gray-900' : 'hover:text-indigo-600'}
+                className={view === 'adsets' ? 'font-medium text-ink' : 'hover:text-accent'}
               >
                 {campaign.name}
               </button>
@@ -182,106 +204,130 @@ export default function EntityTable({
           )}
           {adset && view === 'ads' && (
             <>
-              <ChevronRight className="h-3 w-3" />
-              <span className="text-gray-900">{adset.name}</span>
+              <ChevronRight aria-hidden className="h-3 w-3 text-ink-3" />
+              <span className="font-medium text-ink">{adset.name}</span>
             </>
           )}
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+      <TableWrap className="rounded-none border-0">
+        <Table>
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-500">
-              {cols.map((c) => (
-                <th
-                  key={c.key}
-                  onClick={() => toggleSort(c.sortKey)}
-                  className={`whitespace-nowrap px-4 py-2.5 font-medium ${
-                    c.align === 'right' ? 'text-right' : ''
-                  } ${c.sortKey ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
-                >
-                  <span
-                    className={`inline-flex items-center gap-1 ${
-                      c.align === 'right' ? 'flex-row-reverse' : ''
-                    }`}
-                  >
-                    {c.label}
-                    {c.sortKey && <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                    {sort === c.sortKey && (
-                      <span className="text-indigo-600">{order === 'desc' ? '↓' : '↑'}</span>
+            <tr>
+              {cols.map((c) => {
+                const isSorted = sort === c.sortKey && Boolean(c.sortKey);
+                return (
+                  <Th
+                    key={c.key}
+                    numeric={c.align === 'right'}
+                    onClick={() => toggleSort(c.sortKey)}
+                    aria-sort={
+                      isSorted ? (order === 'desc' ? 'descending' : 'ascending') : undefined
+                    }
+                    className={cn(
+                      c.sortKey && 'cursor-pointer select-none hover:text-ink-2',
+                      isSorted && 'text-accent'
                     )}
-                  </span>
-                </th>
-              ))}
+                  >
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1',
+                        c.align === 'right' && 'flex-row-reverse'
+                      )}
+                    >
+                      {c.label}
+                      {c.sortKey && (
+                        <ArrowUpDown
+                          aria-hidden
+                          className={cn('h-3 w-3', isSorted ? 'text-accent' : 'text-ink-3')}
+                        />
+                      )}
+                      {isSorted && (
+                        <span aria-hidden className="text-accent">
+                          {order === 'desc' ? '↓' : '↑'}
+                        </span>
+                      )}
+                    </span>
+                  </Th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {query.isLoading &&
               Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i} className="border-b border-gray-50">
+                <Tr key={`s-${i}`}>
                   {cols.map((c) => (
-                    <td key={c.key} className="px-4 py-3">
-                      <div className="h-4 w-full animate-pulse rounded bg-gray-100" />
-                    </td>
+                    <Td key={c.key}>
+                      <Skeleton className="h-3.5 w-full" />
+                    </Td>
                   ))}
-                </tr>
+                </Tr>
               ))}
 
-            {!query.isLoading && rows.length === 0 && (
-              <tr>
-                <td colSpan={cols.length} className="px-4 py-10 text-center text-gray-400">
-                  No {entityLabel} found.
-                </td>
-              </tr>
+            {!query.isLoading && query.isError && (
+              <TableEmpty colSpan={cols.length}>
+                <span className="text-bad">Could not load {entityLabel}.</span>
+                <span className="mt-3 flex justify-center">
+                  <Button variant="secondary" size="sm" onClick={() => query.refetch()}>
+                    Retry
+                  </Button>
+                </span>
+              </TableEmpty>
+            )}
+
+            {!query.isLoading && !query.isError && rows.length === 0 && (
+              <TableEmpty colSpan={cols.length}>No {entityLabel} found.</TableEmpty>
             )}
 
             {!query.isLoading &&
+              !query.isError &&
               rows.map((r) => (
-                <tr
+                <Tr
                   key={r.id}
                   onClick={() => rowClickable && onDrill({ id: r.id, name: r.name ?? '—' })}
-                  className={`border-b border-gray-50 ${
-                    rowClickable ? 'cursor-pointer hover:bg-gray-50' : ''
-                  }`}
+                  className={rowClickable ? 'cursor-pointer' : undefined}
                 >
                   {cols.map((c) => (
-                    <td
-                      key={c.key}
-                      className={`whitespace-nowrap px-4 py-3 ${c.align === 'right' ? 'text-right' : ''}`}
-                    >
+                    <Td key={c.key} numeric={c.align === 'right'}>
                       {renderCell(r, c.key, c.key === 'name' && rowClickable)}
-                    </td>
+                    </Td>
                   ))}
-                </tr>
+                </Tr>
               ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </TableWrap>
 
       {/* Footer: results count + pagination */}
-      <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-gray-600">
+      <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm text-ink-2">
         <span>
-          Results from <span className="font-medium text-gray-900">{total}</span> {entityLabel}
+          Results from <span className="font-medium tabular-nums text-ink">{total}</span>{' '}
+          {entityLabel}
         </span>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ChevronLeft className="h-4 w-4" />}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 disabled:opacity-40"
           >
-            <ChevronLeft className="h-4 w-4" /> Prev
-          </button>
-          <span>
+            Prev
+          </Button>
+          <span className="whitespace-nowrap tabular-nums">
             Page {page} / {totalPages}
           </span>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            iconRight={<ChevronRight className="h-4 w-4" />}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 disabled:opacity-40"
           >
-            Next <ChevronRight className="h-4 w-4" />
-          </button>
+            Next
+          </Button>
         </div>
       </div>
     </div>

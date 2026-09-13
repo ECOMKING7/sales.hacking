@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Columns3, ChevronDown } from 'lucide-react';
 import { ALL_COLUMNS } from './columns';
+import { Button, cn } from '../ui';
 
 export default function ColumnsButton({
   visible,
@@ -28,37 +29,56 @@ export default function ColumnsButton({
 
   return (
     <div className="relative" ref={ref}>
-      <button
+      <Button
+        variant="secondary"
+        size="md"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        icon={<Columns3 className="h-4 w-4" />}
+        iconRight={<ChevronDown className="h-4 w-4" />}
+        className={cn(
+          'border-line-2 text-ink-2 hover:border-edge hover:text-accent',
+          open && 'border-edge text-accent shadow-glow-xs'
+        )}
       >
-        <Columns3 className="h-4 w-4 text-gray-500" />
         Columns
-        <ChevronDown className="h-4 w-4 text-gray-400" />
-      </button>
+      </Button>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-2 max-h-80 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
-          {ALL_COLUMNS.map((c) => (
-            <label
-              key={c.key}
-              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-sm ${
-                c.always ? 'text-gray-400' : 'cursor-pointer text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                {c.label}
-                {c.unavailable && <span className="text-[10px] text-gray-400">soon</span>}
-              </span>
-              <input
-                type="checkbox"
-                disabled={c.always}
-                checked={c.always || visible.includes(c.key)}
-                onChange={() => toggle(c.key)}
-                className="rounded border-gray-300"
-              />
-            </label>
-          ))}
+        <div className="absolute right-0 z-30 mt-2 max-h-80 w-56 overflow-y-auto rounded-md border-[1.5px] border-line-2 bg-surface p-2 shadow-glow-sm">
+          {ALL_COLUMNS.map((c) => {
+            const checked = c.always || visible.includes(c.key);
+            return (
+              <label
+                key={c.key}
+                className={cn(
+                  'flex items-center justify-between gap-2 rounded-sm border-[1.5px] border-transparent px-3 py-1.5 text-sm transition-colors duration-150',
+                  c.always
+                    ? 'text-ink-3'
+                    : checked
+                      ? 'cursor-pointer border-edge bg-tint text-accent'
+                      : 'cursor-pointer text-ink-2 hover:bg-tint hover:text-accent'
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  {c.label}
+                  {c.unavailable && (
+                    <span className="font-mono text-label uppercase tracking-[0.1em] text-ink-3">
+                      soon
+                    </span>
+                  )}
+                </span>
+                <input
+                  type="checkbox"
+                  disabled={c.always}
+                  checked={checked}
+                  onChange={() => toggle(c.key)}
+                  className="h-3.5 w-3.5 rounded-sm border-[1.5px] border-line-2 accent-accent"
+                />
+              </label>
+            );
+          })}
         </div>
       )}
     </div>

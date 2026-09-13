@@ -3,6 +3,15 @@ import { Megaphone, Database, Code2, Check, Copy, ExternalLink } from 'lucide-re
 import { facebookApi, amocrmApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import type { FbStatus, AdAccount, AmocrmStatus, Pipeline } from '../types';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  SkeletonText,
+  cn,
+} from '../components/ui';
 
 function errMsg(err: unknown, fallback: string): string {
   return (
@@ -10,19 +19,34 @@ function errMsg(err: unknown, fallback: string): string {
   );
 }
 
-function Card({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
-          {icon}
-        </div>
-        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-      </div>
-      {children}
-    </section>
+/** Ulanish holati — CardHeader'ning action joyida turadi. */
+function ConnectionBadge({ connected }: { connected: boolean }) {
+  return connected ? (
+    <Badge tone="ok" dot>
+      Ulangan
+    </Badge>
+  ) : (
+    <Badge tone="neutral">Ulanmagan</Badge>
   );
 }
+
+/** Xato + qayta urinish. Har bo'lim shu bitta naqshdan foydalanadi. */
+function ErrorRow({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3">
+      <p className="text-sm text-bad">{message}</p>
+      <Button variant="secondary" size="sm" onClick={onRetry}>
+        Qayta urinish
+      </Button>
+    </div>
+  );
+}
+
+const LABEL = 'mb-1.5 block text-xs font-semibold text-ink-2';
+const SELECT = cn(
+  'h-10 w-full rounded-sm border-[1.5px] border-line-2 bg-surface px-3 text-sm text-ink',
+  'transition-[box-shadow,border-color] duration-200 disabled:cursor-not-allowed disabled:opacity-50'
+);
 
 // ---------- Facebook ----------
 function FacebookSection() {
@@ -31,8 +55,10 @@ function FacebookSection() {
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    setError('');
     try {
       const s = await facebookApi.status();
       setStatus(s);
@@ -47,6 +73,8 @@ function FacebookSection() {
       }
     } catch (err) {
       setError(errMsg(err, 'Failed to load Facebook status'));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -77,32 +105,39 @@ function FacebookSection() {
   };
 
   return (
-    <Card icon={<Megaphone className="h-5 w-5" />} title="Facebook Ads">
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+    <Card padding="lg">
+      <CardHeader
+        title="Facebook Ads"
+        description="Ad spend and delivery metrics."
+        icon={<Megaphone className="h-5 w-5" />}
+        action={<ConnectionBadge connected={Boolean(status?.connected)} />}
+      />
 
-      {status?.connected ? (
+      {error && <ErrorRow message={error} onRetry={() => void load()} />}
+
+      {loading ? (
+        <SkeletonText lines={3} />
+      ) : status?.connected ? (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 text-sm text-green-700">
-            <Check className="h-4 w-4" /> Connected
-          </div>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-gray-500">Ad account</dt>
-            <dd className="text-gray-900">{status.adAccountId ?? '—'}</dd>
-            <dt className="text-gray-500">Token expires</dt>
-            <dd className="text-gray-900">
+            <dt className="text-ink-2">Ad account</dt>
+            <dd className="font-medium tabular-nums text-ink">{status.adAccountId ?? '—'}</dd>
+            <dt className="text-ink-2">Token expires</dt>
+            <dd className="font-medium tabular-nums text-ink">
               {status.expiresAt ? new Date(status.expiresAt).toLocaleDateString() : '—'}
             </dd>
           </dl>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="fb-ad-account" className={LABEL}>
               Select ad account
             </label>
             <div className="flex gap-2">
               <select
+                id="fb-ad-account"
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className={cn(SELECT, 'flex-1')}
               >
                 <option value="">— choose —</option>
                 {adAccounts.map((a) => (
@@ -111,24 +146,37 @@ function FacebookSection() {
                   </option>
                 ))}
               </select>
-              <button
-                onClick={save}
-                disabled={busy || !selected}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
-              >
+              <Button onClick={save} loading={busy} disabled={!selected}>
                 Save
-              </button>
+              </Button>
             </div>
           </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={connect}
+            icon={<ExternalLink className="h-4 w-4" />}
+          >
+            Reconnect Facebook
+          </Button>
         </div>
       ) : (
-        <button
-          onClick={connect}
-          className="flex items-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
-        >
-          <Megaphone className="h-4 w-4" /> Connect Facebook Ads
-          <ExternalLink className="h-4 w-4" />
-        </button>
+        <EmptyState
+          icon={<Megaphone />}
+          title="Facebook Ads ulanmagan"
+          hint="xarajat yo'q · ROAS hisoblanmaydi"
+          action={
+            <Button
+              variant="secondary"
+              onClick={connect}
+              icon={<Megaphone className="h-4 w-4" />}
+              iconRight={<ExternalLink className="h-4 w-4" />}
+            >
+              Connect Facebook Ads
+            </Button>
+          }
+        />
       )}
     </Card>
   );
@@ -142,8 +190,10 @@ function AmocrmSection() {
   const [wonStageId, setWonStageId] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    setError('');
     try {
       const s = await amocrmApi.status();
       setStatus(s);
@@ -159,6 +209,8 @@ function AmocrmSection() {
       }
     } catch (err) {
       setError(errMsg(err, 'Failed to load amoCRM status'));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -191,24 +243,37 @@ function AmocrmSection() {
   const stages = pipelines.find((p) => String(p.id) === pipelineId)?.statuses ?? [];
 
   return (
-    <Card icon={<Database className="h-5 w-5" />} title="amoCRM">
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+    <Card padding="lg">
+      <CardHeader
+        title="amoCRM"
+        description={
+          status?.connected && status.domain
+            ? status.domain
+            : 'Leads, pipeline stages and won deals.'
+        }
+        icon={<Database className="h-5 w-5" />}
+        action={<ConnectionBadge connected={Boolean(status?.connected)} />}
+      />
 
-      {status?.connected ? (
+      {error && <ErrorRow message={error} onRetry={() => void load()} />}
+
+      {loading ? (
+        <SkeletonText lines={3} />
+      ) : status?.connected ? (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 text-sm text-green-700">
-            <Check className="h-4 w-4" /> Connected{status.domain ? ` · ${status.domain}` : ''}
-          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Pipeline</label>
+              <label htmlFor="amo-pipeline" className={LABEL}>
+                Pipeline
+              </label>
               <select
+                id="amo-pipeline"
                 value={pipelineId}
                 onChange={(e) => {
                   setPipelineId(e.target.value);
                   setWonStageId('');
                 }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className={SELECT}
               >
                 <option value="">— choose —</option>
                 {pipelines.map((p) => (
@@ -219,11 +284,14 @@ function AmocrmSection() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Won stage</label>
+              <label htmlFor="amo-won-stage" className={LABEL}>
+                Won stage
+              </label>
               <select
+                id="amo-won-stage"
                 value={wonStageId}
                 onChange={(e) => setWonStageId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className={SELECT}
               >
                 <option value="">— choose —</option>
                 {stages.map((s) => (
@@ -234,22 +302,27 @@ function AmocrmSection() {
               </select>
             </div>
           </div>
-          <button
-            onClick={save}
-            disabled={busy || !pipelineId || !wonStageId}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
-          >
+
+          <Button onClick={save} loading={busy} disabled={!pipelineId || !wonStageId}>
             Save
-          </button>
+          </Button>
         </div>
       ) : (
-        <button
-          onClick={connect}
-          className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
-        >
-          Connect amoCRM
-          <ExternalLink className="h-4 w-4" />
-        </button>
+        <EmptyState
+          icon={<Database />}
+          title="amoCRM ulanmagan"
+          hint="lid yo'q · daromad atribusiya qilinmaydi"
+          action={
+            <Button
+              variant="secondary"
+              onClick={connect}
+              icon={<Database className="h-4 w-4" />}
+              iconRight={<ExternalLink className="h-4 w-4" />}
+            >
+              Connect amoCRM
+            </Button>
+          }
+        />
       )}
     </Card>
   );
@@ -275,26 +348,37 @@ function PixelSection() {
   };
 
   return (
-    <Card icon={<Code2 className="h-5 w-5" />} title="Pixel Code">
-      <p className="mb-3 text-sm text-gray-600">
+    <Card padding="lg">
+      <CardHeader
+        title="Pixel Code"
+        description="fbclid → conversion zanjirini saytda ushlab turadi."
+        icon={<Code2 className="h-5 w-5" />}
+        action={
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={copy}
+            icon={
+              copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />
+            }
+          >
+            {copied ? 'Nusxalandi' : 'Nusxalash'}
+          </Button>
+        }
+      />
+
+      <p className="mb-3 text-sm text-ink-2">
         Paste this snippet just before the closing <code>&lt;/head&gt;</code> tag on every page
         of your website. It captures <code>fbclid</code> and sends tracking events automatically.
       </p>
-      <div className="relative">
-        <pre className="overflow-x-auto rounded-lg bg-gray-900 p-4 text-xs text-gray-100">
-          {snippet}
-        </pre>
-        <button
-          onClick={copy}
-          className="absolute right-3 top-3 flex items-center gap-1 rounded-md bg-gray-700 px-2.5 py-1 text-xs text-white hover:bg-gray-600"
-        >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <p className="mt-3 text-sm text-gray-600">
+
+      <pre className="overflow-x-auto rounded-sm border-[1.5px] border-line bg-surface-2 p-3 font-mono text-xs text-ink">
+        {snippet}
+      </pre>
+
+      <p className="mt-3 text-sm text-ink-2">
         To track conversions, call:{' '}
-        <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">
+        <code className="rounded-sm border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-ink">
           window.AttributionPixel.track('purchase', {'{ value: 99, currency: "USD" }'})
         </code>
       </p>
@@ -309,14 +393,18 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500">Connect your data sources and tracking pixel.</p>
+        <h1 className="text-xl font-bold text-ink">Settings</h1>
+        <p className="mt-1 text-sm text-ink-2">
+          Connect your data sources and tracking pixel.
+        </p>
       </div>
+
       {justConnected && (
-        <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+        <div className="rounded-md border-[1.5px] border-ok/30 bg-ok/12 px-4 py-3 text-sm text-ok">
           Connection successful.
         </div>
       )}
+
       <FacebookSection />
       <AmocrmSection />
       <PixelSection />

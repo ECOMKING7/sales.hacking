@@ -32,3 +32,21 @@ frontend/dist/
 
 # Coverage
 coverage/
+
+# Claude Code lokal sozlamalari
+.claude/
+
+# Vaqtinchalik debug skriptlari (DB dan token o'qiydi — repoga kerak emas)
+backend/_*.ts
+
+# Vercel
+.vercel/
+
+# Claude Code lokal sozlamalari
+.claude/
+
+# Vaqtinchalik debug skriptlari (DB dan token o'qiydi — repoga kerak emas)
+backend/_*.ts
+
+# Vercel
+.vercel/

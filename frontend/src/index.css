@@ -1,3 +1,54 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ground text-ink font-sans text-base antialiased;
+    font-weight: 400;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  /* Raqamlar ustunda tekis tursin — spend, ROAS, CAC */
+  table, .tabular, input[type='number'] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Fokus — butun ilovada bitta ko'rinish. Hozirgi kodda 5 ta elementda bor edi. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-ground;
+  }
+
+  ::selection {
+    background: rgb(var(--edge) / 0.3);
+  }
+}
+
+@layer utilities {
+  /* Pulsatsiyani harakat sezgirligi yoqilganda to'xtatamiz */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-breathe,
+    .animate-blip,
+    .animate-shimmer {
+      animation: none !important;
+      box-shadow: var(--glow-sm);
+    }
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

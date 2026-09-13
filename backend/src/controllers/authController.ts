@@ -95,6 +95,12 @@ export async function register(req: Request, res: Response): Promise<void> {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined);
+    // Concurrent registrations with the same email can both pass the earlier
+    // SELECT check; the unique constraint is the real guard in that case.
+    if ((err as { code?: string }).code === '23505') {
+      res.status(409).json({ error: 'Email already registered' });
+      return;
+    }
     console.error('register error:', err);
     res.status(500).json({ error: 'Failed to register' });
   } finally {

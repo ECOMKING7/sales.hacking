@@ -8,6 +8,7 @@ import {
   customRange,
   formatRangeLabel,
 } from '../../utils/dateRanges';
+import { Button, Input, cn } from '../ui';
 
 export default function DateRangePicker({
   value,
@@ -45,59 +46,82 @@ export default function DateRangePicker({
 
   return (
     <div className="relative" ref={ref}>
-      <button
+      <Button
+        variant="secondary"
+        size="md"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        icon={<Calendar className="h-4 w-4" />}
+        iconRight={<ChevronDown className="h-4 w-4" />}
+        className={cn(
+          'border-line-2 text-ink-2 hover:border-edge hover:text-accent',
+          open && 'border-edge text-accent shadow-glow-xs'
+        )}
       >
-        <Calendar className="h-4 w-4 text-gray-500" />
         {formatRangeLabel(value)}
-        <ChevronDown className="h-4 w-4 text-gray-400" />
-      </button>
+      </Button>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-72 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+        <div className="absolute right-0 z-30 mt-2 w-72 rounded-md border-[1.5px] border-line-2 bg-surface p-2 shadow-glow-sm">
           <ul className="max-h-64 overflow-y-auto">
             {PRESETS.filter((p) => p.id !== 'custom').map((p) => (
               <li key={p.id}>
                 <button
+                  type="button"
                   onClick={() => pick(p.id)}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-sm hover:bg-gray-100 ${
-                    preset === p.id ? 'font-semibold text-indigo-600' : 'text-gray-700'
-                  }`}
+                  aria-current={preset === p.id || undefined}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-sm border-[1.5px] border-transparent px-3 py-1.5 text-sm transition-colors duration-150',
+                    preset === p.id
+                      ? 'border-edge bg-tint font-semibold text-accent'
+                      : 'text-ink-2 hover:bg-tint hover:text-accent'
+                  )}
                 >
                   {p.label}
                   {p.id === 'maximum' && (
-                    <span className="text-[10px] text-gray-400">lifetime</span>
+                    <span className="font-mono text-label uppercase tracking-[0.1em] text-ink-3">
+                      lifetime
+                    </span>
                   )}
                 </button>
               </li>
             ))}
           </ul>
 
-          <div className="mt-2 border-t border-gray-100 pt-2">
-            <p className="px-3 pb-1 text-xs font-medium text-gray-500">Custom range</p>
+          <div className="mt-2 border-t border-line pt-2">
+            <p className="px-3 pb-1.5 font-mono text-label uppercase tracking-[0.1em] text-ink-3">
+              Custom range
+            </p>
             <div className="flex items-center gap-2 px-3">
-              <input
+              <Input
                 type="date"
+                aria-label="From"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                className="h-9 px-2 text-xs tabular-nums"
               />
-              <span className="text-gray-400">–</span>
-              <input
+              <span aria-hidden className="text-ink-3">
+                –
+              </span>
+              <Input
                 type="date"
+                aria-label="To"
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                className="h-9 px-2 text-xs tabular-nums"
               />
             </div>
-            <button
+            <Button
+              variant="primary"
+              size="sm"
+              fullWidth
               onClick={applyCustom}
               disabled={!customFrom || !customTo}
-              className="mt-2 w-full rounded-lg bg-indigo-600 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="mt-2"
             >
               Apply custom range
-            </button>
+            </Button>
           </div>
         </div>
       )}

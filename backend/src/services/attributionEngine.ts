@@ -172,8 +172,8 @@ export async function processLeadAttribution(
         `UPDATE leads
            SET first_click_ad_id = NULL, last_click_ad_id = NULL,
                total_touches = 0, deal_time_days = NULL
-         WHERE id = $1`,
-        [leadId]
+         WHERE id = $1 AND workspace_id = $2`,
+        [leadId, workspaceId]
       );
       await client.query('COMMIT');
       return { touches: 0, firstAdId: null, lastAdId: null };
@@ -186,8 +186,8 @@ export async function processLeadAttribution(
 
     for (const tp of tps) {
       await client.query(
-        `UPDATE touchpoints SET attribution_weight = $1 WHERE id = $2`,
-        [weights.get(tp.id) ?? 0, tp.id]
+        `UPDATE touchpoints SET attribution_weight = $1 WHERE id = $2 AND workspace_id = $3`,
+        [weights.get(tp.id) ?? 0, tp.id, workspaceId]
       );
     }
     // Re-read the persisted (rounded) weights so revenue distribution uses the
@@ -210,8 +210,8 @@ export async function processLeadAttribution(
       `UPDATE leads
          SET first_click_ad_id = $1, last_click_ad_id = $2,
              total_touches = $3, deal_time_days = $4
-       WHERE id = $5`,
-      [firstAdId, lastAdId, tps.length, dealTimeDays, leadId]
+       WHERE id = $5 AND workspace_id = $6`,
+      [firstAdId, lastAdId, tps.length, dealTimeDays, leadId, workspaceId]
     );
 
     // 4) Distribute revenue/purchases to ads by the persisted weight.

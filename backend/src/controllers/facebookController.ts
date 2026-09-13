@@ -18,14 +18,11 @@ export async function connect(req: Request, res: Response): Promise<void> {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  if (!req.user.workspaceId) {
-    res.status(400).json({ error: 'No workspace associated with this account' });
-    return;
-  }
 
+  // Token is stored per-user, so workspaceId is not needed in the state.
   const state = signOAuthState({
     userId: req.user.userId,
-    workspaceId: req.user.workspaceId,
+    workspaceId: null,
   });
   const url = generateAuthURL(state);
   res.json({ url });
@@ -47,14 +44,14 @@ export async function callback(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  let workspaceId: string | null;
+  let userId: string;
   try {
-    ({ workspaceId } = verifyOAuthState(state));
+    ({ userId } = verifyOAuthState(state));
   } catch {
     redirectTo('error');
     return;
   }
-  if (!workspaceId) {
+  if (!userId) {
     redirectTo('error');
     return;
   }
@@ -68,13 +65,14 @@ export async function callback(req: Request, res: Response): Promise<void> {
     const expiresAt = new Date(Date.now() + expiresIn * 1000);
     const encryptedToken = encrypt(accessToken);
 
+    // Token is saved on the user — one token covers ALL their workspaces.
     await pool.query(
-      `UPDATE workspaces
+      `UPDATE users
          SET fb_access_token = $1,
              fb_token_expires_at = $2,
              updated_at = now()
        WHERE id = $3`,
-      [encryptedToken, expiresAt, workspaceId]
+      [encryptedToken, expiresAt, userId]
     );
 
     redirectTo('connected');

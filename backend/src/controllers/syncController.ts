@@ -1,6 +1,7 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { pool } from '../db/pool';
+import { pool, poolStats } from '../db/pool';
 import { enqueueSync } from '../jobs/syncJob';
 import { DateRange } from '../services/facebookAdsService';
 
@@ -21,8 +22,12 @@ export async function trigger(req: Request, res: Response): Promise<void> {
   const workspaceId = req.user.workspaceId;
 
   // Validate FB is connected before doing any queue/sync work.
+  // Token lives on the user row; ad account ID is on the workspace.
   const ws = await pool.query<{ fb_access_token: string | null; fb_ad_account_id: string | null }>(
-    `SELECT fb_access_token, fb_ad_account_id FROM workspaces WHERE id = $1`,
+    `SELECT u.fb_access_token, w.fb_ad_account_id
+       FROM workspaces w
+       JOIN users u ON u.id = w.owner_id
+      WHERE w.id = $1`,
     [workspaceId]
   );
   const row = ws.rows[0];
@@ -81,5 +86,77 @@ export async function status(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('sync status error:', err);
     res.status(500).json({ error: 'Failed to load sync status' });
+  }
+}
+
+/**
+ * ---- POST /api/sync/cron ----
+ * Tashqi rejalashtiruvchi uchun (cron-job.org, GitHub Actions, Vercel Cron).
+ *
+ * NEGA KERAK: serverless muhitda node-cron ishlamaydi — funksiya so'rovlar
+ * orasida yashamaydi. Vercel'ning o'z cron'i esa Hobby tarifida kuniga 1 marta.
+ * Shuning uchun tetik tashqaridan keladi.
+ *
+ * Himoya: JWT emas (cron xizmatida foydalanuvchi yo'q), balki CRON_SECRET.
+ * Header: X-Cron-Secret, yoki ?secret= query parametri.
+ *
+ * CRON_SECRET o'rnatilmagan bo'lsa endpoint 503 qaytaradi — ochiq qolmaydi.
+ */
+export async function cronSync(req: Request, res: Response): Promise<void> {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    res.status(503).json({ error: 'CRON_SECRET sozlanmagan — endpoint o\'chirilgan' });
+    return;
+  }
+
+  const provided =
+    req.header('x-cron-secret') ||
+    (typeof req.query.secret === 'string' ? req.query.secret : '') ||
+    '';
+
+  // Vaqt bo'yicha doimiy solishtirish — uzunlik farqi ham sirni ochmasin.
+  const a = Buffer.from(provided.padEnd(secret.length).slice(0, secret.length));
+  const b = Buffer.from(secret);
+  if (provided.length !== secret.length || !crypto.timingSafeEqual(a, b)) {
+    res.status(401).json({ error: 'Invalid cron secret' });
+    return;
+  }
+
+  const startedAt = Date.now();
+  const results: Array<{ workspaceId: string; ok: boolean; error?: string }> = [];
+
+  try {
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT w.id
+         FROM workspaces w
+         JOIN users u ON u.id = w.owner_id
+        WHERE u.fb_access_token IS NOT NULL
+          AND w.fb_ad_account_id IS NOT NULL`
+    );
+
+    for (const ws of rows) {
+      // Bitta workspace'dagi xato qolganlarini to'xtatmaydi.
+      try {
+        await enqueueSync(ws.id);
+        results.push({ workspaceId: ws.id, ok: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        console.error(`cron sync: workspace ${ws.id} failed:`, message);
+        results.push({ workspaceId: ws.id, ok: false, error: message });
+      }
+    }
+
+    const failed = results.filter((r) => !r.ok).length;
+    res.status(200).json({
+      success: true,
+      workspaces: results.length,
+      failed,
+      durationMs: Date.now() - startedAt,
+      pool: poolStats(),
+      results,
+    });
+  } catch (err) {
+    console.error('cron sync error:', err);
+    res.status(500).json({ error: 'Cron sync failed', durationMs: Date.now() - startedAt });
   }
 }

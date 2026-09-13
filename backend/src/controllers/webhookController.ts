@@ -4,6 +4,7 @@ import { pool } from '../db/pool';
 import { getLead, getContact, hashPhone, hashEmail } from '../services/amocrmService';
 import { processLeadAttribution } from '../services/attributionEngine';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
+import { awaitWithDeadline } from '../utils/background';
 
 // AmoCRM's default "closed - lost" status id.
 const DEFAULT_LOST_STATUS_ID = '143';
@@ -200,6 +201,38 @@ async function handleContactAdd(workspaceId: string, contact: AmoContactEvent): 
   }
 }
 
+interface AmoWebhookBody {
+  account?: { subdomain?: string };
+  leads?: { add?: AmoLeadEvent[]; status?: AmoLeadEvent[] };
+  contacts?: { add?: AmoContactEvent[] };
+}
+
+/** Webhook tanasini qayta ishlash — javobdan mustaqil, alohida funksiya. */
+async function processWebhookBody(body: AmoWebhookBody): Promise<void> {
+  const subdomain = body.account?.subdomain;
+  if (!subdomain) return;
+
+  const workspace = await findWorkspaceBySubdomain(subdomain);
+  if (!workspace) {
+    console.warn('webhook: no workspace for subdomain', subdomain);
+    return;
+  }
+
+  for (const lead of body.leads?.add ?? []) {
+    await handleLeadAdd(workspace.id, lead);
+  }
+  for (const lead of body.leads?.status ?? []) {
+    await handleLeadStatus(workspace.id, lead, workspace);
+  }
+  for (const contact of body.contacts?.add ?? []) {
+    await handleContactAdd(workspace.id, contact);
+  }
+}
+
+// amoCRM 2xx ni tez kutadi, lekin ish odatda 1–3 soniyada tugaydi.
+// Shu oraliqda ulgursak — javobdan oldin tugatamiz (eng ishonchli yo'l).
+const WEBHOOK_DEADLINE_MS = Number(process.env.WEBHOOK_DEADLINE_MS ?? 8000);
+
 // ---- POST /api/webhooks/amocrm ----
 export async function amocrmWebhook(req: Request, res: Response): Promise<void> {
   if (!verifySignature(req)) {
@@ -207,36 +240,21 @@ export async function amocrmWebhook(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Acknowledge immediately — AmoCRM retries on non-2xx.
-  res.status(200).json({ ok: true });
+  /**
+   * ⚠ SERVERLESS: oldin kod "200 qaytar → keyin async qayta ishla" qilardi.
+   * Vercel'da javob ketishi bilan funksiya o'ldiriladi va
+   * processLeadAttribution yarim yo'lda uziladi — sotuv YO'QOLADI.
+   *
+   * Endi: ishni boshlaymiz, WEBHOOK_DEADLINE_MS gacha kutamiz.
+   * Ulgursa — tugagan holda 200 qaytaramiz.
+   * Ulgurmasa — qolganini waitUntil ushlab qoladi va baribir 200 qaytaramiz
+   * (amoCRM non-2xx da qayta yuboradi, bu esa dublikat ishga olib keladi).
+   */
+  const { finished } = await awaitWithDeadline(
+    processWebhookBody(req.body as AmoWebhookBody),
+    WEBHOOK_DEADLINE_MS,
+    'amocrm webhook'
+  );
 
-  try {
-    const body = req.body as {
-      account?: { subdomain?: string };
-      leads?: { add?: AmoLeadEvent[]; status?: AmoLeadEvent[] };
-      contacts?: { add?: AmoContactEvent[] };
-    };
-
-    const subdomain = body.account?.subdomain;
-    if (!subdomain) return;
-
-    const workspace = await findWorkspaceBySubdomain(subdomain);
-    if (!workspace) {
-      console.warn('webhook: no workspace for subdomain', subdomain);
-      return;
-    }
-
-    for (const lead of body.leads?.add ?? []) {
-      await handleLeadAdd(workspace.id, lead);
-    }
-    for (const lead of body.leads?.status ?? []) {
-      await handleLeadStatus(workspace.id, lead, workspace);
-    }
-    for (const contact of body.contacts?.add ?? []) {
-      await handleContactAdd(workspace.id, contact);
-    }
-  } catch (err) {
-    // Already responded 200; just log so AmoCRM doesn't retry endlessly.
-    console.error('amocrm webhook processing error:', err);
-  }
+  res.status(200).json({ ok: true, processed: finished });
 }

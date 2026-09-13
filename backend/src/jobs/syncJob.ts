@@ -111,7 +111,13 @@ export function startSyncCron(): void {
          WHERE fb_access_token IS NOT NULL AND fb_ad_account_id IS NOT NULL`
       );
       for (const ws of rows) {
-        await enqueueSync(ws.id);
+        // One workspace's failure (expired token, rate limit, etc.) must not
+        // abort the whole batch — runSync already logs the error to sync_logs.
+        try {
+          await enqueueSync(ws.id);
+        } catch (err) {
+          console.error(`sync cron: workspace ${ws.id} failed:`, err);
+        }
       }
     } catch (err) {
       console.error('sync cron error:', err);

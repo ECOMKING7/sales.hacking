@@ -1,0 +1,101 @@
+/* ═══════════════════════════════════════════════════════════════
+   HALO — Attribution Platform dizayn tokenlari
+   Bu fayldagi qiymatlardan boshqa joyda rang yozilmaydi.
+   Yorug' tema — asosiy. Qorong'i — [data-theme="dark"] yoki OS sozlamasi.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── yuzalar ── */
+  --ground: 255 255 255;
+  --surface: 255 255 255;
+  --surface-2: 246 250 255;
+  --surface-3: 236 244 255;
+  --line: 230 238 248;
+  --line-2: 211 226 244;
+
+  /* ── matn ── */
+  --ink: 11 18 32;
+  --ink-2: 76 92 112;
+  --ink-3: 138 155 175;
+
+  /* ── havorang, uch rol ──
+     accent = harakat (matn, tugma, havola)  · 4.94:1 oq fonda
+     edge   = shakl   (ramka, punktir, glow) · bezak, kontrast talabi yo'q
+     tint   = to'ldirish (ikonka qutisi, chip foni) */
+  --accent: 37 99 235;
+  --accent-ink: 255 255 255;
+  --edge: 127 182 255;
+  --edge-soft: 169 207 255;
+  --tint: 220 235 254;
+
+  /* ── ma'no ranglari — havorang bu yerga kirmaydi ── */
+  --ok: 15 157 88;
+  --warn: 194 116 10;
+  --bad: 220 47 69;
+
+  /* ── glow ── */
+  --glow-xs: 0 0 0 3px rgb(var(--edge) / 0.16);
+  --glow-sm: 0 0 0 4px rgb(var(--edge) / 0.20), 0 4px 16px -6px rgb(var(--accent) / 0.30);
+  --glow-md: 0 0 0 5px rgb(var(--edge) / 0.26), 0 8px 26px -8px rgb(var(--accent) / 0.45);
+  --glow-lg: 0 0 0 8px rgb(var(--edge) / 0.16), 0 18px 50px -14px rgb(var(--accent) / 0.55);
+}
+
+/* ── qorong'i: OS sozlamasi (yorug' aniq tanlanmagan bo'lsa) ── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ground: 7 10 8;
+    --surface: 14 19 25;
+    --surface-2: 21 35 50;
+    --surface-3: 28 46 64;
+    --line: 28 39 51;
+    --line-2: 39 56 74;
+
+    --ink: 234 241 248;
+    --ink-2: 154 170 187;
+    --ink-3: 94 113 134;
+
+    --accent: 127 182 255;
+    --accent-ink: 7 10 8;
+    --edge: 127 182 255;
+    --edge-soft: 78 134 204;
+    --tint: 37 67 107;
+
+    --ok: 23 192 98;
+    --warn: 245 165 36;
+    --bad: 244 88 110;
+
+    --glow-xs: 0 0 0 1px rgb(var(--edge) / 0.28), 0 0 10px -3px rgb(var(--edge) / 0.40);
+    --glow-sm: 0 0 0 1px rgb(var(--edge) / 0.40), 0 0 18px -4px rgb(var(--edge) / 0.55);
+    --glow-md: 0 0 0 1px rgb(var(--edge) / 0.55), 0 0 34px -6px rgb(var(--edge) / 0.70);
+    --glow-lg: 0 0 64px -10px rgb(var(--edge) / 0.85);
+  }
+}
+
+/* ── qorong'i: foydalanuvchi aniq tanlagan ── */
+:root[data-theme='dark'] {
+  --ground: 7 10 8;
+  --surface: 14 19 25;
+  --surface-2: 21 35 50;
+  --surface-3: 28 46 64;
+  --line: 28 39 51;
+  --line-2: 39 56 74;
+
+  --ink: 234 241 248;
+  --ink-2: 154 170 187;
+  --ink-3: 94 113 134;
+
+  --accent: 127 182 255;
+  --accent-ink: 7 10 8;
+  --edge: 127 182 255;
+  --edge-soft: 78 134 204;
+  --tint: 37 67 107;
+
+  --ok: 23 192 98;
+  --warn: 245 165 36;
+  --bad: 244 88 110;
+
+  --glow-xs: 0 0 0 1px rgb(var(--edge) / 0.28), 0 0 10px -3px rgb(var(--edge) / 0.40);
+  --glow-sm: 0 0 0 1px rgb(var(--edge) / 0.40), 0 0 18px -4px rgb(var(--edge) / 0.55);
+  --glow-md: 0 0 0 1px rgb(var(--edge) / 0.55), 0 0 34px -6px rgb(var(--edge) / 0.70);
+  --glow-lg: 0 0 64px -10px rgb(var(--edge) / 0.85);
+}

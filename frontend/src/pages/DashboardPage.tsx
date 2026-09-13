@@ -14,8 +14,18 @@ import BreakdownButton from '../components/dashboard/BreakdownButton';
 import { loadVisibleColumns, saveVisibleColumns } from '../components/dashboard/columns';
 import { PresetId, rangeForPreset } from '../utils/dateRanges';
 import { formatCurrency, formatPercent, formatRoas, formatDays, n } from '../utils/format';
+import { Button, Input, cn } from '../components/ui';
 
 type Model = 'first_click' | 'last_click';
+
+interface KpiSpec {
+  title: string;
+  value: string;
+  subtitle?: string;
+  trend?: number;
+  /** Sahifadagi yagona asosiy javob — ROAS */
+  hero?: boolean;
+}
 
 const PILLS: Array<{ id: QuickFilter; label: string }> = [
   { id: 'all', label: 'All ads' },
@@ -28,6 +38,18 @@ const VIEW_TABS: Array<{ id: View; label: string }> = [
   { id: 'adsets', label: 'Ad sets' },
   { id: 'ads', label: 'Ads' },
 ];
+
+/** Tanlagich chipi — tanlangani havorang, tanlanmagani neytral. */
+const chip = (active: boolean, disabled = false) =>
+  cn(
+    'rounded-sm border-[1.5px] px-3 py-1.5 text-sm font-semibold',
+    'transition-[box-shadow,background-color,border-color,color] duration-200',
+    active
+      ? 'border-edge bg-tint text-accent'
+      : disabled
+        ? 'cursor-not-allowed border-line text-ink-3'
+        : 'border-line text-ink-2 hover:text-accent'
+  );
 
 export default function DashboardPage() {
   const [preset, setPreset] = useState<PresetId>('last30');
@@ -59,10 +81,10 @@ export default function DashboardPage() {
   const loading = overview.isLoading;
   const metaPct = d && d.revenue > 0 ? Math.round((d.revenueBySource.metaAds / d.revenue) * 100) : 0;
 
-  const cards = [
+  const cards: KpiSpec[] = [
     { title: 'Amount Spent', value: formatCurrency(d?.amountSpent) },
     { title: 'Revenue', value: formatCurrency(d?.revenue), subtitle: `${metaPct}% from Meta Ads` },
-    { title: 'ROAS', value: formatRoas(d?.roas) },
+    { title: 'ROAS', value: formatRoas(d?.roas), hero: true },
     { title: 'CAC', value: formatCurrency(d?.cac) },
     { title: 'Conversion Rate', value: formatPercent(d?.conversionRate) },
     { title: 'Deal Time', value: formatDays(d?.dealTime) },
@@ -101,14 +123,14 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5">
       {setupIncomplete && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-amber-800">
-            <AlertTriangle className="h-4 w-4" />
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border-[1.5px] border-warn/30 bg-warn/12 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-warn">
+            <AlertTriangle aria-hidden className="h-4 w-4 flex-none" />
             Setup incomplete — connect Facebook Ads and your CRM to see real data.
           </div>
           <Link
             to="/onboarding"
-            className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+            className="inline-flex h-8 items-center rounded-sm border-[1.5px] border-edge bg-surface px-3 text-xs font-semibold text-accent transition-shadow duration-200 hover:shadow-glow-xs"
           >
             Finish setup
           </Link>
@@ -117,11 +139,11 @@ export default function DashboardPage() {
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-2 text-2xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="mr-2 text-xl font-bold text-ink">Dashboard</h1>
         <AdAccountSelector />
 
         {/* View tab switcher */}
-        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+        <div className="inline-flex items-center gap-1.5">
           {VIEW_TABS.map((t) => {
             const disabled = (t.id === 'adsets' && !campaign) || (t.id === 'ads' && !adset);
             return (
@@ -129,13 +151,8 @@ export default function DashboardPage() {
                 key={t.id}
                 onClick={() => switchTab(t.id)}
                 disabled={disabled}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  view === t.id
-                    ? 'bg-indigo-600 text-white'
-                    : disabled
-                      ? 'cursor-not-allowed text-gray-300'
-                      : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                aria-pressed={view === t.id}
+                className={chip(view === t.id, disabled)}
               >
                 {t.label}
               </button>
@@ -144,13 +161,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <input
+        <div className="w-48">
+          <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name…"
-            className="w-48 rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            aria-label="Search by name"
+            icon={<Search className="h-4 w-4" />}
           />
         </div>
 
@@ -174,27 +191,23 @@ export default function DashboardPage() {
           <button
             key={p.id}
             onClick={() => setFilter(p.id)}
-            className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-              filter === p.id
-                ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
-            }`}
+            aria-pressed={filter === p.id}
+            className={chip(filter === p.id)}
           >
             {p.label}
           </button>
         ))}
-        <button className="rounded-full px-3 py-1 text-sm font-medium text-indigo-600 hover:underline">
+        <Button variant="ghost" size="sm">
           + See more
-        </button>
+        </Button>
 
-        <div className="ml-auto inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+        <div className="ml-auto inline-flex items-center gap-1.5">
           {(['first_click', 'last_click'] as Model[]).map((m) => (
             <button
               key={m}
               onClick={() => setModel(m)}
-              className={`rounded-md px-3 py-1 text-sm font-medium ${
-                model === m ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              aria-pressed={model === m}
+              className={chip(model === m)}
             >
               {m === 'first_click' ? 'First click' : 'Last click'}
             </button>
@@ -203,18 +216,28 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI cards (full width) ── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {cards.map((c) => (
-          <KpiCard
-            key={c.title}
-            title={c.title}
-            value={c.value}
-            subtitle={c.subtitle}
-            trend={c.trend}
-            loading={loading}
-          />
-        ))}
-      </div>
+      {overview.isError ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border-[1.5px] border-line bg-surface px-4 py-3">
+          <p className="text-sm text-bad">Failed to load overview metrics.</p>
+          <Button variant="secondary" size="sm" onClick={() => void overview.refetch()}>
+            Qayta urinish
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {cards.map((c) => (
+            <KpiCard
+              key={c.title}
+              title={c.title}
+              value={c.value}
+              subtitle={c.subtitle}
+              trend={c.trend}
+              loading={loading}
+              hero={c.hero}
+            />
+          ))}
+        </div>
+      )}
 
       {/* ── Full-width data table ── */}
       <EntityTable

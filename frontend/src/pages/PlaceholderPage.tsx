@@ -1,8 +1,11 @@
+import { Construction } from 'lucide-react';
+import { EmptyState } from '../components/ui';
+
 export default function PlaceholderPage({ title }: { title: string }) {
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-      <p className="mt-2 text-sm text-gray-500">Coming in a later step.</p>
+    <div className="space-y-5">
+      <h1 className="text-xl font-bold text-ink">{title}</h1>
+      <EmptyState icon={<Construction />} title="Coming in a later step." />
     </div>
   );
 }

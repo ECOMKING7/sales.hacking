@@ -10,6 +10,7 @@ interface AuthState {
   login: (data: AuthResponse) => void;
   logout: () => void;
   setWorkspace: (workspace: Workspace) => void;
+  switchWorkspace: (data: { token: string; workspace: Workspace }) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -29,6 +30,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () =>
         set({ user: null, token: null, workspace: null, isAuthenticated: false }),
       setWorkspace: (workspace) => set({ workspace }),
+      switchWorkspace: (data) => set({ token: data.token, workspace: data.workspace }),
     }),
     { name: 'attribution-auth' }
   )

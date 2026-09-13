@@ -372,14 +372,20 @@ interface WorkspaceTokenRow {
 
 /**
  * Full sync for one workspace: campaigns → adsets → ads.
+ * Token is read from the workspace owner's user row so that one Facebook
+ * login covers all workspaces belonging to the same user.
  */
 export async function syncWorkspace(
   workspaceId: string,
   range: DateRange = { datePreset: 'last_30d' }
 ): Promise<{ campaigns: number; adsets: number; ads: number }> {
   const wsRes = await pool.query<WorkspaceTokenRow>(
-    `SELECT fb_ad_account_id, fb_access_token, fb_token_expires_at
-       FROM workspaces WHERE id = $1`,
+    `SELECT w.fb_ad_account_id,
+            u.fb_access_token,
+            u.fb_token_expires_at
+       FROM workspaces w
+       JOIN users u ON u.id = w.owner_id
+      WHERE w.id = $1`,
     [workspaceId]
   );
   const ws = wsRes.rows[0];

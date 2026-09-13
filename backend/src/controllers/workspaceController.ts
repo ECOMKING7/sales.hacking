@@ -4,6 +4,7 @@ import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
 import { getAdAccounts } from '../services/facebookOAuth';
 import { getUsage } from '../middleware/planLimits';
+import { signToken } from '../utils/jwt';
 
 const selectAdAccountSchema = z.object({
   adAccountId: z.string().trim().min(1, 'adAccountId is required'),
@@ -20,10 +21,15 @@ interface FbWorkspaceRow {
   fb_token_expires_at: string | null;
 }
 
+// Token now lives on the user row; ad account ID stays on the workspace.
 async function loadFbWorkspace(workspaceId: string): Promise<FbWorkspaceRow | null> {
   const result = await pool.query<FbWorkspaceRow>(
-    `SELECT fb_ad_account_id, fb_access_token, fb_token_expires_at
-       FROM workspaces WHERE id = $1`,
+    `SELECT w.fb_ad_account_id,
+            u.fb_access_token,
+            u.fb_token_expires_at
+       FROM workspaces w
+       JOIN users u ON u.id = w.owner_id
+      WHERE w.id = $1`,
     [workspaceId]
   );
   return result.rows[0] ?? null;
@@ -242,5 +248,105 @@ export async function usage(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('usage error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load usage' });
+  }
+}
+
+const createWorkspaceSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(80),
+});
+
+// ---- POST /api/workspace/create (protected) ----
+// Creates a new workspace for the logged-in user and returns a JWT scoped to it.
+export async function createWorkspace(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const parsed = createWorkspaceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+  try {
+    const ws = await pool.query<{ id: string; name: string; owner_id: string; plan: string; created_at: string }>(
+      `INSERT INTO workspaces (name, owner_id, plan)
+       VALUES ($1, $2, 'free')
+       RETURNING id, name, owner_id, plan, created_at`,
+      [parsed.data.name, req.user.userId]
+    );
+    const workspace = ws.rows[0];
+    // Issue a new JWT scoped to the freshly created workspace.
+    const token = signToken({
+      userId: req.user.userId,
+      email: req.user.email,
+      workspaceId: workspace.id,
+    });
+    res.status(201).json({ token, workspace });
+  } catch (err) {
+    console.error('createWorkspace error:', err);
+    res.status(500).json({ error: 'Failed to create workspace' });
+  }
+}
+
+// ---- POST /api/workspace/switch/:id (protected) ----
+// Switches the active workspace and returns a new scoped JWT.
+export async function switchWorkspace(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const { id } = req.params;
+  try {
+    // Allow if user is owner OR an active member of the target workspace.
+    const ws = await pool.query<{ id: string; name: string; owner_id: string; plan: string; created_at: string }>(
+      `SELECT w.id, w.name, w.owner_id, w.plan, w.created_at
+         FROM workspaces w
+         LEFT JOIN workspace_members m
+           ON m.workspace_id = w.id AND m.user_id = $2 AND m.status = 'active'
+        WHERE w.id = $1
+          AND (w.owner_id = $2 OR m.user_id = $2)`,
+      [id, req.user.userId]
+    );
+    if (!ws.rows[0]) {
+      res.status(403).json({ error: 'Workspace not found or access denied' });
+      return;
+    }
+    const workspace = ws.rows[0];
+    const token = signToken({
+      userId: req.user.userId,
+      email: req.user.email,
+      workspaceId: workspace.id,
+    });
+    res.json({ token, workspace });
+  } catch (err) {
+    console.error('switchWorkspace error:', err);
+    res.status(500).json({ error: 'Failed to switch workspace' });
+  }
+}
+
+// ---- GET /api/workspace/list (protected) ----
+// Lists all workspaces the user owns or is a member of.
+export async function listWorkspaces(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const { rows } = await pool.query<{ id: string; name: string; plan: string; role: string }>(
+      `SELECT w.id, w.name, w.plan, 'owner' AS role
+         FROM workspaces w
+        WHERE w.owner_id = $1
+       UNION
+       SELECT w.id, w.name, w.plan, m.role
+         FROM workspaces w
+         JOIN workspace_members m ON m.workspace_id = w.id
+        WHERE m.user_id = $1 AND m.status = 'active'
+        ORDER BY name ASC`,
+      [req.user.userId]
+    );
+    res.json({ workspaces: rows });
+  } catch (err) {
+    console.error('listWorkspaces error:', err);
+    res.status(500).json({ error: 'Failed to list workspaces' });
   }
 }
