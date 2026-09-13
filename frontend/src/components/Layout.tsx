@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { workspaceApi } from '../services/api';
+import ThemeToggle from './ThemeToggle';
 import { Badge, Button, Input, cn } from './ui';
 import type { BadgeTone } from './ui';
 
@@ -232,6 +233,8 @@ export default function Layout() {
 
         {/* Tarif va chiqish */}
         <div className="flex flex-col gap-1.5 border-t border-line p-3 md:items-center">
+          <ThemeToggle />
+
           <Link
             to="/upgrade"
             onClick={() => setOpen(false)}

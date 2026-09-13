@@ -4,6 +4,7 @@ import { BarChart3 } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { Button, Card, Input } from '../components/ui';
+import ThemeToggle from '../components/ThemeToggle';
 
 const PASSWORD_ERROR = 'Password must be at least 8 characters';
 const CONFIRM_ERROR = 'Passwords do not match';
@@ -69,7 +70,8 @@ export default function RegisterPage() {
   );
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ground px-4 py-8">
+    <div className="relative flex min-h-screen items-center justify-center bg-ground px-4 py-8">
+      <ThemeToggle variant="inline" className="absolute right-4 top-4" />
       <Card padding="lg" className="w-full max-w-sm">
         <div className="mb-7 flex flex-col items-center text-center">
           <span

@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Attribution Platform</title>
+    <!-- Tema — birinchi bo'yoqdan oldin. Standart yorug': OS qorong'i
+         rejimda bo'lsa ham platforma yorug' ochiladi. -->
+    <script>
+      (function () {
+        var t = 'light';
+        try {
+          var v = localStorage.getItem('ap-theme');
+          if (v === 'dark' || v === 'light') t = v;
+        } catch (e) {
+          /* incognito / bloklangan localStorage */
+        }
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.style.colorScheme = t;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

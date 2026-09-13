@@ -15,6 +15,11 @@ import '@fontsource/ibm-plex-mono/500.css';
 
 import App from './App';
 import './index.css';
+import { initTheme } from './lib/theme';
+
+// index.html dagi skript odatda buni allaqachon qilgan bo'ladi.
+// Bu — skript ishlamay qolgan holat uchun zaxira.
+initTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5 * 60 * 1000, retry: 1 } },
