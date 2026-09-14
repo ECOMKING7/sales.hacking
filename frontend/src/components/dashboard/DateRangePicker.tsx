@@ -93,21 +93,23 @@ export default function DateRangePicker({
             <p className="px-3 pb-1.5 font-mono text-label uppercase tracking-[0.1em] text-ink-3">
               Custom range
             </p>
-            <div className="flex items-center gap-2 px-3">
+            {/* Ustma-ust, yonma-yon emas: native `input[type=date]` ning eng
+                kichik kengligi ~135px (dd/mm/yyyy + kalendar ikonkasi), ikkitasi
+                w-72 oynachaga sig'maydi va chetdan chiqib ketardi. */}
+            <div className="space-y-2 px-3">
               <Input
                 type="date"
-                aria-label="From"
+                label="Dan"
                 value={customFrom}
+                max={customTo || undefined}
                 onChange={(e) => setCustomFrom(e.target.value)}
                 className="h-9 px-2 text-xs tabular-nums"
               />
-              <span aria-hidden className="text-ink-3">
-                –
-              </span>
               <Input
                 type="date"
-                aria-label="To"
+                label="Gacha"
                 value={customTo}
+                min={customFrom || undefined}
                 onChange={(e) => setCustomTo(e.target.value)}
                 className="h-9 px-2 text-xs tabular-nums"
               />
