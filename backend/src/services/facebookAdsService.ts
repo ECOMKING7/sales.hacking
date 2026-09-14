@@ -118,6 +118,39 @@ function isHardAccountLimit(err: AxiosError): boolean {
 }
 
 /**
+ * Axios'ning "Request failed with status code 500" xabari hech narsa aytmaydi —
+ * sababni faqat Facebook'ning javob tanasi biladi. Shuni o'qiladigan matnga
+ * aylantiramiz, aks holda sync xatosi tashxis qo'yib bo'lmaydigan bo'lib qoladi.
+ *
+ * Token bu yerga tushmaydi: FB xato tanasida access_token qaytarmaydi.
+ */
+function fbErrorMessage(err: AxiosError): string {
+  const body = err.response?.data as
+    | {
+        error?: {
+          message?: string;
+          type?: string;
+          code?: number;
+          error_subcode?: number;
+          error_user_title?: string;
+          error_user_msg?: string;
+          fbtrace_id?: string;
+        };
+      }
+    | undefined;
+  const e = body?.error;
+  if (!e) return err.message;
+
+  const parts = [e.error_user_msg || e.message || 'Facebook API error'];
+  if (e.code != null) parts.push(`code ${e.code}`);
+  if (e.error_subcode != null) parts.push(`subcode ${e.error_subcode}`);
+  if (e.type) parts.push(e.type);
+  if (err.response?.status) parts.push(`HTTP ${err.response.status}`);
+  if (e.fbtrace_id) parts.push(`trace ${e.fbtrace_id}`);
+  return `FB: ${parts.join(' · ')}`;
+}
+
+/**
  * GET a Graph API node with exponential backoff on rate limits (max 3 retries).
  */
 async function fbGet<T = unknown>(
@@ -139,6 +172,9 @@ async function fbGet<T = unknown>(
         attempt += 1;
         continue;
       }
+      // AxiosError turini saqlaymiz (yuqorida isRateLimit va boshqalar shunga
+      // tayanadi), faqat message'ni FB aytgan sababga almashtiramiz.
+      err.message = fbErrorMessage(err);
       throw err;
     }
   }
