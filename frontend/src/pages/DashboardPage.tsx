@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search } from 'lucide-react';
 import { dashboardApi, facebookApi, amocrmApi } from '../services/api';
 import KpiCard from '../components/KpiCard';
@@ -63,13 +63,37 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState<QuickFilter>('all');
   const [columns, setColumns] = useState<string[]>(loadVisibleColumns);
 
+  const fbStatus = useQuery({ queryKey: ['fb-status'], queryFn: facebookApi.status });
+  const adAccountId = fbStatus.data?.adAccountId ?? null;
+
   const overview = useQuery({
-    queryKey: ['overview', range.from, range.to, model],
+    // Ad account kalitga kiradi: aks holda akkaunt almashtirilganda React Query
+    // eski javobni qaytaraveradi (staleTime 5 daqiqa) va dashboard boshqa
+    // akkauntning raqamlarini ko'rsatadi.
+    queryKey: ['overview', adAccountId, range.from, range.to, model],
     queryFn: () => dashboardApi.overview(range.from, range.to),
     staleTime: 5 * 60 * 1000,
   });
 
-  const fbStatus = useQuery({ queryKey: ['fb-status'], queryFn: facebookApi.status });
+  // Akkaunt almashganda: drill holati eski akkauntning kampaniya/adset'iga
+  // ishora qilib turardi — shuning uchun "No ads found" chiqardi. Tozalaymiz
+  // va butun keshni bekor qilamiz.
+  const queryClient = useQueryClient();
+  const prevAccount = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (prevAccount.current === undefined) {
+      prevAccount.current = adAccountId;
+      return;
+    }
+    if (prevAccount.current === adAccountId) return;
+    prevAccount.current = adAccountId;
+    setView('campaigns');
+    setCampaign(null);
+    setAdset(null);
+    setSearch('');
+    void queryClient.invalidateQueries();
+  }, [adAccountId, queryClient]);
+
   const crmStatus = useQuery({ queryKey: ['amocrm-status'], queryFn: amocrmApi.status });
   const setupIncomplete =
     !fbStatus.isLoading &&
