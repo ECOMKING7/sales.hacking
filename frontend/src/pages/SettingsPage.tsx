@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import { Megaphone, Database, Code2, Check, Copy, ExternalLink } from 'lucide-react';
 import { facebookApi, amocrmApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
@@ -47,6 +47,27 @@ const SELECT = cn(
   'h-10 w-full rounded-sm border-[1.5px] border-line-2 bg-surface px-3 text-sm text-ink',
   'transition-[box-shadow,border-color] duration-200 disabled:cursor-not-allowed disabled:opacity-50'
 );
+
+/**
+ * Holat qatori: yorliq chapga, qiymat o'ngga — ikkalasi ham karta chekkasiga
+ * tekislanadi. Ilgari `grid-cols-2` edi va qiymat kartaning o'rtasida
+ * osilib turardi.
+ */
+function StatRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-6 border-b border-line py-2.5 last:border-b-0">
+      <dt className="flex-none text-sm text-ink-2">{label}</dt>
+      <dd className="min-w-0 truncate text-right text-sm font-medium tabular-nums text-ink">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+/** Kartaning pastki qatori — yuqori chiziq bilan ajratilgan. */
+function CardFooterRow({ children }: { children: ReactNode }) {
+  return <div className="mt-5 border-t border-line pt-3">{children}</div>;
+}
 
 // ---------- Facebook ----------
 function FacebookSection() {
@@ -118,48 +139,65 @@ function FacebookSection() {
       {loading ? (
         <SkeletonText lines={3} />
       ) : status?.connected ? (
-        <div className="space-y-4">
-          <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-ink-2">Ad account</dt>
-            <dd className="font-medium tabular-nums text-ink">{status.adAccountId ?? '—'}</dd>
-            <dt className="text-ink-2">Token expires</dt>
-            <dd className="font-medium tabular-nums text-ink">
-              {status.expiresAt ? new Date(status.expiresAt).toLocaleDateString() : '—'}
-            </dd>
+        <div>
+          <dl className="mb-5">
+            <StatRow label="Ad account" value={status.adAccountId ?? '—'} />
+            <StatRow
+              label="Token expires"
+              value={
+                status.expiresAt ? new Date(status.expiresAt).toLocaleDateString() : '—'
+              }
+            />
           </dl>
 
           <div>
             <label htmlFor="fb-ad-account" className={LABEL}>
               Select ad account
             </label>
-            <div className="flex gap-2">
+            {/* Mobilda ustma-ust, keng ekranda yonma-yon. Tugma qisqarmaydi
+                va balandligi select bilan bir xil (ikkalasi ham h-10). */}
+            <div className="flex flex-col gap-2 sm:flex-row">
               <select
                 id="fb-ad-account"
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
-                className={cn(SELECT, 'flex-1')}
+                className={cn(SELECT, 'min-w-0 sm:flex-1')}
               >
-                <option value="">— choose —</option>
+                <option value="">
+                  {adAccounts.length ? '— tanlang —' : '— ro‘yxat bo‘sh —'}
+                </option>
                 {adAccounts.map((a) => (
                   <option key={a.id} value={a.accountId || a.id}>
                     {a.name} ({a.accountId || a.id})
                   </option>
                 ))}
               </select>
-              <Button onClick={save} loading={busy} disabled={!selected}>
+              <Button
+                onClick={save}
+                loading={busy}
+                disabled={!selected}
+                className="flex-none sm:w-28"
+              >
                 Save
               </Button>
             </div>
+            {!adAccounts.length && (
+              <p className="mt-1.5 text-xs text-ink-3">
+                Ad account topilmadi — tokenni yangilash kerak bo‘lishi mumkin.
+              </p>
+            )}
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={connect}
-            icon={<ExternalLink className="h-4 w-4" />}
-          >
-            Reconnect Facebook
-          </Button>
+          <CardFooterRow>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={connect}
+              icon={<ExternalLink className="h-4 w-4" />}
+            >
+              Reconnect Facebook
+            </Button>
+          </CardFooterRow>
         </div>
       ) : (
         <EmptyState
@@ -260,7 +298,7 @@ function AmocrmSection() {
       {loading ? (
         <SkeletonText lines={3} />
       ) : status?.connected ? (
-        <div className="space-y-4">
+        <div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label htmlFor="amo-pipeline" className={LABEL}>
@@ -303,9 +341,16 @@ function AmocrmSection() {
             </div>
           </div>
 
-          <Button onClick={save} loading={busy} disabled={!pipelineId || !wonStageId}>
-            Save
-          </Button>
+          <CardFooterRow>
+            <Button
+              onClick={save}
+              loading={busy}
+              disabled={!pipelineId || !wonStageId}
+              className="sm:w-28"
+            >
+              Save
+            </Button>
+          </CardFooterRow>
         </div>
       ) : (
         <EmptyState
