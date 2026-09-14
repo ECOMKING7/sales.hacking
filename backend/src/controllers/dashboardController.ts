@@ -47,6 +47,8 @@ const ENTITY_SORTS: Record<string, string> = {
   spend: 'spend',
   clicks: 'clicks',
   leads: 'leads_count',
+  results: 'results',
+  costPerResult: 'cost_per_result',
   purchases: 'purchases_count',
   revenue: 'revenue',
   roas: 'roas',
@@ -80,6 +82,11 @@ function entitySelect(table: 'campaigns' | 'adsets' | 'ads'): string {
            (spend / NULLIF(leads_count, 0))        AS "costPerLead",
            purchases_count                         AS purchases,
            (spend / NULLIF(purchases_count, 0))    AS "costPerPurchase",
+           -- Natija maqsadga bog'liq: lid, sotuv, klik... Sync hisoblab qo'ygan.
+           objective,
+           result_type                             AS "resultType",
+           results,
+           cost_per_result                         AS "costPerResult",
            revenue,
            roas${extra}
     FROM ${table}`;

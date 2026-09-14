@@ -21,6 +21,108 @@ const PURCHASE_ACTIONS = [
   'offsite_conversion.fb_pixel_purchase',
 ];
 
+/**
+ * "Natija" (result) — kampaniya maqsadiga qarab o'zgaradigan asosiy hodisa.
+ *
+ * Bitta ad account'da lid, sotuv, trafik va xabar kampaniyalari yonma-yon
+ * turadi; ularni bitta "cost per lead" ustunida solishtirib bo'lmaydi. Meta
+ * shu sababli "Cost per result" ko'rsatadi — biz ham shuni takrorlaymiz.
+ *
+ * `label` — UI'da raqam ostida chiqadigan yorliq. Usiz "12" nimani anglatishi
+ * noma'lum bo'lib qoladi.
+ *
+ * TEKSHIRILISHI KERAK: Meta maqsad nomlarini vaqti-vaqti bilan o'zgartiradi
+ * (ODAX bilan OUTCOME_* ga o'tgan). Eski nomlar ham qoldirilgan, chunki
+ * akkauntlarda hali ham eski kampaniyalar uchraydi.
+ */
+interface ResultSpec {
+  label: string;
+  types: string[];
+  /** Ba'zi maqsadlarda natija — hodisa emas, ko'rsatishlar soni. */
+  useImpressions?: boolean;
+}
+
+const MESSAGE_ACTIONS = [
+  'onsite_conversion.messaging_conversation_started_7d',
+  'onsite_conversion.total_messaging_connection',
+];
+const INSTALL_ACTIONS = ['mobile_app_install', 'app_install', 'omni_app_install'];
+
+const RESULT_BY_OBJECTIVE: Record<string, ResultSpec> = {
+  // ODAX (hozirgi) nomlar
+  OUTCOME_LEADS: { label: 'lead', types: LEAD_ACTIONS },
+  OUTCOME_SALES: { label: 'purchase', types: PURCHASE_ACTIONS },
+  OUTCOME_TRAFFIC: { label: 'landing page view', types: ['landing_page_view', 'link_click'] },
+  OUTCOME_ENGAGEMENT: { label: 'engagement', types: ['post_engagement', ...MESSAGE_ACTIONS] },
+  OUTCOME_APP_PROMOTION: { label: 'install', types: INSTALL_ACTIONS },
+  OUTCOME_AWARENESS: { label: 'impression', types: [], useImpressions: true },
+
+  // Eski nomlar
+  LEAD_GENERATION: { label: 'lead', types: LEAD_ACTIONS },
+  CONVERSIONS: { label: 'purchase', types: PURCHASE_ACTIONS },
+  PRODUCT_CATALOG_SALES: { label: 'purchase', types: PURCHASE_ACTIONS },
+  LINK_CLICKS: { label: 'link click', types: ['link_click'] },
+  POST_ENGAGEMENT: { label: 'engagement', types: ['post_engagement'] },
+  MESSAGES: { label: 'conversation', types: MESSAGE_ACTIONS },
+  APP_INSTALLS: { label: 'install', types: INSTALL_ACTIONS },
+  VIDEO_VIEWS: { label: 'video view', types: ['video_view'] },
+  REACH: { label: 'impression', types: [], useImpressions: true },
+  BRAND_AWARENESS: { label: 'impression', types: [], useImpressions: true },
+};
+
+interface ResultMetrics {
+  resultType: string | null;
+  results: number;
+  costPerResult: number | null;
+}
+
+/**
+ * Maqsaddan natijani hisoblaydi.
+ *
+ * Maqsad noma'lum bo'lsa yoki mos hodisa topilmasa — bo'sh qaytarmaymiz,
+ * balki mavjud hodisalardan eng mazmunlisiga tushamiz (lid → sotuv → klik).
+ * Aks holda yangi yoki noodatiy maqsaddagi kampaniya ustunda "—" bo'lib
+ * qolardi va foydalanuvchi buni bug deb o'ylardi.
+ */
+function resultsFrom(
+  row: InsightRow | undefined,
+  m: Metrics,
+  objective: string | null | undefined
+): ResultMetrics {
+  const spec = objective ? RESULT_BY_OBJECTIVE[objective] : undefined;
+
+  if (spec) {
+    const count = spec.useImpressions ? m.impressions : sumActions(row?.actions, spec.types);
+    if (count > 0 || spec.useImpressions) {
+      return {
+        resultType: spec.label,
+        results: count,
+        costPerResult: count > 0 ? m.spend / count : null,
+      };
+    }
+  }
+
+  // Zaxira: maqsad noma'lum yoki o'sha hodisa nolga teng.
+  if (m.leads > 0) {
+    return { resultType: 'lead', results: m.leads, costPerResult: m.spend / m.leads };
+  }
+  if (m.purchases > 0) {
+    return {
+      resultType: 'purchase',
+      results: m.purchases,
+      costPerResult: m.spend / m.purchases,
+    };
+  }
+  if (m.clicks > 0) {
+    return { resultType: 'click', results: m.clicks, costPerResult: m.spend / m.clicks };
+  }
+  return { resultType: spec?.label ?? null, results: 0, costPerResult: null };
+}
+
+/** fbCampaignId -> { dbId, objective }. Objective adset/ad'ga meros o'tadi. */
+export type CampaignMap = Map<string, { dbId: string; objective: string | null }>;
+export type AdsetMap = Map<string, { dbId: string; campaignDbId: string | null; objective: string | null }>;
+
 export type DateRange =
   | { datePreset: string }
   | { since: string; until: string };
@@ -238,6 +340,8 @@ interface FbCampaign {
   id: string;
   name?: string;
   status?: string;
+  /** OUTCOME_LEADS, OUTCOME_SALES, ... — natija turini shu belgilaydi. */
+  objective?: string;
 }
 interface FbAdSet {
   id: string;
@@ -280,7 +384,7 @@ export async function syncCampaigns(
   actId: string,
   token: string,
   range: DateRange
-): Promise<Map<string, string>> {
+): Promise<CampaignMap> {
   const campaigns = await fetchAll<FbCampaign>(
     `${actId}/campaigns`,
     { fields: 'id,name,status,objective,daily_budget,start_time', limit: 200 },
@@ -288,26 +392,33 @@ export async function syncCampaigns(
   );
   const ins = await insightsMap(actId, 'campaign', token, range);
 
-  const map = new Map<string, string>(); // fbCampaignId -> dbId
+  const map: CampaignMap = new Map(); // fbCampaignId -> { dbId, objective }
   for (const c of campaigns) {
-    const m = metricsFromInsight(ins.get(c.id));
+    const raw = ins.get(c.id);
+    const m = metricsFromInsight(raw);
+    const r = resultsFrom(raw, m, c.objective);
     const row = await pool.query<{ id: string }>(
       `INSERT INTO campaigns
-         (workspace_id, fb_campaign_id, name, status, spend, impressions, clicks,
-          leads_count, purchases_count, revenue, roas, cac, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
+         (workspace_id, fb_campaign_id, name, status, objective, spend, impressions, clicks,
+          leads_count, purchases_count, revenue, roas, cac,
+          result_type, results, cost_per_result, synced_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
        ON CONFLICT (workspace_id, fb_campaign_id) DO UPDATE SET
-          name=EXCLUDED.name, status=EXCLUDED.status, spend=EXCLUDED.spend,
+          name=EXCLUDED.name, status=EXCLUDED.status, objective=EXCLUDED.objective,
+          spend=EXCLUDED.spend,
           impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
           leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
           revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, cac=EXCLUDED.cac,
+          result_type=EXCLUDED.result_type, results=EXCLUDED.results,
+          cost_per_result=EXCLUDED.cost_per_result,
           synced_at=now()
        RETURNING id`,
-      [workspaceId, c.id, c.name ?? null, c.status ?? null, m.spend, m.impressions,
+      [workspaceId, c.id, c.name ?? null, c.status ?? null, c.objective ?? null,
+       m.spend, m.impressions,
        m.clicks, m.leads, m.purchases, m.revenue, roasOf(m.revenue, m.spend),
-       cacOf(m.spend, m.purchases)]
+       cacOf(m.spend, m.purchases), r.resultType, r.results, r.costPerResult]
     );
-    map.set(c.id, row.rows[0].id);
+    map.set(c.id, { dbId: row.rows[0].id, objective: c.objective ?? null });
   }
   return map;
 }
@@ -317,8 +428,8 @@ export async function syncAdSets(
   actId: string,
   token: string,
   range: DateRange,
-  campaignMap: Map<string, string>
-): Promise<Map<string, { dbId: string; campaignDbId: string | null }>> {
+  campaignMap: CampaignMap
+): Promise<AdsetMap> {
   const adsets = await fetchAll<FbAdSet>(
     `${actId}/adsets`,
     { fields: 'id,name,status,campaign_id,daily_budget', limit: 200 },
@@ -326,28 +437,37 @@ export async function syncAdSets(
   );
   const ins = await insightsMap(actId, 'adset', token, range);
 
-  const map = new Map<string, { dbId: string; campaignDbId: string | null }>();
+  const map: AdsetMap = new Map();
   for (const a of adsets) {
-    const campaignDbId = a.campaign_id ? campaignMap.get(a.campaign_id) ?? null : null;
-    const m = metricsFromInsight(ins.get(a.id));
+    const parent = a.campaign_id ? campaignMap.get(a.campaign_id) : undefined;
+    const campaignDbId = parent?.dbId ?? null;
+    // Adset va ad o'z maqsadiga ega emas — kampaniyadan meros oladi.
+    const objective = parent?.objective ?? null;
+    const raw = ins.get(a.id);
+    const m = metricsFromInsight(raw);
+    const r = resultsFrom(raw, m, objective);
     const costPerLead = m.leads > 0 ? m.spend / m.leads : null;
     const row = await pool.query<{ id: string }>(
       `INSERT INTO adsets
-         (workspace_id, campaign_id, fb_adset_id, name, status, spend, impressions,
-          clicks, leads_count, purchases_count, revenue, roas, cost_per_lead, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+         (workspace_id, campaign_id, fb_adset_id, name, status, objective, spend, impressions,
+          clicks, leads_count, purchases_count, revenue, roas, cost_per_lead,
+          result_type, results, cost_per_result, synced_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
        ON CONFLICT (workspace_id, fb_adset_id) DO UPDATE SET
           campaign_id=EXCLUDED.campaign_id, name=EXCLUDED.name, status=EXCLUDED.status,
+          objective=EXCLUDED.objective,
           spend=EXCLUDED.spend, impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
           leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
           revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, cost_per_lead=EXCLUDED.cost_per_lead,
+          result_type=EXCLUDED.result_type, results=EXCLUDED.results,
+          cost_per_result=EXCLUDED.cost_per_result,
           synced_at=now()
        RETURNING id`,
-      [workspaceId, campaignDbId, a.id, a.name ?? null, a.status ?? null, m.spend,
+      [workspaceId, campaignDbId, a.id, a.name ?? null, a.status ?? null, objective, m.spend,
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
-       roasOf(m.revenue, m.spend), costPerLead]
+       roasOf(m.revenue, m.spend), costPerLead, r.resultType, r.results, r.costPerResult]
     );
-    map.set(a.id, { dbId: row.rows[0].id, campaignDbId });
+    map.set(a.id, { dbId: row.rows[0].id, campaignDbId, objective });
   }
   return map;
 }
@@ -357,8 +477,8 @@ export async function syncAds(
   actId: string,
   token: string,
   range: DateRange,
-  adsetMap: Map<string, { dbId: string; campaignDbId: string | null }>,
-  campaignMap: Map<string, string>
+  adsetMap: AdsetMap,
+  campaignMap: CampaignMap
 ): Promise<number> {
   // Ikkiga ajratilgan, ataylab:
   //
@@ -403,29 +523,33 @@ export async function syncAds(
   for (const ad of ads) {
     const creative = creatives.get(ad.id);
     const adsetInfo = ad.adset_id ? adsetMap.get(ad.adset_id) : undefined;
+    const parent = ad.campaign_id ? campaignMap.get(ad.campaign_id) : undefined;
     const adsetDbId = adsetInfo?.dbId ?? null;
-    const campaignDbId =
-      (ad.campaign_id ? campaignMap.get(ad.campaign_id) : undefined) ??
-      adsetInfo?.campaignDbId ??
-      null;
-    const m = metricsFromInsight(ins.get(ad.id));
+    const campaignDbId = parent?.dbId ?? adsetInfo?.campaignDbId ?? null;
+    const objective = parent?.objective ?? adsetInfo?.objective ?? null;
+    const raw = ins.get(ad.id);
+    const m = metricsFromInsight(raw);
+    const r = resultsFrom(raw, m, objective);
     await pool.query(
       `INSERT INTO ads
          (workspace_id, adset_id, campaign_id, fb_ad_id, name, status, creative_type,
-          thumbnail_url, spend, impressions, clicks, leads_count, purchases_count,
-          revenue, roas, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
+          thumbnail_url, objective, spend, impressions, clicks, leads_count, purchases_count,
+          revenue, roas, result_type, results, cost_per_result, synced_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now())
        ON CONFLICT (workspace_id, fb_ad_id) DO UPDATE SET
           adset_id=EXCLUDED.adset_id, campaign_id=EXCLUDED.campaign_id,
           name=EXCLUDED.name, status=EXCLUDED.status, creative_type=EXCLUDED.creative_type,
-          thumbnail_url=EXCLUDED.thumbnail_url, spend=EXCLUDED.spend,
+          thumbnail_url=EXCLUDED.thumbnail_url, objective=EXCLUDED.objective,
+          spend=EXCLUDED.spend,
           impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
           leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
-          revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, synced_at=now()`,
+          revenue=EXCLUDED.revenue, roas=EXCLUDED.roas,
+          result_type=EXCLUDED.result_type, results=EXCLUDED.results,
+          cost_per_result=EXCLUDED.cost_per_result, synced_at=now()`,
       [workspaceId, adsetDbId, campaignDbId, ad.id, ad.name ?? null, ad.status ?? null,
-       creativeType(creative), creative?.thumbnail_url ?? null, m.spend,
+       creativeType(creative), creative?.thumbnail_url ?? null, objective, m.spend,
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
-       roasOf(m.revenue, m.spend)]
+       roasOf(m.revenue, m.spend), r.resultType, r.results, r.costPerResult]
     );
   }
   return ads.length;

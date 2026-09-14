@@ -19,6 +19,11 @@ export const ALL_COLUMNS: ColumnDef[] = [
   { key: 'impressions', label: 'Impressions', align: 'right' },
   { key: 'reach', label: 'Reach', align: 'right', unavailable: true },
   { key: 'frequency', label: 'Frequency', align: 'right', unavailable: true },
+  // Natija = kampaniya maqsadidagi asosiy hodisa (lid, sotuv, klik...).
+  // Bitta akkauntda turli maqsadli kampaniyalarni solishtirish uchun yagona
+  // ustun; 'Cost/lead' faqat lid kampaniyalari uchun mos edi.
+  { key: 'results', label: 'Results', sortKey: 'results', align: 'right' },
+  { key: 'costPerResult', label: 'Cost/result', sortKey: 'costPerResult', align: 'right' },
   { key: 'leads', label: 'Leads', sortKey: 'leads', align: 'right' },
   { key: 'costPerLead', label: 'Cost/lead', align: 'right' },
   { key: 'purchases', label: 'Purchases', sortKey: 'purchases', align: 'right' },
@@ -32,8 +37,8 @@ export const DEFAULT_VISIBLE = [
   'status',
   'spend',
   'cpc',
-  'leads',
-  'costPerLead',
+  'results',
+  'costPerResult',
   'purchases',
   'costPerPurchase',
   'revenue',

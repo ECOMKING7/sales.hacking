@@ -71,6 +71,12 @@ export interface EntityRow {
   roas: string | number | null;
   thumbnailUrl?: string | null;
   creativeType?: string | null;
+  /** Kampaniya maqsadi (OUTCOME_LEADS, OUTCOME_SALES, ...) */
+  objective?: string | null;
+  /** Natija nima deb hisoblangani: 'lead', 'purchase', 'click', ... */
+  resultType?: string | null;
+  results?: number | null;
+  costPerResult?: string | number | null;
 }
 
 export interface Paginated<T> {

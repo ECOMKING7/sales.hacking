@@ -111,6 +111,19 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
     case 'reach':
     case 'frequency':
       return <span className="text-ink-3">—</span>;
+    case 'results':
+      // Raqamning yonida natija turi turadi: "542 lead" — aks holda turli
+      // maqsadli kampaniyalar ustunida "542" nimani anglatishi noma'lum.
+      return (
+        <span className="whitespace-nowrap">
+          {formatNumber(row.results ?? 0)}
+          {row.resultType && (
+            <span className="ml-1 text-xs font-normal text-ink-3">{row.resultType}</span>
+          )}
+        </span>
+      );
+    case 'costPerResult':
+      return formatCurrency2(row.costPerResult);
     case 'leads':
       return formatNumber(row.leads);
     case 'costPerLead':
