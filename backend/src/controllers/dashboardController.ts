@@ -92,6 +92,40 @@ function entitySelect(table: 'campaigns' | 'adsets' | 'ads'): string {
     FROM ${table}`;
 }
 
+/**
+ * Jadval ostidagi "jami" qatori — Ads Manager'dagi kabi.
+ *
+ * MUHIM: o'rtacha qiymatli ustunlar (CPC, CPM, CTR, cost per result)
+ * QO'SHILMAYDI va o'rtacha ham olinmaydi — ular jamidan qayta hisoblanadi.
+ * "Cost per result" larning o'rtachasi noto'g'ri raqam beradi: $1 ga 500 lid
+ * va $10 ga 1 lid bo'lsa, haqiqiy o'rtacha $1.02, sodda o'rtacha esa $5.50.
+ *
+ * `resultType` faqat hamma qator bir xil natija turida bo'lsagina to'ldiriladi.
+ * Aralash bo'lsa (lid + qo'ng'iroq + sotuv) — null, chunki "642 nima?" degan
+ * savolga javob yo'q. UI bunda "natija" deb umumiy yozadi.
+ */
+function totalsSelect(table: 'campaigns' | 'adsets' | 'ads'): string {
+  return `
+    SELECT COUNT(*)                                   AS "rowCount",
+           COALESCE(SUM(spend), 0)                    AS spend,
+           COALESCE(SUM(clicks), 0)                   AS clicks,
+           COALESCE(SUM(impressions), 0)              AS impressions,
+           COALESCE(SUM(leads_count), 0)              AS leads,
+           COALESCE(SUM(purchases_count), 0)          AS purchases,
+           COALESCE(SUM(results), 0)                  AS results,
+           COALESCE(SUM(revenue), 0)                  AS revenue,
+           SUM(spend) / NULLIF(SUM(clicks), 0)              AS cpc,
+           SUM(spend) / NULLIF(SUM(impressions), 0) * 1000  AS cpm,
+           SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) * 100 AS ctr,
+           SUM(spend) / NULLIF(SUM(leads_count), 0)         AS "costPerLead",
+           SUM(spend) / NULLIF(SUM(purchases_count), 0)     AS "costPerPurchase",
+           SUM(spend) / NULLIF(SUM(results), 0)             AS "costPerResult",
+           SUM(revenue) / NULLIF(SUM(spend), 0)             AS roas,
+           CASE WHEN COUNT(DISTINCT result_type) = 1
+                THEN MIN(result_type) END              AS "resultType"
+    FROM ${table}`;
+}
+
 // ---------- GET /api/dashboard/overview ----------
 export async function overview(req: Request, res: Response): Promise<void> {
   const workspaceId = ws(req);
@@ -217,11 +251,14 @@ export async function campaigns(req: Request, res: Response): Promise<void> {
         LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
+    // Jami qator butun ro'yxat bo'yicha hisoblanadi, ko'rinib turgan sahifa
+    // bo'yicha emas — 2-sahifaga o'tganda "jami" o'zgarib ketmasligi kerak.
     const totalR = await pool.query(
-      `SELECT COUNT(*) AS total FROM campaigns ${where}`,
+      `${totalsSelect('campaigns')} ${where}`,
       params.slice(0, params.length - 2)
     );
-    res.json({ data: rows.rows, page, limit, total: num(totalR.rows[0].total) });
+    const t = totalR.rows[0];
+    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
   } catch (err) {
     console.error('campaigns error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load campaigns' });
@@ -250,10 +287,11 @@ export async function campaignAdsets(req: Request, res: Response): Promise<void>
       [workspaceId, campaignId, limit, offset]
     );
     const totalR = await pool.query(
-      `SELECT COUNT(*) AS total FROM adsets WHERE workspace_id = $1 AND campaign_id = $2`,
+      `${totalsSelect('adsets')} WHERE workspace_id = $1 AND campaign_id = $2`,
       [workspaceId, campaignId]
     );
-    res.json({ data: rows.rows, page, limit, total: num(totalR.rows[0].total) });
+    const t = totalR.rows[0];
+    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
   } catch (err) {
     console.error('campaignAdsets error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load adsets' });
@@ -282,10 +320,11 @@ export async function adsetAds(req: Request, res: Response): Promise<void> {
       [workspaceId, adsetId, limit, offset]
     );
     const totalR = await pool.query(
-      `SELECT COUNT(*) AS total FROM ads WHERE workspace_id = $1 AND adset_id = $2`,
+      `${totalsSelect('ads')} WHERE workspace_id = $1 AND adset_id = $2`,
       [workspaceId, adsetId]
     );
-    res.json({ data: rows.rows, page, limit, total: num(totalR.rows[0].total) });
+    const t = totalR.rows[0];
+    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
   } catch (err) {
     console.error('adsetAds error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load ads' });

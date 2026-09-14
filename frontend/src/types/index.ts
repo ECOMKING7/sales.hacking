@@ -79,11 +79,37 @@ export interface EntityRow {
   costPerResult?: string | number | null;
 }
 
+/**
+ * Jadval ostidagi "jami" qatori. Backend butun ro'yxat bo'yicha hisoblaydi —
+ * ko'rinib turgan sahifa bo'yicha emas. O'rtacha ustunlar (cpc, ctr,
+ * costPerResult) jamidan qayta hisoblangan, qo'shilgan emas.
+ */
+export interface EntityTotals {
+  rowCount: string | number;
+  spend: string | number;
+  clicks: string | number;
+  impressions: string | number;
+  leads: string | number;
+  purchases: string | number;
+  results: string | number;
+  revenue: string | number;
+  cpc: string | number | null;
+  cpm: string | number | null;
+  ctr: string | number | null;
+  costPerLead: string | number | null;
+  costPerPurchase: string | number | null;
+  costPerResult: string | number | null;
+  roas: string | number | null;
+  /** Hamma qator bir xil turda bo'lsagina to'ladi; aralashda null. */
+  resultType: string | null;
+}
+
 export interface Paginated<T> {
   data: T[];
   page: number;
   limit: number;
   total: number;
+  totals?: EntityTotals;
 }
 
 export interface WonDeal {

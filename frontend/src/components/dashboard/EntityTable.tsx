@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { ChevronRight, ChevronLeft, ArrowUpDown, Play, Image as ImageIcon } from 'lucide-react';
 import { dashboardApi } from '../../services/api';
-import type { EntityRow } from '../../types';
+import type { EntityRow, EntityTotals } from '../../types';
 import {
   formatCurrency,
   formatCurrency2,
@@ -151,6 +151,100 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
   }
 }
 
+/**
+ * Qidiruv yoki filtr yoqilganda server jami'si mos kelmaydi — u butun ro'yxat
+ * bo'yicha. Shunda ko'rinib turgan qatorlardan o'zimiz hisoblaymiz.
+ *
+ * O'rtacha ustunlar (cpc, ctr, cost per result) QO'SHILMAYDI — jamidan qayta
+ * hisoblanadi, aks holda raqam noto'g'ri chiqadi.
+ */
+function totalsFromRows(rows: EntityRow[]): EntityTotals {
+  const sum = (pick: (r: EntityRow) => unknown) =>
+    rows.reduce((acc, r) => acc + n(pick(r) as string | number | null), 0);
+
+  const spend = sum((r) => r.spend);
+  const clicks = sum((r) => r.clicks);
+  const impressions = sum((r) => r.impressions);
+  const leads = sum((r) => r.leads);
+  const purchases = sum((r) => r.purchases);
+  const results = sum((r) => r.results);
+  const revenue = sum((r) => r.revenue);
+
+  const per = (total: number, count: number) => (count > 0 ? total / count : null);
+  const types = new Set(rows.map((r) => r.resultType).filter(Boolean));
+
+  return {
+    rowCount: rows.length,
+    spend,
+    clicks,
+    impressions,
+    leads,
+    purchases,
+    results,
+    revenue,
+    cpc: per(spend, clicks),
+    cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
+    costPerLead: per(spend, leads),
+    costPerPurchase: per(spend, purchases),
+    costPerResult: per(spend, results),
+    roas: spend > 0 ? revenue / spend : null,
+    resultType: types.size === 1 ? [...types][0]! : null,
+  };
+}
+
+/**
+ * Jami qatoridagi bitta katak. Matnli ustunlar (nom, status) bo'sh qoladi —
+ * ularning jami'si yo'q.
+ */
+function renderTotal(t: EntityTotals, key: string) {
+  switch (key) {
+    case 'spend':
+      return formatCurrency(t.spend);
+    case 'cpc':
+      return formatCurrency2(t.cpc);
+    case 'cpm':
+      return formatCurrency2(t.cpm);
+    case 'ctr':
+      return formatPercent(t.ctr);
+    case 'clicks':
+      return formatNumber(t.clicks);
+    case 'impressions':
+      return formatNumber(t.impressions);
+    case 'results':
+      return (
+        <span className="whitespace-nowrap">
+          {formatNumber(t.results)}
+          <span className="ml-1 text-xs font-normal text-ink-3">
+            {/* Turlar aralash bo'lsa aniq nom yozib bo'lmaydi: 500 lid + 40
+                sotuvning yig'indisi "540 lid" emas. */}
+            {t.resultType ?? 'natija'}
+          </span>
+        </span>
+      );
+    case 'costPerResult':
+      return formatCurrency2(t.costPerResult);
+    case 'leads':
+      return formatNumber(t.leads);
+    case 'costPerLead':
+      return formatCurrency2(t.costPerLead);
+    case 'purchases':
+      return formatNumber(t.purchases);
+    case 'costPerPurchase':
+      return formatCurrency2(t.costPerPurchase);
+    case 'revenue':
+      return formatCurrency(t.revenue);
+    case 'roas':
+      return (
+        <span className={cn('tabular-nums', n(t.roas) >= 1 ? 'text-ok' : 'text-bad')}>
+          {formatRoas(n(t.roas))}
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
 export type QuickFilter = 'all' | 'active' | 'delivery';
 
 interface Props {
@@ -211,6 +305,16 @@ export default function EntityTable({
     return true;
   });
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+
+  // Filtrlash mijoz tomonida ketadi, server jami'si esa butun ro'yxat bo'yicha.
+  // Shuning uchun filtr yoqilgan bo'lsa ko'rinayotgan qatorlardan hisoblaymiz —
+  // aks holda jadval 3 qator ko'rsatib, pastda 100 qatorning puli turardi.
+  const filtered = Boolean(search) || filter !== 'all';
+  const serverTotals = query.data?.totals;
+  const totals: EntityTotals | null = filtered
+    ? totalsFromRows(rows)
+    : serverTotals ?? null;
+  const showTotals = totals !== null && rows.length > 0;
 
   const cols = ALL_COLUMNS.filter((c) => c.always || visibleColumns.includes(c.key));
   const entityLabel = view === 'campaigns' ? 'campaigns' : view === 'adsets' ? 'ad sets' : 'ads';
@@ -341,6 +445,38 @@ export default function EntityTable({
                 </Tr>
               ))}
           </tbody>
+
+          {/* Jami qatori — Ads Manager'dagi kabi jadval oxirida, qalin chiziq
+              bilan ajratilgan. Sahifalashda o'zgarmaydi: server butun ro'yxat
+              bo'yicha hisoblaydi. */}
+          {showTotals && totals && (
+            <tfoot>
+              <tr className="border-t-[1.5px] border-line bg-surface-2 font-semibold text-ink">
+                {cols.map((c, i) => (
+                  <td
+                    key={c.key}
+                    className={cn(
+                      'px-3 py-2.5 text-sm tabular-nums',
+                      c.align === 'right' ? 'text-right' : 'text-left'
+                    )}
+                  >
+                    {i === 0 ? (
+                      <span className="whitespace-nowrap">
+                        Jami
+                        <span className="ml-1.5 text-xs font-normal text-ink-3">
+                          {filtered
+                            ? `${rows.length} ta ${entityLabel} (filtr)`
+                            : `${total} ta ${entityLabel}`}
+                        </span>
+                      </span>
+                    ) : (
+                      renderTotal(totals, c.key)
+                    )}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </Table>
       </TableWrap>
 

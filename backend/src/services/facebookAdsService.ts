@@ -10,16 +10,27 @@ const MAX_RETRIES = 3;
 const INSIGHT_FIELDS =
   'campaign_id,adset_id,ad_id,spend,impressions,clicks,actions,action_values';
 
-// Action types Facebook uses for leads / purchases (varies by pixel setup).
+// Facebook bitta hodisani bir necha action_type ostida qaytaradi: `lead`,
+// `leadgen.other` va `onsite_conversion.lead_grouped` — ko'pincha AYNI o'sha
+// lidlar. Ularni QO'SHIB bo'lmaydi.
+//
+// Ilgari qo'shardik va natija ikki barobar chiqardi: bizda 542 lid, Ads
+// Manager'da 268. Endi ro'yxat — ustuvorlik tartibi: birinchi topilgani
+// olinadi, qolgani e'tiborsiz qoldiriladi.
 const LEAD_ACTIONS = [
-  'lead',
+  'leadgen.other',
   'onsite_conversion.lead_grouped',
   'offsite_conversion.fb_pixel_lead',
+  'lead',
 ];
 const PURCHASE_ACTIONS = [
-  'purchase',
   'omni_purchase',
+  'purchase',
   'offsite_conversion.fb_pixel_purchase',
+];
+const CALL_ACTIONS = [
+  'click_to_call_native_call_placed',
+  'onsite_conversion.flow_complete',
 ];
 
 /**
@@ -71,6 +82,98 @@ const RESULT_BY_OBJECTIVE: Record<string, ResultSpec> = {
   BRAND_AWARENESS: { label: 'impression', types: [], useImpressions: true },
 };
 
+/**
+ * Asosiy manba — ad set'ning OPTIMIZATSIYA MAQSADI, kampaniya maqsadi emas.
+ *
+ * Misol: "Tof - Sales call" kampaniyasining maqsadi OUTCOME_SALES, lekin ad
+ * set qo'ng'iroqqa optimizatsiya qilingan. Ads Manager "142 Calls placed,
+ * $3.14" ko'rsatadi; biz esa maqsadga qarab sotuvni qidirib, topolmay klikka
+ * tushib ketardik va "2 918 click, $0.15" chiqarardik — butunlay boshqa raqam.
+ */
+const RESULT_BY_GOAL: Record<string, ResultSpec> = {
+  LEAD_GENERATION: { label: 'lead', types: LEAD_ACTIONS },
+  QUALITY_LEAD: { label: 'lead', types: LEAD_ACTIONS },
+  QUALITY_CALL: { label: 'call', types: CALL_ACTIONS },
+  LINK_CLICKS: { label: 'link click', types: ['link_click'] },
+  LANDING_PAGE_VIEWS: { label: 'landing page view', types: ['landing_page_view'] },
+  POST_ENGAGEMENT: { label: 'engagement', types: ['post_engagement'] },
+  PAGE_LIKES: { label: 'page like', types: ['like'] },
+  THRUPLAY: { label: 'video view', types: ['video_thruplay_watched', 'video_view'] },
+  VIDEO_VIEWS: { label: 'video view', types: ['video_view'] },
+  APP_INSTALLS: { label: 'install', types: INSTALL_ACTIONS },
+  CONVERSATIONS: { label: 'conversation', types: MESSAGE_ACTIONS },
+  IMPRESSIONS: { label: 'impression', types: [], useImpressions: true },
+  REACH: { label: 'impression', types: [], useImpressions: true },
+  AD_RECALL_LIFT: { label: 'impression', types: [], useImpressions: true },
+};
+
+/**
+ * OFFSITE_CONVERSIONS da natija ad set'ning promoted_object'idagi hodisa turi
+ * bilan belgilanadi (PURCHASE, LEAD, COMPLETE_REGISTRATION, ...).
+ */
+const RESULT_BY_EVENT: Record<string, ResultSpec> = {
+  PURCHASE: { label: 'purchase', types: PURCHASE_ACTIONS },
+  LEAD: { label: 'lead', types: LEAD_ACTIONS },
+  COMPLETE_REGISTRATION: {
+    label: 'registration',
+    types: ['complete_registration', 'offsite_conversion.fb_pixel_complete_registration'],
+  },
+  ADD_TO_CART: {
+    label: 'add to cart',
+    types: ['add_to_cart', 'offsite_conversion.fb_pixel_add_to_cart'],
+  },
+  CONTACT: { label: 'contact', types: ['contact', 'offsite_conversion.fb_pixel_contact'] },
+};
+
+/** Ad set'dan natija ta'rifini chiqaradi. Topolmasa null — kampaniya maqsadiga tushamiz. */
+export function specFromAdset(a: {
+  optimization_goal?: string;
+  promoted_object?: { custom_event_type?: string };
+}): ResultSpec | null {
+  const ev = a.promoted_object?.custom_event_type;
+  if (a.optimization_goal === 'OFFSITE_CONVERSIONS' && ev && RESULT_BY_EVENT[ev]) {
+    return RESULT_BY_EVENT[ev];
+  }
+  if (a.optimization_goal && RESULT_BY_GOAL[a.optimization_goal]) {
+    return RESULT_BY_GOAL[a.optimization_goal];
+  }
+  if (ev && RESULT_BY_EVENT[ev]) return RESULT_BY_EVENT[ev];
+  return null;
+}
+
+/**
+ * Kampaniya darajasidagi natija ta'rifi — ichidagi ad set'lardan yig'iladi.
+ *
+ * Kampaniyaning o'zida optimizatsiya maqsadi yo'q, u ad set'da turadi.
+ * Shuning uchun kampaniya uchun ham ad set'larga qaraymiz:
+ *   - hammasi bir xil natija beradigan bo'lsa — o'sha ta'rif;
+ *   - aralash bo'lsa (masalan bir ad set lid, ikkinchisi qo'ng'iroq) — null
+ *     qaytaramiz va kampaniya maqsadiga tushamiz. Ads Manager ham aralash
+ *     holatda kampaniya qatorini shartli ko'rsatadi; uydirma raqam
+ *     chiqargandan ko'ra maqsadga tushgan ma'qul.
+ */
+function campaignSpecs(adsets: FbAdSet[]): Map<string, ResultSpec> {
+  const byCampaign = new Map<string, ResultSpec | null | undefined>();
+  for (const a of adsets) {
+    if (!a.campaign_id) continue;
+    const spec = specFromAdset(a);
+    if (!byCampaign.has(a.campaign_id)) {
+      byCampaign.set(a.campaign_id, spec);
+      continue;
+    }
+    const prev = byCampaign.get(a.campaign_id);
+    // Aralash bo'lsa — undefined bilan belgilaymiz (= ta'rif yo'q).
+    if (prev === undefined) continue;
+    if (prev?.label !== spec?.label) byCampaign.set(a.campaign_id, undefined);
+  }
+
+  const out = new Map<string, ResultSpec>();
+  for (const [id, spec] of byCampaign) {
+    if (spec) out.set(id, spec);
+  }
+  return out;
+}
+
 interface ResultMetrics {
   resultType: string | null;
   results: number;
@@ -88,12 +191,14 @@ interface ResultMetrics {
 function resultsFrom(
   row: InsightRow | undefined,
   m: Metrics,
-  objective: string | null | undefined
+  objective: string | null | undefined,
+  /** Ad set optimizatsiyasidan kelgan ta'rif — maqsaddan ustun turadi. */
+  goalSpec?: ResultSpec | null
 ): ResultMetrics {
-  const spec = objective ? RESULT_BY_OBJECTIVE[objective] : undefined;
+  const spec = goalSpec ?? (objective ? RESULT_BY_OBJECTIVE[objective] : undefined);
 
   if (spec) {
-    const count = spec.useImpressions ? m.impressions : sumActions(row?.actions, spec.types);
+    const count = spec.useImpressions ? m.impressions : pickAction(row?.actions, spec.types);
     if (count > 0 || spec.useImpressions) {
       return {
         resultType: spec.label,
@@ -122,7 +227,16 @@ function resultsFrom(
 
 /** fbCampaignId -> { dbId, objective }. Objective adset/ad'ga meros o'tadi. */
 export type CampaignMap = Map<string, { dbId: string; objective: string | null }>;
-export type AdsetMap = Map<string, { dbId: string; campaignDbId: string | null; objective: string | null }>;
+/**
+ * `spec` — shu ad set'ning optimizatsiyasidan chiqqan natija ta'rifi. Ad
+ * o'z optimizatsiyasiga ega emas, shuning uchun uni ad set'dan meros oladi.
+ * Ilgari ad kampaniya maqsadiga qarardi va call kampaniyasida klikni
+ * "natija" deb ko'rsatardi.
+ */
+export type AdsetMap = Map<
+  string,
+  { dbId: string; campaignDbId: string | null; objective: string | null; spec: ResultSpec | null }
+>;
 
 export type DateRange =
   | { datePreset: string }
@@ -164,11 +278,20 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function sumActions(actions: FbAction[] | undefined, types: string[]): number {
+/**
+ * Ustuvorlik bo'yicha BITTA action turini oladi — qo'shmaydi.
+ *
+ * Facebook bir hodisani bir nechta nom ostida beradi (masalan `lead` va
+ * `leadgen.other`). Qo'shilsa raqam ikki-uch barobar shishadi va Ads
+ * Manager bilan mos kelmaydi — aynan shu xato bor edi.
+ */
+function pickAction(actions: FbAction[] | undefined, types: string[]): number {
   if (!actions) return 0;
-  return actions
-    .filter((a) => types.includes(a.action_type))
-    .reduce((acc, a) => acc + num(a.value), 0);
+  for (const t of types) {
+    const hit = actions.find((a) => a.action_type === t);
+    if (hit) return num(hit.value);
+  }
+  return 0;
 }
 
 function metricsFromInsight(row: InsightRow | undefined): Metrics {
@@ -179,9 +302,9 @@ function metricsFromInsight(row: InsightRow | undefined): Metrics {
     spend: num(row.spend),
     impressions: num(row.impressions),
     clicks: num(row.clicks),
-    leads: sumActions(row.actions, LEAD_ACTIONS),
-    purchases: sumActions(row.actions, PURCHASE_ACTIONS),
-    revenue: sumActions(row.action_values, PURCHASE_ACTIONS),
+    leads: pickAction(row.actions, LEAD_ACTIONS),
+    purchases: pickAction(row.actions, PURCHASE_ACTIONS),
+    revenue: pickAction(row.action_values, PURCHASE_ACTIONS),
   };
 }
 
@@ -354,6 +477,9 @@ interface FbAdSet {
   id: string;
   name?: string;
   status?: string;
+  /** Natija turini asosan shu belgilaydi (kampaniya maqsadi emas). */
+  optimization_goal?: string;
+  promoted_object?: { custom_event_type?: string };
   campaign_id?: string;
 }
 interface FbCreative {
@@ -390,7 +516,9 @@ export async function syncCampaigns(
   workspaceId: string,
   actId: string,
   token: string,
-  range: DateRange
+  range: DateRange,
+  /** fbCampaignId -> ad set'lardan yig'ilgan natija ta'rifi. Maqsaddan ustun. */
+  goalByCampaign: Map<string, ResultSpec> = new Map()
 ): Promise<CampaignMap> {
   const campaigns = await fetchAll<FbCampaign>(
     `${actId}/campaigns`,
@@ -403,7 +531,7 @@ export async function syncCampaigns(
   for (const c of campaigns) {
     const raw = ins.get(c.id);
     const m = metricsFromInsight(raw);
-    const r = resultsFrom(raw, m, c.objective);
+    const r = resultsFrom(raw, m, c.objective, goalByCampaign.get(c.id) ?? null);
     const row = await pool.query<{ id: string }>(
       `INSERT INTO campaigns
          (workspace_id, fb_campaign_id, name, status, objective, spend, impressions, clicks,
@@ -430,18 +558,30 @@ export async function syncCampaigns(
   return map;
 }
 
+/**
+ * Ad set ro'yxatini o'qiydi. Alohida chiqarilgan, chunki kampaniya sync'i
+ * ham shu ma'lumotga muhtoj (natija turi ad set optimizatsiyasidan keladi),
+ * va bir xil so'rovni ikki marta yuborish FB limitini behuda yeydi.
+ */
+export function fetchAdSets(actId: string, token: string): Promise<FbAdSet[]> {
+  return fetchAll<FbAdSet>(
+    `${actId}/adsets`,
+    {
+      fields: 'id,name,status,campaign_id,daily_budget,optimization_goal,promoted_object',
+      limit: 200,
+    },
+    token
+  );
+}
+
 export async function syncAdSets(
   workspaceId: string,
   actId: string,
   token: string,
   range: DateRange,
-  campaignMap: CampaignMap
+  campaignMap: CampaignMap,
+  adsets: FbAdSet[]
 ): Promise<AdsetMap> {
-  const adsets = await fetchAll<FbAdSet>(
-    `${actId}/adsets`,
-    { fields: 'id,name,status,campaign_id,daily_budget', limit: 200 },
-    token
-  );
   const ins = await insightsMap(actId, 'adset', token, range);
 
   const map: AdsetMap = new Map();
@@ -452,7 +592,8 @@ export async function syncAdSets(
     const objective = parent?.objective ?? null;
     const raw = ins.get(a.id);
     const m = metricsFromInsight(raw);
-    const r = resultsFrom(raw, m, objective);
+    const goalSpec = specFromAdset(a);
+    const r = resultsFrom(raw, m, objective, goalSpec);
     const costPerLead = m.leads > 0 ? m.spend / m.leads : null;
     const row = await pool.query<{ id: string }>(
       `INSERT INTO adsets
@@ -474,7 +615,7 @@ export async function syncAdSets(
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
        roasOf(m.revenue, m.spend), costPerLead, r.resultType, r.results, r.costPerResult]
     );
-    map.set(a.id, { dbId: row.rows[0].id, campaignDbId, objective });
+    map.set(a.id, { dbId: row.rows[0].id, campaignDbId, objective, spec: goalSpec });
   }
   return map;
 }
@@ -536,7 +677,8 @@ export async function syncAds(
     const objective = parent?.objective ?? adsetInfo?.objective ?? null;
     const raw = ins.get(ad.id);
     const m = metricsFromInsight(raw);
-    const r = resultsFrom(raw, m, objective);
+    // Ad o'z optimizatsiyasiga ega emas — o'zi turgan ad set'nikini oladi.
+    const r = resultsFrom(raw, m, objective, adsetInfo?.spec ?? null);
     await pool.query(
       `INSERT INTO ads
          (workspace_id, adset_id, campaign_id, fb_ad_id, name, status, creative_type,
@@ -598,8 +740,19 @@ export async function syncWorkspace(
   const actId = normalizeActId(ws.fb_ad_account_id);
 
   // Account-level bulk sync: campaigns → adsets → ads (≈6 Graph calls total).
-  const campaignMap = await syncCampaigns(workspaceId, actId, token, range);
-  const adsetMap = await syncAdSets(workspaceId, actId, token, range, campaignMap);
+  //
+  // Ad set'lar EN BIRINCHI o'qiladi, garchi ular ikkinchi bo'lib yozilsa ham:
+  // natija turi (lead / call / purchase) ad set optimizatsiyasida turadi va
+  // kampaniya qatori ham shunga tayanadi. So'rov bir marta yuboriladi.
+  const adsets = await fetchAdSets(actId, token);
+  const campaignMap = await syncCampaigns(
+    workspaceId,
+    actId,
+    token,
+    range,
+    campaignSpecs(adsets)
+  );
+  const adsetMap = await syncAdSets(workspaceId, actId, token, range, campaignMap, adsets);
   const adCount = await syncAds(workspaceId, actId, token, range, adsetMap, campaignMap);
 
   await pool.query(`UPDATE workspaces SET updated_at = now() WHERE id = $1`, [workspaceId]);
