@@ -5,6 +5,8 @@ import { decrypt } from '../utils/encryption';
 import { getAdAccounts } from '../services/facebookOAuth';
 import { getUsage } from '../middleware/planLimits';
 import { signToken } from '../utils/jwt';
+import { runInBackground } from '../utils/background';
+import { syncWorkspace } from '../services/facebookAdsService';
 
 const selectAdAccountSchema = z.object({
   adAccountId: z.string().trim().min(1, 'adAccountId is required'),
@@ -81,18 +83,50 @@ export async function selectAdAccount(req: Request, res: Response): Promise<void
     return;
   }
 
+  const workspaceId = req.user.workspaceId;
+  const adAccountId = parsed.data.adAccountId;
+
   try {
-    const result = await pool.query(
-      `UPDATE workspaces
-         SET fb_ad_account_id = $1, updated_at = now()
-       WHERE id = $2`,
-      [parsed.data.adAccountId, req.user.workspaceId]
+    const prev = await pool.query<{ fb_ad_account_id: string | null }>(
+      `SELECT fb_ad_account_id FROM workspaces WHERE id = $1`,
+      [workspaceId]
     );
-    if (!result.rowCount) {
+    if (!prev.rowCount) {
       res.status(404).json({ error: 'Workspace not found' });
       return;
     }
-    res.json({ success: true, adAccountId: parsed.data.adAccountId });
+    const previousId = prev.rows[0].fb_ad_account_id;
+    const changed = previousId !== adAccountId;
+
+    await pool.query(
+      `UPDATE workspaces
+         SET fb_ad_account_id = $1, updated_at = now()
+       WHERE id = $2`,
+      [adAccountId, workspaceId]
+    );
+
+    // Ad account almashtirilganda eski kampaniya/adset/ad qatorlari qolib
+    // ketardi — jadvallarda ad account ustuni yo'q, shuning uchun dashboard
+    // yangi akkauntni ko'rsatib, ma'lumotni eskisidan chizardi.
+    //
+    // Workspace bir vaqtda bitta ad account bilan ishlaydi, demak eski
+    // qatorlar shunchaki axlat. campaigns o'chsa adsets/ads CASCADE bilan
+    // ketadi; leads va touchpoints saqlanadi, faqat ad havolalari NULL
+    // bo'ladi (ular baribir boshqa akkauntga tegishli edi).
+    if (changed) {
+      await pool.query(`DELETE FROM campaigns WHERE workspace_id = $1`, [workspaceId]);
+      await pool.query(`DELETE FROM adsets WHERE workspace_id = $1`, [workspaceId]);
+      await pool.query(`DELETE FROM ads WHERE workspace_id = $1`, [workspaceId]);
+
+      // Yangi akkauntni darhol tortamiz — aks holda foydalanuvchi bo'sh
+      // dashboard ko'rib, keyingi cron'gacha (15 daq) kutardi.
+      runInBackground(
+        syncWorkspace(workspaceId).then(() => undefined),
+        `resync after ad account switch (${workspaceId})`
+      );
+    }
+
+    res.json({ success: true, adAccountId, resyncing: changed });
   } catch (err) {
     console.error('selectAdAccount error:', err);
     res.status(500).json({ error: 'Failed to select ad account' });

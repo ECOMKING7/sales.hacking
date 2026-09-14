@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { ChevronRight, ChevronLeft, ArrowUpDown } from 'lucide-react';
+import { ChevronRight, ChevronLeft, ArrowUpDown, Play, Image as ImageIcon } from 'lucide-react';
 import { dashboardApi } from '../../services/api';
 import type { EntityRow } from '../../types';
 import {
@@ -39,17 +39,48 @@ function DeliveryBadge({ status }: { status: string | null }) {
   );
 }
 
+/**
+ * Kreativ kataklari. Facebook thumbnail'ni har doim ham bermaydi (ads_read
+ * bilan kreativ so'rovi yiqilishi mumkin), shuning uchun rasm yo'q bo'lsa
+ * turi bo'yicha ikonka chiziladi — ustun bo'sh qolmaydi.
+ */
+function CreativeTile({ url, type }: { url?: string | null; type?: string | null }) {
+  const [broken, setBroken] = useState(false);
+
+  if (url && !broken) {
+    return (
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className="h-8 w-8 flex-none rounded-sm border border-line bg-surface-2 object-cover"
+      />
+    );
+  }
+
+  const Icon = type === 'video' ? Play : ImageIcon;
+  return (
+    <span
+      aria-hidden
+      title={type ?? 'kreativ'}
+      className="grid h-8 w-8 flex-none place-items-center rounded-sm border border-line bg-surface-2 text-ink-3"
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
 function renderCell(row: EntityRow, key: string, drillable: boolean) {
   switch (key) {
     case 'name':
       return (
         <div className="flex items-center gap-2">
-          {row.thumbnailUrl && (
-            <img
-              src={row.thumbnailUrl}
-              alt=""
-              className="h-8 w-8 flex-none rounded-sm border border-line object-cover"
-            />
+          {/* Ad darajasida har doim 32×32 katak turadi: rasm bo'lsa rasm,
+              bo'lmasa kreativ turi ikonkasi. Ilgari thumbnail yo'q bo'lsa
+              hech narsa chiqmasdi va ustun bir tekis emas edi. */}
+          {(row.thumbnailUrl || row.creativeType) && (
+            <CreativeTile url={row.thumbnailUrl} type={row.creativeType} />
           )}
           <span
             className={

@@ -382,7 +382,12 @@ export async function syncAds(
   try {
     const withCreative = await fetchAll<{ id: string; creative?: FbCreative }>(
       `${actId}/ads`,
-      { fields: 'id,creative{thumbnail_url,video_id,object_story_spec}', limit: 100 },
+      // `object_story_spec` ataylab so'ralmaydi — aynan o'sha maydon ads_read
+      // bilan HTTP 500 beradi. Uni tashlaganimizda karusel/rasm farqini
+      // yo'qotamiz (creativeType 'image' deb qaytaradi), lekin thumbnail va
+      // video aniqlanishi saqlanadi. TEKSHIRILISHI KERAK: agar keyinchalik
+      // ads_management olinsa, karusel uchun uni qaytarish mumkin.
+      { fields: 'id,creative{thumbnail_url,video_id}', limit: 100 },
       token
     );
     for (const a of withCreative) {
