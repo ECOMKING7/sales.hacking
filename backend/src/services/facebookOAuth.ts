@@ -4,6 +4,11 @@ import { GRAPH_URL, OAUTH_DIALOG_URL as OAUTH_DIALOG } from '../config/graph';
 
 // Read-only scope is enough to list ad accounts and pull insights.
 // (email isn't needed and isn't a standard scope for the Marketing API app.)
+//
+// Eslatma: Marketing API use case'li app'da login "Facebook Login for
+// Business" orqali ketadi. U `scope=` emas, `config_id=` kutadi — config
+// ichida ruxsatlar oldindan yozilgan. FB_LOGIN_CONFIG_ID qo'yilsa o'sha
+// ishlatiladi; bo'lmasa eski (klassik Facebook Login) yo'liga tushadi.
 const SCOPES = ['ads_read'];
 
 function appId(): string {
@@ -48,8 +53,17 @@ export function generateAuthURL(state: string): string {
     redirect_uri: redirectUri(),
     state,
     response_type: 'code',
-    scope: SCOPES.join(','),
   });
+
+  const configId = process.env.FB_LOGIN_CONFIG_ID?.trim();
+  if (configId) {
+    // Facebook Login for Business — ruxsatlar config ichida.
+    // `scope` bilan birga yuborilsa FB xato beradi, shuning uchun yo u, yo bu.
+    params.set('config_id', configId);
+  } else {
+    params.set('scope', SCOPES.join(','));
+  }
+
   return `${OAUTH_DIALOG}?${params.toString()}`;
 }
 
