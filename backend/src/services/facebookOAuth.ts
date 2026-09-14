@@ -1,8 +1,6 @@
 import axios from 'axios';
 
-const GRAPH_VERSION = 'v19.0';
-const GRAPH_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
-const OAUTH_DIALOG = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
+import { GRAPH_URL, OAUTH_DIALOG_URL as OAUTH_DIALOG } from '../config/graph';
 
 // Read-only scope is enough to list ad accounts and pull insights.
 // (email isn't needed and isn't a standard scope for the Marketing API app.)

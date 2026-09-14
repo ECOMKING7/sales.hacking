@@ -1,8 +1,8 @@
 import axios, { AxiosError } from 'axios';
 import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
+import { GRAPH_URL as GRAPH } from '../config/graph';
 
-const GRAPH = 'https://graph.facebook.com/v19.0';
 const MAX_RETRIES = 3;
 // campaign_id/adset_id/ad_id must be requested explicitly — Facebook does not
 // include them by default, even though insightsMap() keys its results by them.
