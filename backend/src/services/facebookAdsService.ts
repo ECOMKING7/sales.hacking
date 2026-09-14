@@ -360,17 +360,43 @@ export async function syncAds(
   adsetMap: Map<string, { dbId: string; campaignDbId: string | null }>,
   campaignMap: Map<string, string>
 ): Promise<number> {
+  // Ikkiga ajratilgan, ataylab:
+  //
+  // 1) Struktura (id/name/status/bog'lanishlar) — sync'ning maqsadi. Yengil
+  //    so'rov, deyarli hech qachon yiqilmaydi.
+  // 2) Kreativ (rasm, tur) — bezak. `creative{object_story_spec}` og'ir maydon
+  //    va `ads_read` bilan Facebook unga tez-tez HTTP 500 qaytaradi. Ilgari u
+  //    1-so'rovning ichida edi, shuning uchun bitta kreativ xatosi BUTUN ads
+  //    bosqichini o'ldirardi: kampaniya va adsetlar bazaga tushib, adlar
+  //    umuman tushmasdi.
+  //
+  // Endi kreativ alohida va fail-soft: yiqilsa adlar baribir saqlanadi,
+  // faqat thumbnail/turi bo'sh qoladi.
   const ads = await fetchAll<FbAd>(
     `${actId}/ads`,
-    {
-      fields: 'id,name,status,adset_id,campaign_id,creative{thumbnail_url,video_id,object_story_spec}',
-      limit: 200,
-    },
+    { fields: 'id,name,status,adset_id,campaign_id', limit: 200 },
     token
   );
+
+  const creatives = new Map<string, FbCreative>();
+  try {
+    const withCreative = await fetchAll<{ id: string; creative?: FbCreative }>(
+      `${actId}/ads`,
+      { fields: 'id,creative{thumbnail_url,video_id,object_story_spec}', limit: 100 },
+      token
+    );
+    for (const a of withCreative) {
+      if (a.creative) creatives.set(a.id, a.creative);
+    }
+  } catch (e) {
+    // Bezak yo'qolgani sync'ni to'xtatmaydi — sababni logga yozib o'tamiz.
+    console.warn('fb creatives skipped:', (e as Error).message);
+  }
+
   const ins = await insightsMap(actId, 'ad', token, range);
 
   for (const ad of ads) {
+    const creative = creatives.get(ad.id);
     const adsetInfo = ad.adset_id ? adsetMap.get(ad.adset_id) : undefined;
     const adsetDbId = adsetInfo?.dbId ?? null;
     const campaignDbId =
@@ -392,7 +418,7 @@ export async function syncAds(
           leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
           revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, synced_at=now()`,
       [workspaceId, adsetDbId, campaignDbId, ad.id, ad.name ?? null, ad.status ?? null,
-       creativeType(ad.creative), ad.creative?.thumbnail_url ?? null, m.spend,
+       creativeType(creative), creative?.thumbnail_url ?? null, m.spend,
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
        roasOf(m.revenue, m.spend)]
     );
