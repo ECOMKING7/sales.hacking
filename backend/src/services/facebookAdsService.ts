@@ -2,6 +2,7 @@ import axios, { AxiosError } from 'axios';
 import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
 import { GRAPH_URL as GRAPH } from '../config/graph';
+import { recordUsage, usageSummary } from './fbRateLimit';
 
 const MAX_RETRIES = 3;
 // campaign_id/adset_id/ad_id must be requested explicitly — Facebook does not
@@ -249,6 +250,8 @@ function fbErrorMessage(err: AxiosError): string {
   if (e.type) parts.push(e.type);
   if (err.response?.status) parts.push(`HTTP ${err.response.status}`);
   if (e.fbtrace_id) parts.push(`trace ${e.fbtrace_id}`);
+  const usage = usageSummary();
+  if (usage) parts.push(usage);
   return `FB: ${parts.join(' · ')}`;
 }
 
@@ -264,9 +267,13 @@ async function fbGet<T = unknown>(
   while (true) {
     try {
       const res = await axios.get(`${GRAPH}/${path}`, { params });
+      recordUsage(res.headers as unknown as Record<string, unknown>);
       return res.data as T;
     } catch (e) {
       const err = e as AxiosError;
+      // FB limit sarlavhalarini xato javobda ham yuboradi — aynan o'shanda
+      // ular eng kerak.
+      recordUsage(err.response?.headers as unknown as Record<string, unknown>);
       // Fail fast on the ad-account hard limit — don't burn time retrying.
       if (isRateLimit(err) && !isHardAccountLimit(err) && attempt < MAX_RETRIES) {
         const backoff = 2 ** attempt * 1000; // 1s, 2s, 4s

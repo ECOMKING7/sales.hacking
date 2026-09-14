@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { pool, poolStats } from '../db/pool';
 import { enqueueSync } from '../jobs/syncJob';
 import { DateRange } from '../services/facebookAdsService';
+import { fbUsage } from '../services/fbRateLimit';
 
 const triggerSchema = z
   .object({
@@ -153,6 +154,9 @@ export async function cronSync(req: Request, res: Response): Promise<void> {
       failed,
       durationMs: Date.now() - startedAt,
       pool: poolStats(),
+      // Facebook aniq chaqiruvlar sonini bermaydi — limitning necha foizi
+      // ishlatilganini beradi. Bloklangan bo'lsa regainMinutes to'ladi.
+      fbUsage: fbUsage(),
       results,
     });
   } catch (err) {
