@@ -14,9 +14,10 @@ import {
   Sparkles,
   Plus,
   Check,
+  FlaskConical,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { workspaceApi } from '../services/api';
+import api, { workspaceApi } from '../services/api';
 import ThemeToggle from './ThemeToggle';
 import { Badge, Button, Input, cn } from './ui';
 import type { BadgeTone } from './ui';
@@ -26,6 +27,38 @@ const PLAN_TONE: Record<string, BadgeTone> = {
   pro: 'accent',
   agency: 'warn',
 };
+
+/**
+ * Demo ma'lumot chizig'i.
+ *
+ * amoCRM ulanmagunicha CRM yarmi simulyatsiya qilinadi. Bu raqamlarni
+ * kimgadir ko'rsatganda u ularni real deb o'ylamasligi kerak — shuning
+ * uchun belgi butun ilova bo'ylab, har sahifada turadi.
+ */
+function DemoBanner() {
+  const { data } = useQuery({
+    queryKey: ['demo-status'],
+    queryFn: () =>
+      api
+        .get<{ demo: boolean; demoLeads: number }>('/api/dashboard/demo-status')
+        .then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  if (!data?.demo) return null;
+
+  return (
+    <div className="flex items-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-ink-2">
+      <FlaskConical aria-hidden className="h-3.5 w-3.5 flex-none text-warn" />
+      <span>
+        <span className="font-semibold text-ink">DEMO</span> — reklama raqamlari Facebook'dan
+        real, CRM qismi ({data.demoLeads.toLocaleString()} lid, sotuv, daromad) simulyatsiya.
+        amoCRM ulangach real ma'lumot bilan almashadi.
+      </span>
+    </div>
+  );
+}
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -302,8 +335,11 @@ export default function Layout() {
           <span className="hidden text-sm text-ink-3 sm:inline">{user?.email}</span>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto">
+          <DemoBanner />
+          <div className="p-4 md:p-8">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

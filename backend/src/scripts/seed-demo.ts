@@ -215,6 +215,18 @@ async function seed(workspaceId: string): Promise<void> {
 
   const hozir = new Date();
 
+  // Barcha lidlar avval xotirada yig'iladi, keyin PARTIYALAB yoziladi.
+  //
+  // Ilgari har lid uchun alohida INSERT ketardi: 500 lid = 1000 ta so'rov
+  // Frankfurt'dagi bazaga. Toshkentdan har biri ~150ms — jami 2.5 daqiqa va
+  // ko'pincha oxirigacha yetmasdi. Partiyada 4-5 so'rov qoladi.
+  type LeadRow = [
+    string, string, string, string, string, number,
+    string, number, number | null,
+    Date, Date | null, Date | null, Date | null, string,
+  ];
+  const batch: LeadRow[] = [];
+
   for (const ad of ads) {
     const r = mulberry32(seedFrom(ad.id));
     const arx = arxetipTanla(ad.result_type, r);
@@ -231,23 +243,24 @@ async function seed(workspaceId: string): Promise<void> {
     const yopilishEhtimol = between(r, ...arx.yopilish);
 
     for (let i = 0; i < lidSoni; i++) {
-      // Lid oxirgi 30 kun ichida tushgan
-      const yaratilgan = kunQosh(hozir, -between(r, 0, 30));
+      // Lid oxirgi 30 kun ichida tushgan. Sifatli/sotuv sanalari undan
+      // KEYIN keladi, shuning uchun lid yetarlicha eski bo'lishi kerak —
+      // aks holda "kelajakda yopilgan" lid chiqadi.
+      const yosh = between(r, 0, 30);
+      const yaratilgan = kunQosh(hozir, -yosh);
       const crmId = `demo-${ad.id.slice(0, 8)}-${i}`;
 
-      const sifatliMi = r() < sifatliEhtimol;
-      const sotildiMi = sifatliMi && r() < yopilishEhtimol;
-
-      // Sifatli etapga 0.5–4 kunda yetadi
-      const sifatliSana = sifatliMi ? kunQosh(yaratilgan, between(r, 0.5, 4)) : null;
-
+      const sifatliKechikish = between(r, 0.5, 4);
       const dealKun = intBetween(r, ...arx.kun);
+
+      // Yosh yetmasa bosqichga o'tmaydi — tabiiy: kecha tushgan lid
+      // bugun yopilgan bo'lolmaydi.
+      const sifatliMi = r() < sifatliEhtimol && yosh > sifatliKechikish;
+      const sotildiMi = sifatliMi && r() < yopilishEhtimol && yosh > dealKun;
+
+      const sifatliSana = sifatliMi ? kunQosh(yaratilgan, sifatliKechikish) : null;
       const yopilganSana = sotildiMi ? kunQosh(yaratilgan, dealKun) : null;
       const chek = sotildiMi ? Math.round(between(r, ...arx.chek)) : 0;
-
-      // Kelajakdagi sana bo'lmasin
-      if (yopilganSana && yopilganSana > hozir) continue;
-      if (sifatliSana && sifatliSana > hozir) continue;
 
       let status: string;
       if (sotildiMi) status = 'won';
@@ -263,51 +276,22 @@ async function seed(workspaceId: string): Promise<void> {
             ? 'Yopildi va amalga oshmadi'
             : 'Yangi lid';
 
-      const { rows } = await pool.query<{ id: string }>(
-        `INSERT INTO leads
-           (workspace_id, crm_lead_id, phone_hash, email_hash, status, revenue,
-            last_click_ad_id, total_touches, deal_time_days,
-            crm_created_at, qualified_at, won_at, lost_at, crm_stage, is_demo)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, true)
-         ON CONFLICT (workspace_id, crm_lead_id) DO NOTHING
-         RETURNING id`,
-        [
-          workspaceId,
-          crmId,
-          hash(`998${intBetween(r, 900000000, 999999999)}`),
-          hash(`demo${i}@example.uz`),
-          status,
-          chek,
-          ad.id,
-          1,
-          sotildiMi ? dealKun : null,
-          yaratilgan,
-          sifatliSana,
-          yopilganSana,
-          status === 'lost' ? kunQosh(yaratilgan, between(r, 1, 12)) : null,
-          stageNomi,
-        ]
-      );
-
-      const leadId = rows[0]?.id;
-      if (!leadId) continue; // allaqachon mavjud — idempotent
-
-      await pool.query(
-        `INSERT INTO touchpoints
-           (workspace_id, lead_id, ad_id, adset_id, campaign_id,
-            event_type, touch_number, attribution_weight,
-            fbclid, occurred_at, is_demo)
-         VALUES ($1,$2,$3,$4,$5,'lead',1,1.0,$6,$7,true)`,
-        [
-          workspaceId,
-          leadId,
-          ad.id,
-          ad.adset_id,
-          ad.campaign_id,
-          `demo_${crypto.randomBytes(8).toString('hex')}`,
-          yaratilgan,
-        ]
-      );
+      batch.push([
+        workspaceId,
+        crmId,
+        hash(`998${intBetween(r, 900000000, 999999999)}`),
+        hash(`demo-${ad.id.slice(0, 8)}-${i}@example.uz`),
+        status,
+        chek,
+        ad.id,
+        1,
+        sotildiMi ? dealKun : null,
+        yaratilgan,
+        sifatliSana,
+        yopilganSana,
+        status === 'lost' ? kunQosh(yaratilgan, between(r, 1, 12)) : null,
+        stageNomi,
+      ]);
 
       jamiLid++;
       if (sifatliMi) jamiSifatli++;
@@ -317,6 +301,48 @@ async function seed(workspaceId: string): Promise<void> {
       }
     }
   }
+
+  // ---------- partiyalab yozish ----------
+  const FIELDS = 14;
+  const CHUNK = 400; // 400 × 14 = 5600 parametr, Postgres chegarasi 65535
+
+  for (let ofs = 0; ofs < batch.length; ofs += CHUNK) {
+    const chunk = batch.slice(ofs, ofs + CHUNK);
+    const values = chunk
+      .map((_, i) => {
+        const b = i * FIELDS;
+        const p = Array.from({ length: FIELDS }, (_, k) => `$${b + k + 1}`).join(',');
+        return `(${p}, true)`;
+      })
+      .join(',');
+
+    await pool.query(
+      `INSERT INTO leads
+         (workspace_id, crm_lead_id, phone_hash, email_hash, status, revenue,
+          last_click_ad_id, total_touches, deal_time_days,
+          crm_created_at, qualified_at, won_at, lost_at, crm_stage, is_demo)
+       VALUES ${values}
+       ON CONFLICT (workspace_id, crm_lead_id) DO NOTHING`,
+      chunk.flat()
+    );
+    console.log(`  … ${Math.min(ofs + CHUNK, batch.length)} / ${batch.length} lid`);
+  }
+
+  // Touchpoint'lar lidlardan hosil qilinadi — alohida so'rov ketmaydi.
+  // `ad_id` lidda allaqachon bor, adset/campaign ads jadvalidan olinadi.
+  await pool.query(
+    `INSERT INTO touchpoints
+       (workspace_id, lead_id, ad_id, adset_id, campaign_id,
+        event_type, touch_number, attribution_weight, fbclid, occurred_at, is_demo)
+     SELECT l.workspace_id, l.id, a.id, a.adset_id, a.campaign_id,
+            'lead', 1, 1.0, 'demo_' || replace(l.id::text, '-', ''), l.crm_created_at, true
+       FROM leads l
+       JOIN ads a ON a.id = l.last_click_ad_id
+      WHERE l.workspace_id = $1
+        AND l.is_demo = true
+        AND NOT EXISTS (SELECT 1 FROM touchpoints t WHERE t.lead_id = l.id)`,
+    [workspaceId]
+  );
 
   // ---------- roll-up ----------
   // Daromad lidlardan ad → adset → kampaniyaga ko'tariladi. Atribusiya

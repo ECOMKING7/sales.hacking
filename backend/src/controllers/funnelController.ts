@@ -38,6 +38,34 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Workspace'da demo (simulyatsiya qilingan) lid bormi.
+ *
+ * UI shu asosda butun ekran bo'ylab ogohlantirish chizig'ini chizadi.
+ * Sababi oddiy: simulyatsiya raqamlarini kimgadir ko'rsatganda u ularni
+ * real deb qabul qilmasligi kerak. Belgisiz demo — noto'g'ri taassurot,
+ * va bu texnik emas, ishonch masalasi.
+ */
+export async function demoStatus(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const { rows } = await pool.query<{ n: string }>(
+      `SELECT COUNT(*) AS n FROM leads WHERE workspace_id = $1 AND is_demo = true`,
+      [workspaceId]
+    );
+    const count = num(rows[0]?.n);
+    res.json({ demo: count > 0, demoLeads: count });
+  } catch (err) {
+    // Fail-soft: banner chiqmagani sababli sahifa buzilmasin.
+    console.error('demoStatus error:', (err as Error).message);
+    res.json({ demo: false, demoLeads: 0 });
+  }
+}
+
 export async function funnel(req: Request, res: Response): Promise<void> {
   const workspaceId = req.user?.workspaceId;
   if (!workspaceId) {
