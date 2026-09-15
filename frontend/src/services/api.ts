@@ -102,6 +102,12 @@ export const dashboardApi = {
     api
       .get<Paginated<EntityRow>>('/api/dashboard/campaigns', { params })
       .then((r) => r.data),
+  // Ko'p tanlash: `campaignIds` / `adsetIds` — vergul bilan ajratilgan ro'yxat.
+  // Bo'sh bo'lsa filtr qo'llanmaydi va hammasi qaytadi.
+  adsets: (params?: Record<string, string>) =>
+    api.get<Paginated<EntityRow>>('/api/dashboard/adsets', { params }).then((r) => r.data),
+  ads: (params?: Record<string, string>) =>
+    api.get<Paginated<EntityRow>>('/api/dashboard/ads', { params }).then((r) => r.data),
   campaignAdsets: (campaignId: string, params?: Record<string, string>) =>
     api
       .get<Paginated<EntityRow>>(`/api/dashboard/campaigns/${campaignId}/adsets`, { params })

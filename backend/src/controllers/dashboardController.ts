@@ -265,6 +265,91 @@ export async function campaigns(req: Request, res: Response): Promise<void> {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   KO'P TANLASH — Ads Manager naqshi
+
+   Ads Manager'da kampaniya tanlanadi → "Ad sets" yorlig'i FAQAT o'sha
+   kampaniyalarning ad set'larini ko'rsatadi → ular tanlanadi → "Ads"
+   yorlig'i faqat o'sha ad set'larning reklamalarini ko'rsatadi.
+
+   Eski `/campaigns/:id/adsets` bitta ota-onaga bog'langan edi. Bu ikki
+   endpoint ro'yxat qabul qiladi. Ro'yxat bo'sh bo'lsa — filtr yo'q, hammasi
+   qaytadi (Ads Manager ham shunday: hech narsa tanlanmagan bo'lsa hammasi).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * "a,b,c" → ['a','b','c']. UUID bo'lmaganlari tashlanadi: so'rov
+ * parametrlashtirilgan bo'lsa ham, buzuq qiymat Postgres'da cast xatosiga
+ * olib keladi va 500 qaytaradi — foydalanuvchi uchun tushunarsiz.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function idList(v: unknown): string[] {
+  return String(v ?? '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => UUID_RE.test(x))
+    .slice(0, 500);
+}
+
+async function listEntities(
+  req: Request,
+  res: Response,
+  table: 'adsets' | 'ads',
+  parents: Array<{ column: string; query: string }>
+): Promise<void> {
+  const workspaceId = ws(req);
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const { limit, offset, page } = paginate(req);
+  const sortCol = ENTITY_SORTS[String(req.query.sort ?? 'spend')] ?? 'spend';
+  const order = String(req.query.order ?? 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+  const params: unknown[] = [workspaceId];
+  let where = 'WHERE workspace_id = $1';
+
+  // Eng aniq filtr yutadi: ad set tanlangan bo'lsa kampaniya filtri ortiqcha.
+  for (const p of parents) {
+    const ids = idList(req.query[p.query]);
+    if (ids.length === 0) continue;
+    params.push(ids);
+    where += ` AND ${p.column} = ANY($${params.length}::uuid[])`;
+    break;
+  }
+
+  const listParams = [...params, limit, offset];
+
+  try {
+    const rows = await pool.query(
+      `${entitySelect(table)} ${where}
+        ORDER BY ${sortCol} ${order} NULLS LAST
+        LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+      listParams
+    );
+    const totalR = await pool.query(`${totalsSelect(table)} ${where}`, params);
+    const t = totalR.rows[0];
+    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
+  } catch (err) {
+    console.error(`${table} error:`, (err as Error).message);
+    res.status(500).json({ error: `Failed to load ${table}` });
+  }
+}
+
+/** GET /api/dashboard/adsets?campaignIds=a,b,c */
+export function adsets(req: Request, res: Response): Promise<void> {
+  return listEntities(req, res, 'adsets', [{ column: 'campaign_id', query: 'campaignIds' }]);
+}
+
+/** GET /api/dashboard/ads?adsetIds=a,b | ?campaignIds=a,b */
+export function ads(req: Request, res: Response): Promise<void> {
+  return listEntities(req, res, 'ads', [
+    { column: 'adset_id', query: 'adsetIds' },
+    { column: 'campaign_id', query: 'campaignIds' },
+  ]);
+}
+
 // ---------- GET /api/dashboard/campaigns/:id/adsets ----------
 export async function campaignAdsets(req: Request, res: Response): Promise<void> {
   const workspaceId = ws(req);

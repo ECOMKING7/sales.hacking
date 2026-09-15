@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { ChevronRight, ChevronLeft, ArrowUpDown, Play, Image as ImageIcon } from 'lucide-react';
+import Checkbox from './Checkbox';
 import { dashboardApi } from '../../services/api';
 import type { EntityRow, EntityTotals } from '../../types';
 import {
@@ -249,24 +250,30 @@ export type QuickFilter = 'all' | 'active' | 'delivery';
 
 interface Props {
   view: View;
-  campaign: Sel;
-  adset: Sel;
+  /** Tanlangan ota-onalar. Bo'sh bo'lsa filtr yo'q — hammasi ko'rinadi. */
+  campaignIds: string[];
+  adsetIds: string[];
   search: string;
   filter: QuickFilter;
   visibleColumns: string[];
+  /** Shu ko'rinishda tanlangan qatorlar (id → nom). */
+  selected: Map<string, string>;
+  onToggle: (row: { id: string; name: string }, checked: boolean) => void;
+  onToggleAll: (rows: Array<{ id: string; name: string }>, checked: boolean) => void;
   onDrill: (sel: { id: string; name: string }) => void;
-  onNavigate: (view: View) => void;
 }
 
 export default function EntityTable({
   view,
-  campaign,
-  adset,
+  campaignIds,
+  adsetIds,
   search,
   filter,
   visibleColumns,
+  selected,
+  onToggle,
+  onToggleAll,
   onDrill,
-  onNavigate,
 }: Props) {
   const [sort, setSort] = useState('spend');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
@@ -276,7 +283,7 @@ export default function EntityTable({
   // sent to the API as-is, showing an empty page even though matches exist.
   useEffect(() => {
     setPage(1);
-  }, [view, campaign?.id, adset?.id, search, filter]);
+  }, [view, campaignIds.join(','), adsetIds.join(','), search, filter]);
 
   const params: Record<string, string> = {
     sort,
@@ -285,11 +292,21 @@ export default function EntityTable({
     page: String(page),
   };
 
+  const campaignKey = campaignIds.join(',');
+  const adsetKey = adsetIds.join(',');
+
   const query = useQuery({
-    queryKey: ['entities', view, campaign?.id, adset?.id, sort, order, page],
+    queryKey: ['entities', view, campaignKey, adsetKey, sort, order, page],
     queryFn: () => {
-      if (view === 'adsets' && campaign) return dashboardApi.campaignAdsets(campaign.id, params);
-      if (view === 'ads' && adset) return dashboardApi.adsetAds(adset.id, params);
+      // Eng aniq filtr yutadi: ad set tanlangan bo'lsa kampaniya filtri
+      // ortiqcha va backend ham shu tartibni qo'llaydi.
+      if (view === 'adsets') {
+        return dashboardApi.adsets({ ...params, ...(campaignKey && { campaignIds: campaignKey }) });
+      }
+      if (view === 'ads') {
+        if (adsetKey) return dashboardApi.ads({ ...params, adsetIds: adsetKey });
+        return dashboardApi.ads({ ...params, ...(campaignKey && { campaignIds: campaignKey }) });
+      }
       return dashboardApi.campaigns(params);
     },
     placeholderData: keepPreviousData,
@@ -331,38 +348,24 @@ export default function EntityTable({
 
   const rowClickable = view !== 'ads';
 
+  const selectableRows = rows.map((r) => ({ id: r.id, name: r.name ?? '—' }));
+  const someChecked = selectableRows.some((r) => selected.has(r.id));
+  const allChecked = selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.id));
+
   return (
     <div className="w-full overflow-hidden rounded-md border-[1.5px] border-line bg-surface">
-      {/* Breadcrumb */}
-      {view !== 'campaigns' && (
-        <div className="flex items-center gap-1 border-b border-line px-4 py-2 text-xs text-ink-2">
-          <button onClick={() => onNavigate('campaigns')} className="hover:text-accent">
-            Campaigns
-          </button>
-          {campaign && (
-            <>
-              <ChevronRight aria-hidden className="h-3 w-3 text-ink-3" />
-              <button
-                onClick={() => onNavigate('adsets')}
-                className={view === 'adsets' ? 'font-medium text-ink' : 'hover:text-accent'}
-              >
-                {campaign.name}
-              </button>
-            </>
-          )}
-          {adset && view === 'ads' && (
-            <>
-              <ChevronRight aria-hidden className="h-3 w-3 text-ink-3" />
-              <span className="font-medium text-ink">{adset.name}</span>
-            </>
-          )}
-        </div>
-      )}
-
       <TableWrap className="rounded-none border-0">
         <Table>
           <thead>
             <tr>
+              <Th className="w-10">
+                <Checkbox
+                  checked={allChecked}
+                  indeterminate={someChecked && !allChecked}
+                  onChange={(v) => onToggleAll(selectableRows, v)}
+                  label="Hammasini tanlash"
+                />
+              </Th>
               {cols.map((c) => {
                 const isSorted = sort === c.sortKey && Boolean(c.sortKey);
                 return (
@@ -406,6 +409,9 @@ export default function EntityTable({
             {query.isLoading &&
               Array.from({ length: 8 }).map((_, i) => (
                 <Tr key={`s-${i}`}>
+                  <Td>
+                    <Skeleton className="h-3.5 w-4" />
+                  </Td>
                   {cols.map((c) => (
                     <Td key={c.key}>
                       <Skeleton className="h-3.5 w-full" />
@@ -415,7 +421,7 @@ export default function EntityTable({
               ))}
 
             {!query.isLoading && query.isError && (
-              <TableEmpty colSpan={cols.length}>
+              <TableEmpty colSpan={cols.length + 1}>
                 <span className="text-bad">Could not load {entityLabel}.</span>
                 <span className="mt-3 flex justify-center">
                   <Button variant="secondary" size="sm" onClick={() => query.refetch()}>
@@ -426,7 +432,7 @@ export default function EntityTable({
             )}
 
             {!query.isLoading && !query.isError && rows.length === 0 && (
-              <TableEmpty colSpan={cols.length}>No {entityLabel} found.</TableEmpty>
+              <TableEmpty colSpan={cols.length + 1}>No {entityLabel} found.</TableEmpty>
             )}
 
             {!query.isLoading &&
@@ -435,8 +441,20 @@ export default function EntityTable({
                 <Tr
                   key={r.id}
                   onClick={() => rowClickable && onDrill({ id: r.id, name: r.name ?? '—' })}
-                  className={rowClickable ? 'cursor-pointer' : undefined}
+                  className={cn(
+                    rowClickable && 'cursor-pointer',
+                    selected.has(r.id) && 'bg-tint/60'
+                  )}
                 >
+                  {/* Checkbox qator bosilishini to'xtatadi: aks holda belgilash
+                      bir vaqtda pastga o'tib ketardi. */}
+                  <Td onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selected.has(r.id)}
+                      onChange={(v) => onToggle({ id: r.id, name: r.name ?? '—' }, v)}
+                      label={`Tanlash: ${r.name ?? r.id}`}
+                    />
+                  </Td>
                   {cols.map((c) => (
                     <Td key={c.key} numeric={c.align === 'right'}>
                       {renderCell(r, c.key, c.key === 'name' && rowClickable)}
@@ -452,6 +470,7 @@ export default function EntityTable({
           {showTotals && totals && (
             <tfoot>
               <tr className="border-t-[1.5px] border-line bg-surface-2 font-semibold text-ink">
+                <td className="px-3 py-2.5" />
                 {cols.map((c, i) => (
                   <td
                     key={c.key}

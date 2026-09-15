@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Search } from 'lucide-react';
+import { AlertTriangle, Search, X } from 'lucide-react';
 import { dashboardApi, facebookApi, amocrmApi } from '../services/api';
 import KpiCard from '../components/KpiCard';
 import SourceDonut from '../components/dashboard/SourceDonut';
-import EntityTable, { View, Sel, QuickFilter } from '../components/dashboard/EntityTable';
+import EntityTable, { View, QuickFilter } from '../components/dashboard/EntityTable';
 import TopPerformers from '../components/dashboard/TopPerformers';
 import AdAccountSelector from '../components/dashboard/AdAccountSelector';
 import DateRangePicker from '../components/dashboard/DateRangePicker';
@@ -57,8 +57,11 @@ export default function DashboardPage() {
   const [model, setModel] = useState<Model>('last_click');
 
   const [view, setView] = useState<View>('campaigns');
-  const [campaign, setCampaign] = useState<Sel>(null);
-  const [adset, setAdset] = useState<Sel>(null);
+
+  // Tanlangan kampaniya/ad set'lar — Ads Manager naqshi. Map, Set emas:
+  // yorliqdagi chip tanlangan yagona element NOMINI ko'rsatadi, id emas.
+  const [selCampaigns, setSelCampaigns] = useState<Map<string, string>>(new Map());
+  const [selAdsets, setSelAdsets] = useState<Map<string, string>>(new Map());
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<QuickFilter>('all');
   const [columns, setColumns] = useState<string[]>(loadVisibleColumns);
@@ -88,8 +91,8 @@ export default function DashboardPage() {
     if (prevAccount.current === adAccountId) return;
     prevAccount.current = adAccountId;
     setView('campaigns');
-    setCampaign(null);
-    setAdset(null);
+    setSelCampaigns(new Map());
+    setSelAdsets(new Map());
     setSearch('');
     void queryClient.invalidateQueries();
   }, [adAccountId, queryClient]);
@@ -126,23 +129,67 @@ export default function DashboardPage() {
     saveVisibleColumns(keys);
   };
 
-  // Drill one level down from the current view.
+  const campaignIds = [...selCampaigns.keys()];
+  const adsetIds = [...selAdsets.keys()];
+
+  /** Hozirgi ko'rinishdagi tanlov to'plami. Ads darajasida tanlash yig'ilmaydi
+   *  — undan pastda daraja yo'q, shuning uchun bo'sh Map beriladi. */
+  const currentSelection =
+    view === 'campaigns' ? selCampaigns : view === 'adsets' ? selAdsets : new Map<string, string>();
+
+  const setCurrent = (next: Map<string, string>) => {
+    if (view === 'campaigns') {
+      setSelCampaigns(next);
+      // Kampaniya tanlovi o'zgarsa, eski ad set tanlovi endi boshqa
+      // kampaniyaga tegishli bo'lishi mumkin — tozalaymiz, aks holda
+      // "Ads" yorlig'i mos kelmaydigan reklamalarni ko'rsatardi.
+      setSelAdsets(new Map());
+    } else if (view === 'adsets') {
+      setSelAdsets(next);
+    }
+  };
+
+  const toggleRow = (row: { id: string; name: string }, checked: boolean) => {
+    const next = new Map(currentSelection);
+    if (checked) next.set(row.id, row.name);
+    else next.delete(row.id);
+    setCurrent(next);
+  };
+
+  const toggleAll = (rows: Array<{ id: string; name: string }>, checked: boolean) => {
+    const next = new Map(currentSelection);
+    for (const r of rows) {
+      if (checked) next.set(r.id, r.name);
+      else next.delete(r.id);
+    }
+    setCurrent(next);
+  };
+
+  // Nom bosilganda: faqat o'shani tanlab, bir daraja pastga o'tamiz —
+  // Ads Manager ham shunday qiladi.
   const handleDrill = (sel: { id: string; name: string }) => {
     if (view === 'campaigns') {
-      setCampaign(sel);
-      setAdset(null);
+      setSelCampaigns(new Map([[sel.id, sel.name]]));
+      setSelAdsets(new Map());
       setView('adsets');
     } else if (view === 'adsets') {
-      setAdset(sel);
+      setSelAdsets(new Map([[sel.id, sel.name]]));
       setView('ads');
     }
   };
 
-  const switchTab = (target: View) => {
-    if (target === 'adsets' && !campaign) return;
-    if (target === 'ads' && !adset) return;
-    setView(target);
+  const clearSelection = (level: View) => {
+    if (level === 'campaigns') {
+      setSelCampaigns(new Map());
+      setSelAdsets(new Map());
+    } else if (level === 'adsets') {
+      setSelAdsets(new Map());
+    }
   };
+
+  /** Yorliq yozuvi: bitta tanlansa nomi, ko'p bo'lsa soni. */
+  const tabChipLabel = (sel: Map<string, string>) =>
+    sel.size === 1 ? [...sel.values()][0] : `${sel.size} tanlandi`;
 
   return (
     <div className="space-y-5">
@@ -166,20 +213,37 @@ export default function DashboardPage() {
         <h1 className="mr-2 text-xl font-bold text-ink">Dashboard</h1>
         <AdAccountSelector />
 
-        {/* View tab switcher */}
-        <div className="inline-flex items-center gap-1.5">
+        {/* Yorliqlar + tanlov chiplari (Ads Manager naqshi).
+            Yorliq hech qachon bloklanmaydi: hech narsa tanlanmagan bo'lsa
+            shu darajaning hammasi ko'rinadi. */}
+        <div className="inline-flex flex-wrap items-center gap-1.5">
           {VIEW_TABS.map((t) => {
-            const disabled = (t.id === 'adsets' && !campaign) || (t.id === 'ads' && !adset);
+            const sel = t.id === 'campaigns' ? selCampaigns : t.id === 'adsets' ? selAdsets : null;
             return (
-              <button
-                key={t.id}
-                onClick={() => switchTab(t.id)}
-                disabled={disabled}
-                aria-pressed={view === t.id}
-                className={chip(view === t.id, disabled)}
-              >
-                {t.label}
-              </button>
+              <div key={t.id} className="inline-flex items-center">
+                <button
+                  onClick={() => setView(t.id)}
+                  aria-pressed={view === t.id}
+                  className={cn(chip(view === t.id), sel && sel.size > 0 && 'rounded-r-none')}
+                >
+                  {t.label}
+                </button>
+                {sel && sel.size > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-r-sm border-[1.5px] border-l-0 border-edge bg-tint px-2 py-1.5 text-sm font-semibold text-accent"
+                    title={[...sel.values()].join(', ')}
+                  >
+                    <span className="max-w-[10rem] truncate">{tabChipLabel(sel)}</span>
+                    <button
+                      onClick={() => clearSelection(t.id)}
+                      aria-label={`${t.label} tanlovini tozalash`}
+                      className="rounded-[3px] text-accent/70 hover:text-accent"
+                    >
+                      <X aria-hidden className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                )}
+              </div>
             );
           })}
         </div>
@@ -266,13 +330,15 @@ export default function DashboardPage() {
       {/* ── Full-width data table ── */}
       <EntityTable
         view={view}
-        campaign={campaign}
-        adset={adset}
+        campaignIds={campaignIds}
+        adsetIds={adsetIds}
         search={search}
         filter={filter}
         visibleColumns={columns}
+        selected={currentSelection}
+        onToggle={toggleRow}
+        onToggleAll={toggleAll}
         onDrill={handleDrill}
-        onNavigate={setView}
       />
 
       {/* ── Donut + Top Performers below ── */}
