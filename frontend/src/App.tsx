@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
+import FunnelPage from './pages/FunnelPage';
 import PurchasesPage from './pages/PurchasesPage';
 import OnboardingPage from './pages/OnboardingPage';
 import UpgradePage from './pages/UpgradePage';
@@ -43,6 +44,7 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/funnel" element={<FunnelPage />} />
         <Route path="/upgrade" element={<UpgradePage />} />
         <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/leads" element={<PlaceholderPage title="Leads" />} />

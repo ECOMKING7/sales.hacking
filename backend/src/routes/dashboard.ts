@@ -13,6 +13,7 @@ import {
   exportWonDeals,
   leadDetail,
 } from '../controllers/dashboardController';
+import { funnel } from '../controllers/funnelController';
 
 const router = Router();
 
@@ -20,6 +21,8 @@ const router = Router();
 router.use(verifyToken);
 
 router.get('/overview', overview);
+// Ad → lid → sifatli lid → sotuv → pul, bitta jadvalda
+router.get('/funnel', funnel);
 router.get('/campaigns', campaigns);
 router.get('/campaigns/:id/adsets', campaignAdsets);
 router.get('/adsets/:id/ads', adsetAds);

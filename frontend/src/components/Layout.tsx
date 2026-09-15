@@ -3,6 +3,7 @@ import { NavLink, Link, useNavigate, Outlet } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
+  Filter,
   ShoppingCart,
   Users,
   FileBarChart,
@@ -28,6 +29,7 @@ const PLAN_TONE: Record<string, BadgeTone> = {
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/funnel', label: 'Voronka', icon: Filter },
   { to: '/purchases', label: 'Purchases', icon: ShoppingCart },
   { to: '/leads', label: 'Leads', icon: Users },
   { to: '/reports', label: 'Reports', icon: FileBarChart },
