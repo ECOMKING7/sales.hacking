@@ -337,6 +337,62 @@ async function listEntities(
   }
 }
 
+/**
+ * GET /api/dashboard/entity-ids?level=campaigns|adsets|ads&campaignIds=&adsetIds=
+ *
+ * Joriy filtrga mos HAMMA element id va nomini qaytaradi — sahifalashsiz.
+ *
+ * Nima uchun kerak: jadval bir vaqtda 50 qator ko'rsatadi, sarlavhadagi
+ * katakcha faqat o'shalarni belgilaydi. "Barcha 247 tasini tanlash" tugmasi
+ * esa ro'yxatning qolganini ham olishi kerak — lekin butun qatorni (spend,
+ * revenue, thumbnail...) tortib kelish ortiqcha. Faqat id va nom keladi.
+ *
+ * Chegara 5000: undan katta ro'yxatda "hammasini tanlash" baribir ma'nosiz,
+ * va javob hajmi brauzerni cho'ktiradi.
+ */
+export async function entityIds(req: Request, res: Response): Promise<void> {
+  const workspaceId = ws(req);
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const levelRaw = String(req.query.level ?? 'campaigns');
+  const table: 'campaigns' | 'adsets' | 'ads' =
+    levelRaw === 'adsets' ? 'adsets' : levelRaw === 'ads' ? 'ads' : 'campaigns';
+
+  const params: unknown[] = [workspaceId];
+  let where = 'WHERE workspace_id = $1';
+
+  if (table !== 'campaigns') {
+    const parents =
+      table === 'adsets'
+        ? [{ column: 'campaign_id', query: 'campaignIds' }]
+        : [
+            { column: 'adset_id', query: 'adsetIds' },
+            { column: 'campaign_id', query: 'campaignIds' },
+          ];
+    for (const p of parents) {
+      const ids = idList(req.query[p.query]);
+      if (ids.length === 0) continue;
+      params.push(ids);
+      where += ` AND ${p.column} = ANY($${params.length}::uuid[])`;
+      break;
+    }
+  }
+
+  try {
+    const { rows } = await pool.query<{ id: string; name: string | null }>(
+      `SELECT id, name FROM ${table} ${where} ORDER BY spend DESC LIMIT 5000`,
+      params
+    );
+    res.json({ ids: rows });
+  } catch (err) {
+    console.error('entityIds error:', (err as Error).message);
+    res.status(500).json({ error: 'Failed to load ids' });
+  }
+}
+
 /** GET /api/dashboard/adsets?campaignIds=a,b,c */
 export function adsets(req: Request, res: Response): Promise<void> {
   return listEntities(req, res, 'adsets', [{ column: 'campaign_id', query: 'campaignIds' }]);

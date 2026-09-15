@@ -178,6 +178,21 @@ export default function DashboardPage() {
     }
   };
 
+  /**
+   * Filtrga mos BARCHA elementni tanlaydi — sahifalardan tashqari ham.
+   *
+   * Sarlavhadagi katakcha faqat ko'rinib turgan 50 qatorni belgilaydi.
+   * Ro'yxat 247 ta bo'lsa, foydalanuvchi "hammasini tanladim" deb o'ylab
+   * qolishi mumkin. Shuning uchun alohida, ataylab bosiladigan amal.
+   */
+  const selectAllMatching = async () => {
+    if (view === 'ads') return; // ads darajasida tanlov ishlatilmaydi
+    const params: Record<string, string> = { level: view };
+    if (view === 'adsets' && campaignIds.length > 0) params.campaignIds = campaignIds.join(',');
+    const all = await dashboardApi.entityIds(params);
+    setCurrent(new Map(all.map((r) => [r.id, r.name ?? '—'])));
+  };
+
   const clearSelection = (level: View) => {
     if (level === 'campaigns') {
       setSelCampaigns(new Map());
@@ -338,6 +353,8 @@ export default function DashboardPage() {
         selected={currentSelection}
         onToggle={toggleRow}
         onToggleAll={toggleAll}
+        onSelectAllMatching={selectAllMatching}
+        onClearSelection={() => clearSelection(view)}
         onDrill={handleDrill}
       />
 

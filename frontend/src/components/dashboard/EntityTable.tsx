@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { ChevronRight, ChevronLeft, ArrowUpDown, Play, Image as ImageIcon } from 'lucide-react';
+import {
+  ChevronRight,
+  ChevronLeft,
+  ArrowUpDown,
+  Play,
+  Image as ImageIcon,
+  X,
+} from 'lucide-react';
 import Checkbox from './Checkbox';
 import { dashboardApi } from '../../services/api';
 import type { EntityRow, EntityTotals } from '../../types';
@@ -260,6 +267,9 @@ interface Props {
   selected: Map<string, string>;
   onToggle: (row: { id: string; name: string }, checked: boolean) => void;
   onToggleAll: (rows: Array<{ id: string; name: string }>, checked: boolean) => void;
+  /** Filtrga mos BARCHA elementni tanlash (sahifalardan tashqari ham). */
+  onSelectAllMatching: () => void | Promise<void>;
+  onClearSelection: () => void;
   onDrill: (sel: { id: string; name: string }) => void;
 }
 
@@ -273,6 +283,8 @@ export default function EntityTable({
   selected,
   onToggle,
   onToggleAll,
+  onSelectAllMatching,
+  onClearSelection,
   onDrill,
 }: Props) {
   const [sort, setSort] = useState('spend');
@@ -348,12 +360,54 @@ export default function EntityTable({
 
   const rowClickable = view !== 'ads';
 
+  const [selectingAll, setSelectingAll] = useState(false);
   const selectableRows = rows.map((r) => ({ id: r.id, name: r.name ?? '—' }));
   const someChecked = selectableRows.some((r) => selected.has(r.id));
   const allChecked = selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.id));
 
   return (
     <div className="w-full overflow-hidden rounded-md border-[1.5px] border-line bg-surface">
+      {/* Tanlov paneli — Ads Manager naqshi.
+          Sarlavhadagi katakcha faqat KO'RINIB TURGAN qatorlarni belgilaydi.
+          Ro'yxat undan uzun bo'lsa, foydalanuvchi buni bilmasligi mumkin va
+          "hammasini tanladim" deb o'ylab qoladi. Panel farqni ochiq aytadi. */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-tint/50 px-4 py-2.5 text-sm">
+          <span className="font-semibold text-ink">
+            {selected.size} ta {entityLabel} tanlandi
+          </span>
+
+          {allChecked && total > selected.size && (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={selectingAll}
+              onClick={async () => {
+                setSelectingAll(true);
+                try {
+                  await onSelectAllMatching();
+                } finally {
+                  setSelectingAll(false);
+                }
+              }}
+            >
+              Barcha {total} tasini tanlash
+            </Button>
+          )}
+
+          <span aria-hidden className="h-4 w-px bg-line" />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<X className="h-3.5 w-3.5" />}
+            onClick={onClearSelection}
+          >
+            Tanlovni bekor qilish
+          </Button>
+        </div>
+      )}
+
       <TableWrap className="rounded-none border-0">
         <Table>
           <thead>

@@ -108,6 +108,13 @@ export const dashboardApi = {
     api.get<Paginated<EntityRow>>('/api/dashboard/adsets', { params }).then((r) => r.data),
   ads: (params?: Record<string, string>) =>
     api.get<Paginated<EntityRow>>('/api/dashboard/ads', { params }).then((r) => r.data),
+  // Sahifalashsiz id + nom — "barcha N tasini tanlash" uchun.
+  entityIds: (params: Record<string, string>) =>
+    api
+      .get<{ ids: Array<{ id: string; name: string | null }> }>('/api/dashboard/entity-ids', {
+        params,
+      })
+      .then((r) => r.data.ids),
   campaignAdsets: (campaignId: string, params?: Record<string, string>) =>
     api
       .get<Paginated<EntityRow>>(`/api/dashboard/campaigns/${campaignId}/adsets`, { params })

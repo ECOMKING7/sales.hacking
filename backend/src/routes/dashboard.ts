@@ -14,6 +14,7 @@ import {
   leadDetail,
   adsets,
   ads,
+  entityIds,
 } from '../controllers/dashboardController';
 import { funnel, demoStatus } from '../controllers/funnelController';
 
@@ -29,6 +30,7 @@ router.get('/funnel', funnel);
 router.get('/demo-status', demoStatus);
 router.get('/campaigns', campaigns);
 // Ko'p tanlash: ota-ona ro'yxati bo'yicha filtr
+router.get('/entity-ids', entityIds);
 router.get('/adsets', adsets);
 router.get('/ads', ads);
 router.get('/campaigns/:id/adsets', campaignAdsets);
