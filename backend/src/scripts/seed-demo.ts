@@ -153,6 +153,49 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/**
+ * Og'ir so'rovni o'z tranzaksiyasida, uzaytirilgan timeout bilan yurgizadi.
+ *
+ * Supabase'da `statement_timeout` qisqa qo'yilgan va katta INSERT/DELETE
+ * "canceling statement due to statement timeout" bilan yiqiladi. Oddiy
+ * `SET statement_timeout` yordam bermaydi: transaction pooler har so'rovni
+ * boshqa server ulanishiga yuborishi mumkin, sozlama yo'qoladi. `SET LOCAL`
+ * esa tranzaksiyaga bog'langan — butun tranzaksiya bitta ulanishda qoladi.
+ *
+ * `qadam` — xato bo'lganda qaysi bosqichda yiqilgani logda ko'rinsin uchun.
+ */
+async function katta(qadam: string, sql: string, params: unknown[] = []): Promise<number> {
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query("SET LOCAL statement_timeout = '180s'");
+    const r = await c.query(sql, params);
+    await c.query('COMMIT');
+    return r.rowCount ?? 0;
+  } catch (err) {
+    await c.query('ROLLBACK').catch(() => undefined);
+    throw new Error(`[${qadam}] ${(err as Error).message}`);
+  } finally {
+    c.release();
+  }
+}
+
+/**
+ * Katta DELETE'ni bo'lakka bo'lib o'chiradi. Bitta so'rovda 10 000 qator
+ * o'chirish timeout'ga urilishi mumkin; 2000 talab hech qachon urilmaydi.
+ */
+async function bolakOchir(qadam: string, sql: string, params: unknown[]): Promise<number> {
+  let jami = 0;
+  for (;;) {
+    const n = await katta(qadam, sql, params);
+    jami += n;
+    if (n === 0) break;
+    process.stdout.write(`  … ${qadam}: ${jami}\r`);
+  }
+  if (jami > 0) process.stdout.write('\n');
+  return jami;
+}
+
 // ---------- asosiy ----------
 
 async function workspaceTop(): Promise<string | null> {
@@ -168,26 +211,39 @@ async function workspaceTop(): Promise<string | null> {
 }
 
 async function clean(workspaceId: string): Promise<void> {
-  const tp = await pool.query(
-    `DELETE FROM touchpoints WHERE workspace_id = $1 AND is_demo = true`,
+  const tp = await bolakOchir(
+    'touchpoints',
+    `DELETE FROM touchpoints
+      WHERE ctid IN (
+        SELECT ctid FROM touchpoints
+         WHERE workspace_id = $1 AND is_demo = true
+         LIMIT 2000
+      )`,
     [workspaceId]
   );
-  const ld = await pool.query(
-    `DELETE FROM leads WHERE workspace_id = $1 AND is_demo = true`,
+  const ld = await bolakOchir(
+    'leads',
+    `DELETE FROM leads
+      WHERE ctid IN (
+        SELECT ctid FROM leads
+         WHERE workspace_id = $1 AND is_demo = true
+         LIMIT 2000
+      )`,
     [workspaceId]
   );
 
   // Roll-up ustunlar nolga qaytadi. Facebook'ning o'z daromad raqami bo'lsa,
   // keyingi sync uni qaytadan yozadi.
   for (const t of ['ads', 'adsets', 'campaigns']) {
-    await pool.query(
+    await katta(
+      `reset:${t}`,
       `UPDATE ${t} SET revenue = 0, purchases_count = 0, roas = NULL
-        WHERE workspace_id = $1`,
+        WHERE workspace_id = $1 AND (revenue <> 0 OR purchases_count <> 0 OR roas IS NOT NULL)`,
       [workspaceId]
     );
   }
 
-  console.log(`🧹 Tozalandi: ${ld.rowCount} lid, ${tp.rowCount} touchpoint`);
+  console.log(`🧹 Tozalandi: ${ld} lid, ${tp} touchpoint`);
   console.log('   ads/adsets/campaigns: revenue, purchases_count, roas → 0');
   console.log('   Real FB raqamlarini qaytarish uchun: Settings → Sync');
 }
@@ -304,7 +360,7 @@ async function seed(workspaceId: string): Promise<void> {
 
   // ---------- partiyalab yozish ----------
   const FIELDS = 14;
-  const CHUNK = 400; // 400 × 14 = 5600 parametr, Postgres chegarasi 65535
+  const CHUNK = 200; // 200 × 14 = 2800 parametr; kichik partiya timeout'ga urilmaydi
 
   for (let ofs = 0; ofs < batch.length; ofs += CHUNK) {
     const chunk = batch.slice(ofs, ofs + CHUNK);
@@ -316,7 +372,8 @@ async function seed(workspaceId: string): Promise<void> {
       })
       .join(',');
 
-    await pool.query(
+    await katta(
+      'leads-insert',
       `INSERT INTO leads
          (workspace_id, crm_lead_id, phone_hash, email_hash, status, revenue,
           last_click_ad_id, total_touches, deal_time_days,
@@ -330,7 +387,8 @@ async function seed(workspaceId: string): Promise<void> {
 
   // Touchpoint'lar lidlardan hosil qilinadi — alohida so'rov ketmaydi.
   // `ad_id` lidda allaqachon bor, adset/campaign ads jadvalidan olinadi.
-  await pool.query(
+  await katta(
+    'touchpoints-insert',
     `INSERT INTO touchpoints
        (workspace_id, lead_id, ad_id, adset_id, campaign_id,
         event_type, touch_number, attribution_weight, fbclid, occurred_at, is_demo)
@@ -347,7 +405,8 @@ async function seed(workspaceId: string): Promise<void> {
   // ---------- roll-up ----------
   // Daromad lidlardan ad → adset → kampaniyaga ko'tariladi. Atribusiya
   // dvigateli ham aynan shuni qiladi; demo o'sha yo'ldan boradi.
-  await pool.query(
+  await katta(
+    'rollup:ads',
     `UPDATE ads a SET
         revenue = COALESCE(d.revenue, 0),
         purchases_count = COALESCE(d.sotuv, 0),
@@ -366,7 +425,8 @@ async function seed(workspaceId: string): Promise<void> {
     ['adsets', 'adset_id'],
     ['campaigns', 'campaign_id'],
   ] as const) {
-    await pool.query(
+    await katta(
+      `rollup:${t}`,
       `UPDATE ${t} p SET
           revenue = COALESCE(d.revenue, 0),
           purchases_count = COALESCE(d.sotuv, 0),
