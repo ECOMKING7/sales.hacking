@@ -71,6 +71,11 @@ export const facebookApi = {
 // ---- AmoCRM ----
 export const amocrmApi = {
   connect: () => api.get<{ url: string }>('/api/auth/amocrm/connect').then((r) => r.data),
+  /** Xususiy (Личная) integratsiya: "Код авторизации" ni qo'lda almashtirish. */
+  manualConnect: (code: string, domain: string) =>
+    api
+      .post<{ success: boolean; domain: string }>('/api/auth/amocrm/manual', { code, domain })
+      .then((r) => r.data),
   status: () => api.get<AmocrmStatus>('/api/workspace/amocrm-status').then((r) => r.data),
   pipelines: () =>
     api.get<{ pipelines: Pipeline[] }>('/api/workspace/amocrm-pipelines').then((r) => r.data),

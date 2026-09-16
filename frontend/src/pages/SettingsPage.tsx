@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, type ReactNode } from 'react';
-import { Megaphone, Database, Code2, Check, Copy, ExternalLink } from 'lucide-react';
+import { Megaphone, Database, Code2, Check, Copy, ExternalLink, KeyRound } from 'lucide-react';
 import { facebookApi, amocrmApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import type { FbStatus, AdAccount, AmocrmStatus, Pipeline } from '../types';
@@ -9,6 +9,7 @@ import {
   Card,
   CardHeader,
   EmptyState,
+  Input,
   SkeletonText,
   cn,
 } from '../components/ui';
@@ -220,6 +221,84 @@ function FacebookSection() {
   );
 }
 
+// ---------- AmoCRM: qo'lda ulash (xususiy integratsiya) ----------
+/**
+ * amoCRM xususiy ("Личная") integratsiyani amoMarket'ning install oqimi
+ * orqali ulashga ruxsat bermaydi — consent sahifasi "Нет доступных
+ * аккаунтов" deb qaytaradi. Buning o'rniga integratsiya sozlamalarida
+ * 20 daqiqa amal qiladigan "Код авторизации" beriladi. Shu forma o'sha
+ * kodni backend'ga yuboradi; backend uni tokenga almashtiradi.
+ *
+ * Kod bir martalik — xato bo'lsa amoCRM'dan yangisini olish kerak.
+ */
+function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
+  const [domain, setDomain] = useState('');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      await amocrmApi.manualConnect(code.trim(), domain.trim());
+      setCode('');
+      onConnected();
+    } catch (err) {
+      setError(errMsg(err, 'Ulanmadi'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="mt-5 border-t border-line pt-5">
+      <div className="mb-3 flex items-center gap-2">
+        <KeyRound className="h-4 w-4 text-ink-3" />
+        <h3 className="text-sm font-semibold text-ink">Avtorizatsiya kodi bilan ulash</h3>
+      </div>
+
+      <p className="mb-4 text-xs leading-relaxed text-ink-2">
+        amoCRM → amoМаркет → integratsiyangiz → <b>Ключи и доступы</b> →{' '}
+        <b>Код авторизации</b>. Kod 20 daqiqa amal qiladi va bir marta ishlatiladi.
+      </p>
+
+      <div className="grid gap-3">
+        <Input
+          label="amoCRM domeni"
+          placeholder="xxx.amocrm.ru"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <Input
+          label="Код авторизации"
+          placeholder="def502..."
+          type="password"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          hint="Kod hech qayerda saqlanmaydi — faqat tokenga almashtiriladi."
+        />
+      </div>
+
+      {error && <p className="mt-3 text-sm text-bad">{error}</p>}
+
+      <Button
+        type="submit"
+        loading={busy}
+        disabled={!domain.trim() || !code.trim()}
+        className="mt-4 sm:w-40"
+      >
+        Ulash
+      </Button>
+    </form>
+  );
+}
+
 // ---------- AmoCRM ----------
 function AmocrmSection() {
   const [status, setStatus] = useState<AmocrmStatus | null>(null);
@@ -353,21 +432,26 @@ function AmocrmSection() {
           </CardFooterRow>
         </div>
       ) : (
-        <EmptyState
-          icon={<Database />}
-          title="amoCRM ulanmagan"
-          hint="lid yo'q · daromad atribusiya qilinmaydi"
-          action={
+        <div>
+          <EmptyState
+            icon={<Database />}
+            title="amoCRM ulanmagan"
+            hint="lid yo'q · daromad atribusiya qilinmaydi"
+          />
+
+          <AmocrmManualConnect onConnected={() => void load()} />
+
+          <CardFooterRow>
             <Button
-              variant="secondary"
+              variant="ghost"
+              size="sm"
               onClick={connect}
-              icon={<Database className="h-4 w-4" />}
-              iconRight={<ExternalLink className="h-4 w-4" />}
+              icon={<ExternalLink className="h-4 w-4" />}
             >
-              Connect amoCRM
+              amoMarket orqali ulash (ommaviy integratsiya uchun)
             </Button>
-          }
-        />
+          </CardFooterRow>
+        </div>
       )}
     </Card>
   );

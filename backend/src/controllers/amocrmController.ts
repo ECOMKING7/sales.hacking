@@ -63,6 +63,76 @@ export async function callback(req: Request, res: Response): Promise<void> {
   }
 }
 
+// ---- POST /api/auth/amocrm/manual (protected) ----
+//
+// Xususiy (Личная) integratsiya uchun. amoCRM bunday integratsiyani
+// amoMarket'ning "install" oqimi orqali ulashga ruxsat bermaydi — o'rniga
+// integratsiya sozlamalaridagi "Код авторизации" (20 daqiqa amal qiladi)
+// beriladi. Bu endpoint shu kodni tokenga almashtiradi.
+//
+// Kod bir martalik: muvaffaqiyatsiz urinishdan keyin amoCRM'dan yangisini
+// olish kerak.
+const manualSchema = z.object({
+  code: z.string().min(20, 'Avtorizatsiya kodi juda qisqa'),
+  domain: z.string().min(4, 'Domen kerak'),
+});
+
+/** "https://xxx.amocrm.ru/" -> "xxx.amocrm.ru" */
+function normalizeDomain(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+}
+
+export async function manualConnect(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = manualSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+
+  const domain = normalizeDomain(parsed.data.domain);
+  if (!/^[a-z0-9-]+\.amocrm\.(ru|com)$/.test(domain)) {
+    res.status(400).json({
+      error: 'Domen "xxx.amocrm.ru" ko\'rinishida bo\'lishi kerak',
+    });
+    return;
+  }
+
+  try {
+    await exchangeCodeForTokens(parsed.data.code.trim(), domain, req.user.workspaceId);
+    res.json({ success: true, domain });
+  } catch (err) {
+    // amoCRM javobidan sababni olamiz; kod/token hech qachon log'ga tushmaydi.
+    const amo = (err as {
+      response?: { status?: number; data?: { hint?: string; detail?: string; title?: string } };
+    }).response;
+
+    const hint = amo?.data?.hint ?? amo?.data?.detail ?? amo?.data?.title;
+    console.error('amocrm manualConnect failed:', {
+      domain,
+      status: amo?.status ?? null,
+      hint: hint ?? null,
+    });
+
+    res.status(400).json({
+      error:
+        hint === 'Invalid auth code'
+          ? 'Kod eskirgan yoki allaqachon ishlatilgan — amoCRM\'dan yangisini oling'
+          : hint
+            ? `amoCRM rad etdi: ${hint}`
+            : 'Ulanmadi — kod yoki domen noto\'g\'ri bo\'lishi mumkin',
+    });
+  }
+}
+
 // ---- GET /api/workspace/amocrm-status (protected) ----
 export async function status(req: Request, res: Response): Promise<void> {
   if (!req.user?.workspaceId) {
