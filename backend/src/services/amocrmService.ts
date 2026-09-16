@@ -156,6 +156,8 @@ async function amoGet<T = unknown>(workspaceId: string, path: string): Promise<T
 // ---------- data methods ----------
 
 interface AmoCustomFieldValue {
+  field_id?: number;
+  field_name?: string;
   field_code?: string;
   field_type?: string;
   values?: Array<{ value?: string }>;
@@ -187,6 +189,8 @@ interface AmoLead {
   status_id?: number;
   pipeline_id?: number;
   created_at?: number;
+  /** UTM shu yerda keladi — atribusiya zanjirining kaliti (§5). */
+  custom_fields_values?: AmoCustomFieldValue[] | null;
   _embedded?: { contacts?: Array<{ id: number }> };
 }
 

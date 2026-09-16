@@ -41,7 +41,23 @@ There is **no test runner and no linter** configured. `typecheck` is the only au
 1. **`recordTouchpoint`** — links an incoming event to a lead. Matching order: existing touchpoint by `fbclid`, then `leads` by hashed email/phone (for CRM-sourced leads). Assigns the next `touch_number` in that lead's path.
 2. **`processLeadAttribution`** — recomputes credit for one lead inside a single DB transaction (`SELECT ... FOR UPDATE` on the lead). It is **idempotent by design**: each run first *reverses* the lead's prior contribution to `ads` metrics, clears old weights, then applies fresh ones. Re-reads the persisted (rounded) weights before distributing revenue so a later reverse pass reads identical values. When editing this file, preserve the reverse-then-reapply invariant or ad metrics will drift on reprocessing.
 
-Four attribution models (`first_click`, `last_click`, `linear`, `time_decay`); default is `time_decay` (exponential, recent touches weighted 2^i). Models are pure functions — keep them pure.
+Four attribution models (`first_click`, `last_click`, `linear`, `time_decay`); the default is **`last_click`**, matching the documented MVP decision. Models are pure functions — keep them pure.
+
+### How a lead reaches an ad (`services/leadMatcher.ts`)
+
+The pixel writes a touchpoint *before* the CRM lead exists, so its `lead_id` is `NULL`. Three mechanisms close that gap, tried in order:
+
+1. **UTM** — `leads.utm_term` normalized (decodeURIComponent, `+`→space, trim, lowercase) against `ads.name`. This is the primary key per the project's UTM standard; the column used is configurable via `workspaces.attribution_key`.
+2. **`fbclid`** — `processLeadAttribution` adopts orphan touchpoints (`UPDATE touchpoints SET lead_id … WHERE fbclid = … AND lead_id IS NULL`) before reading the path.
+3. **hashed phone/email** — weakest, only works if the pixel collected PII.
+
+Whichever succeeded is recorded in `leads.match_method` (`utm` / `fbclid` / `contact` / `NULL`), which is what makes a discrepancy diagnosable.
+
+**Duplicate ad names are a hard stop, not a tiebreak.** If two ads normalize to the same name, the matcher returns `ambiguous` and attributes nothing — crediting an arbitrary one would silently misreport spend.
+
+When no touchpoint exists but UTM matches, the engine **creates** a touchpoint with `attribution_weight = 1.0` rather than writing to `ads` directly. This is load-bearing: the reverse pass only knows about contributions recorded in `touchpoints.attribution_weight`, so an unrecorded direct write would double-count on every reprocess.
+
+⚠ **`ads.revenue` currently has two writers** — this engine (incremental `revenue + delta`) and the Facebook sync (`revenue = EXCLUDED.revenue`). A sync between two attribution runs makes the reverse pass subtract against a value that no longer contains the contribution, and `GREATEST(…, 0)` hides the drift instead of surfacing it. Fix planned: derive revenue from `leads` at query time (as `funnelController` already does) and keep Facebook's own figure in a separate column.
 
 ### Data flow
 

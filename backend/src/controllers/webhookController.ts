@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { getLead, getContact, hashPhone, hashEmail } from '../services/amocrmService';
 import { processLeadAttribution } from '../services/attributionEngine';
+import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
 
@@ -44,11 +45,14 @@ interface WorkspaceCrmConfig {
   id: string;
   amocrm_won_stage_id: string | null;
   amocrm_pipeline_id: string | null;
+  /** §3.1: bog'lanish kaliti kodda emas, konfiguratsiyada. */
+  attribution_key: string;
 }
 
 async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrmConfig | null> {
   const { rows } = await pool.query<WorkspaceCrmConfig>(
-    `SELECT id, amocrm_won_stage_id, amocrm_pipeline_id
+    `SELECT id, amocrm_won_stage_id, amocrm_pipeline_id,
+            COALESCE(attribution_key, 'utm_term') AS attribution_key
        FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
   );
@@ -75,16 +79,23 @@ async function resolveWonRevenue(
   return webhookPrice;
 }
 
-async function handleLeadAdd(workspaceId: string, lead: AmoLeadEvent): Promise<void> {
+async function handleLeadAdd(
+  workspaceId: string,
+  lead: AmoLeadEvent,
+  config: WorkspaceCrmConfig
+): Promise<void> {
   if (!lead.id) return;
 
   let contactId: number | null = null;
   let phoneHash: string | null = null;
   let emailHash: string | null = null;
+  let utm: ReturnType<typeof extractUtm> = {};
 
-  // Enrich with contact info from the AmoCRM API (needs a valid token).
+  // Enrich with contact info + UTM from the AmoCRM API (needs a valid token).
   try {
     const full = await getLead(workspaceId, lead.id);
+    // UTM lid maydonlarida keladi — atribusiyaning asosiy kaliti (§5).
+    utm = extractUtm(full.custom_fields_values);
     contactId = full._embedded?.contacts?.[0]?.id ?? null;
     if (contactId) {
       const contact = await getContact(workspaceId, contactId);
@@ -95,16 +106,48 @@ async function handleLeadAdd(workspaceId: string, lead: AmoLeadEvent): Promise<v
     console.error('lead enrichment failed (will store minimal lead):', (err as Error).message);
   }
 
+  // Reklamani darhol topamiz — sotuvni kutmasdan. Shunda lid hali yangi
+  // bo'lganda ham "qaysi reklamadan keldi" ma'lum bo'ladi va voronkaning
+  // birinchi bosqichi ishlaydi.
+  const match = await matchLeadToAd(
+    workspaceId,
+    {
+      utmTerm: utm.utm_term,
+      utmContent: utm.utm_content,
+      utmCampaign: utm.utm_campaign,
+      fbclid: utm.fbclid,
+      phoneHash,
+      emailHash,
+    },
+    config.attribution_key
+  );
+
+  if (match.note) console.warn(`lead ${lead.id}: ${match.note}`);
+
   await pool.query(
     `INSERT INTO leads
        (workspace_id, crm_lead_id, crm_contact_id, phone_hash, email_hash,
-        status, revenue, crm_created_at)
+        status, revenue, crm_created_at,
+        utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid,
+        last_click_ad_id, first_click_ad_id, match_method)
      VALUES ($1,$2,$3,$4,$5,'new',$6,
-             CASE WHEN $7::bigint IS NULL THEN NULL ELSE to_timestamp($7::bigint) END)
+             CASE WHEN $7::bigint IS NULL THEN NULL ELSE to_timestamp($7::bigint) END,
+             $8,$9,$10,$11,$12,$13,$14,$14,$15)
      ON CONFLICT (workspace_id, crm_lead_id) DO UPDATE SET
         crm_contact_id = COALESCE(EXCLUDED.crm_contact_id, leads.crm_contact_id),
         phone_hash = COALESCE(EXCLUDED.phone_hash, leads.phone_hash),
-        email_hash = COALESCE(EXCLUDED.email_hash, leads.email_hash)`,
+        email_hash = COALESCE(EXCLUDED.email_hash, leads.email_hash),
+        -- UTM faqat bo'sh bo'lsa to'ldiriladi: birinchi qiymat haqiqat,
+        -- keyingi webhook uni o'chirib yubormasin.
+        utm_source   = COALESCE(leads.utm_source,   EXCLUDED.utm_source),
+        utm_medium   = COALESCE(leads.utm_medium,   EXCLUDED.utm_medium),
+        utm_campaign = COALESCE(leads.utm_campaign, EXCLUDED.utm_campaign),
+        utm_content  = COALESCE(leads.utm_content,  EXCLUDED.utm_content),
+        utm_term     = COALESCE(leads.utm_term,     EXCLUDED.utm_term),
+        fbclid       = COALESCE(leads.fbclid,       EXCLUDED.fbclid),
+        last_click_ad_id  = COALESCE(leads.last_click_ad_id,  EXCLUDED.last_click_ad_id),
+        first_click_ad_id = COALESCE(leads.first_click_ad_id, EXCLUDED.first_click_ad_id),
+        match_method      = COALESCE(leads.match_method,      EXCLUDED.match_method)`,
     [
       workspaceId,
       lead.id,
@@ -113,6 +156,14 @@ async function handleLeadAdd(workspaceId: string, lead: AmoLeadEvent): Promise<v
       emailHash,
       num(lead.price),
       lead.created_at ?? null,
+      utm.utm_source ?? null,
+      utm.utm_medium ?? null,
+      utm.utm_campaign ?? null,
+      utm.utm_content ?? null,
+      utm.utm_term ?? null,
+      utm.fbclid ?? null,
+      match.adId,
+      match.method,
     ]
   );
 }
@@ -219,7 +270,7 @@ async function processWebhookBody(body: AmoWebhookBody): Promise<void> {
   }
 
   for (const lead of body.leads?.add ?? []) {
-    await handleLeadAdd(workspace.id, lead);
+    await handleLeadAdd(workspace.id, lead, workspace);
   }
   for (const lead of body.leads?.status ?? []) {
     await handleLeadStatus(workspace.id, lead, workspace);

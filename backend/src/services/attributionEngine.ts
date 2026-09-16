@@ -1,5 +1,6 @@
 import { pool } from '../db/pool';
 import { PoolClient } from 'pg';
+import { matchLeadToAd } from './leadMatcher';
 
 export type AttributionModel = 'first_click' | 'last_click' | 'linear' | 'time_decay';
 
@@ -101,6 +102,16 @@ async function applyAdDelta(
   );
 }
 
+/**
+ * Touchpoint bo'lmaganda deal time'ni lidning o'zidan hisoblaydi:
+ * CRM'da yaratilgan sana → yutilgan sana.
+ */
+function dealTimeFromLead(lead: { won_at: string | null; crm_created_at?: string | null }): number | null {
+  if (!lead.won_at || !lead.crm_created_at) return null;
+  const ms = new Date(lead.won_at).getTime() - new Date(lead.crm_created_at).getTime();
+  return Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 86_400_000)) : null;
+}
+
 // ---------- core ----------
 
 interface LeadRow {
@@ -108,6 +119,13 @@ interface LeadRow {
   revenue: string;
   won_at: string | null;
   first_click_ad_id: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  utm_campaign: string | null;
+  fbclid: string | null;
+  phone_hash: string | null;
+  email_hash: string | null;
+  crm_created_at: string | null;
 }
 
 /**
@@ -117,14 +135,16 @@ interface LeadRow {
 export async function processLeadAttribution(
   leadId: string,
   workspaceId: string,
-  model: AttributionModel = 'time_decay'
+  model: AttributionModel = 'last_click'
 ): Promise<{ touches: number; firstAdId: string | null; lastAdId: string | null }> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const leadRes = await client.query<LeadRow>(
-      `SELECT id, revenue, won_at, first_click_ad_id
+      `SELECT id, revenue, won_at, first_click_ad_id,
+              utm_term, utm_content, utm_campaign, fbclid, phone_hash, email_hash,
+              crm_created_at
          FROM leads WHERE id = $1 AND workspace_id = $2 FOR UPDATE`,
       [leadId, workspaceId]
     );
@@ -156,6 +176,24 @@ export async function processLeadAttribution(
       [workspaceId, leadId]
     );
 
+    // 1.5) YETIM TOUCHPOINT'LARNI BOG'LASH.
+    //
+    // Odatiy ketma-ketlik: odam reklamani bosadi → piksel touchpoint yozadi,
+    // lekin lid hali CRM'da YO'Q, shuning uchun lead_id NULL bo'lib qoladi.
+    // Keyin amoCRM webhook'i lidni yaratadi. Ilgari bu ikkisini biriktiradigan
+    // kod umuman yo'q edi — natijada har lid uchun 0 ta touchpoint topilardi
+    // va reklamaga hech qachon daromad yozilmasdi.
+    //
+    // Endi lid o'z fbclid'i bo'yicha yetimlarni o'ziga oladi.
+    if (lead.fbclid) {
+      await client.query(
+        `UPDATE touchpoints
+            SET lead_id = $1
+          WHERE workspace_id = $2 AND fbclid = $3 AND lead_id IS NULL`,
+        [leadId, workspaceId, lead.fbclid]
+      );
+    }
+
     // 2) Find touchpoints for this lead before the conversion, oldest first.
     const tpRes = await client.query<Touchpoint>(
       `SELECT id, ad_id, adset_id, campaign_id, occurred_at, touch_number
@@ -167,16 +205,69 @@ export async function processLeadAttribution(
     );
     const tps = tpRes.rows;
 
+    // Touchpoint yo'q — piksel ishlamagan yoki fbclid yo'qolgan.
+    // Bu NORMAL holat, chunki §5 bo'yicha asosiy kalit UTM, piksel emas.
+    //
+    // ⚠ MUHIM: bu yerda daromadni to'g'ridan-to'g'ri ads'ga yozib bo'lmaydi.
+    // Butun idempotentlik kafolati "oldingi hissa touchpoints.attribution_weight
+    // da yozilgan" degan shartga tayanadi. Agar hissa hech qayerda yozilmasa,
+    // ikkinchi chaqiruvda 1-qadam (reverse) uni topolmaydi va daromad IKKI
+    // MARTA qo'shiladi.
+    //
+    // Shuning uchun UTM mosligi uchun touchpoint YARATAMIZ. U soxta emas:
+    // "bu lid shu reklamadan keldi" — bu aynan touchpoint ma'nosi. Shundan
+    // keyin butun oqim bitta mexanizm bilan ishlaydi va reverse to'g'ri yuradi.
     if (tps.length === 0) {
+      const m = await matchLeadToAd(workspaceId, {
+        utmTerm: lead.utm_term,
+        utmContent: lead.utm_content,
+        utmCampaign: lead.utm_campaign,
+        fbclid: lead.fbclid,
+        phoneHash: lead.phone_hash,
+        emailHash: lead.email_hash,
+      });
+
+      if (m.note) console.warn(`attribution [${leadId}]: ${m.note}`);
+
+      if (!m.adId) {
+        // Bog'lanmadi — atribusiyasiz lid. Tafovut hisobida ko'rinadi.
+        await client.query(
+          `UPDATE leads
+             SET first_click_ad_id = NULL, last_click_ad_id = NULL,
+                 total_touches = 0, deal_time_days = $1, match_method = NULL
+           WHERE id = $2 AND workspace_id = $3`,
+          [dealTimeFromLead(lead), leadId, workspaceId]
+        );
+        await client.query('COMMIT');
+        return { touches: 0, firstAdId: null, lastAdId: null };
+      }
+
+      const tpIns = await client.query<{ id: string }>(
+        `INSERT INTO touchpoints
+           (workspace_id, lead_id, ad_id, adset_id, campaign_id,
+            event_type, touch_number, attribution_weight, fbclid, occurred_at)
+         VALUES ($1,$2,$3,$4,$5,'lead',1,1.0,$6, COALESCE($7::timestamptz, now()))
+         RETURNING id`,
+        [workspaceId, leadId, m.adId, m.adsetId, m.campaignId, lead.fbclid, lead.crm_created_at]
+      );
+
       await client.query(
         `UPDATE leads
-           SET first_click_ad_id = NULL, last_click_ad_id = NULL,
-               total_touches = 0, deal_time_days = NULL
-         WHERE id = $1 AND workspace_id = $2`,
-        [leadId, workspaceId]
+           SET first_click_ad_id = $1, last_click_ad_id = $1,
+               total_touches = 1, deal_time_days = $2, match_method = $3
+         WHERE id = $4 AND workspace_id = $5`,
+        [m.adId, dealTimeFromLead(lead), m.method, leadId, workspaceId]
       );
+
+      // Og'irlik 1.0 — last-click. Daromad va sotuv bitta reklamaga to'liq
+      // ketadi, ya'ni purchases_count ham to'g'ri (0.2-band shu bilan yopiladi).
+      if (revenue > 0) {
+        await applyAdDelta(client, workspaceId, m.adId, revenue, 1);
+      }
+
       await client.query('COMMIT');
-      return { touches: 0, firstAdId: null, lastAdId: null };
+      void tpIns;
+      return { touches: 1, firstAdId: m.adId, lastAdId: m.adId };
     }
 
     // 3) Models + lead update.
@@ -209,7 +300,8 @@ export async function processLeadAttribution(
     await client.query(
       `UPDATE leads
          SET first_click_ad_id = $1, last_click_ad_id = $2,
-             total_touches = $3, deal_time_days = $4
+             total_touches = $3, deal_time_days = $4,
+             match_method = COALESCE(match_method, 'fbclid')
        WHERE id = $5 AND workspace_id = $6`,
       [firstAdId, lastAdId, tps.length, dealTimeDays, leadId, workspaceId]
     );
