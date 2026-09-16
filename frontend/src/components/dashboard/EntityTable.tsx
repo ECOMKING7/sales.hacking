@@ -177,6 +177,7 @@ function totalsFromRows(rows: EntityRow[]): EntityTotals {
   const purchases = sum((r) => r.purchases);
   const results = sum((r) => r.results);
   const revenue = sum((r) => r.revenue);
+  const fbRevenue = sum((r) => r.fbRevenue);
 
   const per = (total: number, count: number) => (count > 0 ? total / count : null);
   const types = new Set(rows.map((r) => r.resultType).filter(Boolean));
@@ -190,6 +191,7 @@ function totalsFromRows(rows: EntityRow[]): EntityTotals {
     purchases,
     results,
     revenue,
+    fbRevenue,
     cpc: per(spend, clicks),
     cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
     ctr: impressions > 0 ? (clicks / impressions) * 100 : null,

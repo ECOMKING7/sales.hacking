@@ -39,7 +39,11 @@ There is **no test runner and no linter** configured. `typecheck` is the only au
 `backend/src/services/attributionEngine.ts` is the heart of the system. Two responsibilities:
 
 1. **`recordTouchpoint`** — links an incoming event to a lead. Matching order: existing touchpoint by `fbclid`, then `leads` by hashed email/phone (for CRM-sourced leads). Assigns the next `touch_number` in that lead's path.
-2. **`processLeadAttribution`** — recomputes credit for one lead inside a single DB transaction (`SELECT ... FOR UPDATE` on the lead). It is **idempotent by design**: each run first *reverses* the lead's prior contribution to `ads` metrics, clears old weights, then applies fresh ones. Re-reads the persisted (rounded) weights before distributing revenue so a later reverse pass reads identical values. When editing this file, preserve the reverse-then-reapply invariant or ad metrics will drift on reprocessing.
+2. **`processLeadAttribution`** — recomputes credit for one lead inside a single DB transaction (`SELECT ... FOR UPDATE` on the lead). It is **idempotent because ad metrics are recomputed absolutely, not adjusted incrementally**: `recomputeAdMetrics` derives `revenue` / `purchases_count` / `roas` for the affected ads straight from `SUM(leads.revenue × touchpoints.attribution_weight)` over won leads. The result depends only on current state, so calling it once or a hundred times gives the same number.
+
+   The earlier design added and subtracted deltas (`revenue = revenue + delta`) and therefore depended on a reverse-then-reapply invariant. That was fragile in two ways: a Facebook sync between two runs made the reverse subtract against a value that no longer held the contribution, and every new matching path risked writing a contribution the reverse pass couldn't see. Absolute recompute removes both failure modes — **do not reintroduce incremental deltas here.**
+
+   Because the recompute is absolute, it must cover *every* affected ad: the function collects the ad ids the lead touched **before** the update and unions them with the fresh ones, so an ad the lead moved away from is also brought back in line.
 
 Four attribution models (`first_click`, `last_click`, `linear`, `time_decay`); the default is **`last_click`**, matching the documented MVP decision. Models are pure functions — keep them pure.
 
@@ -55,9 +59,15 @@ Whichever succeeded is recorded in `leads.match_method` (`utm` / `fbclid` / `con
 
 **Duplicate ad names are a hard stop, not a tiebreak.** If two ads normalize to the same name, the matcher returns `ambiguous` and attributes nothing — crediting an arbitrary one would silently misreport spend.
 
-When no touchpoint exists but UTM matches, the engine **creates** a touchpoint with `attribution_weight = 1.0` rather than writing to `ads` directly. This is load-bearing: the reverse pass only knows about contributions recorded in `touchpoints.attribution_weight`, so an unrecorded direct write would double-count on every reprocess.
+When no touchpoint exists but UTM matches, the engine **creates** a touchpoint with `attribution_weight = 1.0` rather than attributing off-book. Every contribution lives in `touchpoints.attribution_weight`, which is the single input the recompute reads.
 
-⚠ **`ads.revenue` currently has two writers** — this engine (incremental `revenue + delta`) and the Facebook sync (`revenue = EXCLUDED.revenue`). A sync between two attribution runs makes the reverse pass subtract against a value that no longer contains the contribution, and `GREATEST(…, 0)` hides the drift instead of surfacing it. Fix planned: derive revenue from `leads` at query time (as `funnelController` already does) and keep Facebook's own figure in a separate column.
+### One owner per column
+
+`revenue`, `purchases_count` and `roas` on campaigns/adsets/ads belong to the **attribution engine** (CRM truth). `fb_revenue` and `fb_purchases` belong to the **Facebook sync** (what the pixel reported). The sync must never touch the first set, and the engine never touches the second.
+
+This split (migration `016`) fixed a silent drift: both used to write `revenue`, so a sync landing between two attribution runs wiped contributions that the next reverse pass then subtracted again — and `GREATEST(…, 0)` clamped the result to zero instead of making the corruption visible.
+
+The two columns sitting side by side also give a revenue-side discrepancy metric, the money analogue of the FB-vs-CRM lead gap.
 
 ### Data flow
 

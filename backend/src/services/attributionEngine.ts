@@ -70,35 +70,76 @@ function computeWeights(tps: Touchpoint[], model: AttributionModel): Map<string,
 
 // ---------- ad metric helpers ----------
 
-interface PriorRow {
-  ad_id: string;
-  weight: number;
+/** Takrorlanmas ad id lar — qayta hisoblanishi kerak bo'lganlar ro'yxati. */
+function uniqueAdIds(rows: Array<{ ad_id: string | null }>): string[] {
+  const set = new Set<string>();
+  for (const r of rows) if (r.ad_id) set.add(r.ad_id);
+  return [...set];
 }
 
-/** Sum per-ad weights from a list of {ad_id, weight}. */
-function sumByAd(rows: Array<{ ad_id: string | null; weight: number }>): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    if (!r.ad_id) continue;
-    m.set(r.ad_id, (m.get(r.ad_id) ?? 0) + r.weight);
-  }
-  return m;
-}
-
-async function applyAdDelta(
+/**
+ * Reklama metrikalarini lidlardan QAYTA HISOBLAYDI — o'sish emas, mutlaq.
+ *
+ * Ilgari bu yerda `revenue = revenue + delta` turardi va shu sababli butun
+ * dvigatel "reverse-then-reapply" invariantiga bog'langan edi: har qayta
+ * hisoblash avval o'z eski hissasini AYIRISHI kerak edi, aks holda daromad
+ * ikki marta qo'shilardi.
+ *
+ * Bu naqsh ikki jihatdan zaif:
+ *   1. Facebook sync `revenue` ni butunlay qayta yozadi. Shundan keyin
+ *      "eski hissani ayirish" endi mavjud bo'lmagan qiymatdan ayiriladi va
+ *      raqam jimgina siljiydi. GREATEST(...,0) buni yashiradi.
+ *   2. Har yangi yo'l (UTM mosligi kabi) invariantni buzish xavfini olib
+ *      keladi — hissa touchpoint'ga yozilmasa, reverse uni topolmaydi.
+ *
+ * Mutlaq qayta hisoblashda bu muammolarning IKKALASI HAM yo'q: natija faqat
+ * hozirgi holatga bog'liq, necha marta chaqirilgani ahamiyatsiz.
+ *
+ * Manba yagona: yutilgan lidlar × touchpoint og'irligi.
+ */
+async function recomputeAdMetrics(
   client: PoolClient,
   workspaceId: string,
-  adId: string,
-  revenueDelta: number,
-  purchaseDelta: number
+  adIds: string[]
 ): Promise<void> {
+  if (adIds.length === 0) return;
   await client.query(
-    `UPDATE ads
-       SET purchases_count = GREATEST(purchases_count + $1, 0),
-           revenue = GREATEST(revenue + $2, 0),
-           roas = CASE WHEN spend > 0 THEN GREATEST(revenue + $2, 0) / spend ELSE roas END
-     WHERE id = $3 AND workspace_id = $4`,
-    [purchaseDelta, revenueDelta, adId, workspaceId]
+    `UPDATE ads a
+        SET revenue = COALESCE(g.revenue, 0),
+            purchases_count = COALESCE(g.purchases, 0),
+            roas = CASE WHEN a.spend > 0 THEN COALESCE(g.revenue, 0) / a.spend END
+       FROM (
+         SELECT t.ad_id,
+                SUM(l.revenue * t.attribution_weight) AS revenue,
+                SUM(t.attribution_weight)             AS purchases
+           FROM touchpoints t
+           JOIN leads l ON l.id = t.lead_id
+          WHERE t.workspace_id = $1
+            AND t.ad_id = ANY($2::uuid[])
+            AND t.attribution_weight IS NOT NULL
+            AND l.status = 'won'
+          GROUP BY t.ad_id
+       ) g
+      WHERE a.id = g.ad_id AND a.workspace_id = $1`,
+    [workspaceId, adIds]
+  );
+
+  // Hech qanday yutilgan lidi qolmagan reklamalar yuqoridagi JOIN'ga
+  // tushmaydi — ularni alohida nolga qaytaramiz. Aks holda oxirgi sotuvi
+  // bekor qilingan reklama eski daromadini saqlab qolardi.
+  await client.query(
+    `UPDATE ads a
+        SET revenue = 0, purchases_count = 0,
+            roas = CASE WHEN a.spend > 0 THEN 0 END
+      WHERE a.workspace_id = $1
+        AND a.id = ANY($2::uuid[])
+        AND NOT EXISTS (
+          SELECT 1 FROM touchpoints t
+            JOIN leads l ON l.id = t.lead_id
+           WHERE t.ad_id = a.id AND t.workspace_id = $1
+             AND t.attribution_weight IS NOT NULL AND l.status = 'won'
+        )`,
+    [workspaceId, adIds]
   );
 }
 
@@ -129,8 +170,12 @@ interface LeadRow {
 }
 
 /**
- * Recompute attribution for one lead. Idempotent: re-running first reverses the
- * lead's previous contribution to ad metrics, then applies the fresh one.
+ * Bitta lid uchun atribusiyani qayta hisoblaydi.
+ *
+ * Idempotent — lekin endi "reverse-then-reapply" hisobiga emas. Reklama
+ * metrikalari lidlardan MUTLAQ qayta hisoblanadi, ya'ni natija faqat hozirgi
+ * holatga bog'liq. Funksiyani 1 marta ham, 100 marta ham chaqirish bir xil
+ * raqam beradi va oraliqda Facebook sync o'tib ketsa ham buzilmaydi.
  */
 export async function processLeadAttribution(
   leadId: string,
@@ -153,23 +198,24 @@ export async function processLeadAttribution(
       await client.query('ROLLBACK');
       throw new Error('Lead not found');
     }
-    const revenue = Number(lead.revenue) || 0;
+    // Daromad bu yerda o'qilmaydi — recomputeAdMetrics uni to'g'ridan-to'g'ri
+    // `leads` dan oladi. Bitta manba: ikki joyda hisoblanmasin.
     const cutoff = lead.won_at ?? new Date().toISOString();
 
-    // 1) Reverse any previous attribution contribution for this lead.
-    const priorRes = await client.query<PriorRow>(
-      `SELECT ad_id, attribution_weight AS weight
+    // 1) Ilgari shu lid tegib o'tgan reklamalarni eslab qolamiz.
+    //
+    // Ular "ayirilmaydi" — metrikalar mutlaq qayta hisoblanadi. Lekin ro'yxat
+    // baribir kerak: lid yo'lidan CHIQIB KETGAN reklama ham qayta hisoblanishi
+    // shart, aks holda u o'zining eski daromadini saqlab qoladi.
+    const priorRes = await client.query<{ ad_id: string | null }>(
+      `SELECT ad_id
          FROM touchpoints
         WHERE workspace_id = $1 AND lead_id = $2 AND attribution_weight IS NOT NULL`,
       [workspaceId, leadId]
     );
-    const priorByAd = sumByAd(
-      priorRes.rows.map((r) => ({ ad_id: r.ad_id, weight: Number(r.weight) }))
-    );
-    for (const [adId, w] of priorByAd) {
-      await applyAdDelta(client, workspaceId, adId, -(revenue * w), -1);
-    }
-    // Clear old weights so a path that shrank doesn't keep stale ones.
+    const priorAdIds = uniqueAdIds(priorRes.rows);
+
+    // Eski og'irliklarni tozalaymiz — qisqargan yo'l eskisini saqlamasin.
     await client.query(
       `UPDATE touchpoints SET attribution_weight = NULL
          WHERE workspace_id = $1 AND lead_id = $2`,
@@ -238,6 +284,9 @@ export async function processLeadAttribution(
            WHERE id = $2 AND workspace_id = $3`,
           [dealTimeFromLead(lead), leadId, workspaceId]
         );
+        // Lid endi hech qaysi reklamaga tegmaydi — ilgari tekkanlari
+        // o'zining eski daromadini saqlab qolmasin.
+        await recomputeAdMetrics(client, workspaceId, priorAdIds);
         await client.query('COMMIT');
         return { touches: 0, firstAdId: null, lastAdId: null };
       }
@@ -261,9 +310,7 @@ export async function processLeadAttribution(
 
       // Og'irlik 1.0 — last-click. Daromad va sotuv bitta reklamaga to'liq
       // ketadi, ya'ni purchases_count ham to'g'ri (0.2-band shu bilan yopiladi).
-      if (revenue > 0) {
-        await applyAdDelta(client, workspaceId, m.adId, revenue, 1);
-      }
+      await recomputeAdMetrics(client, workspaceId, [...new Set([...priorAdIds, m.adId])]);
 
       await client.query('COMMIT');
       void tpIns;
@@ -306,13 +353,12 @@ export async function processLeadAttribution(
       [firstAdId, lastAdId, tps.length, dealTimeDays, leadId, workspaceId]
     );
 
-    // 4) Distribute revenue/purchases to ads by the persisted weight.
-    const freshByAd = sumByAd(
-      storedRes.rows.map((r) => ({ ad_id: r.ad_id, weight: Number(r.weight) }))
-    );
-    for (const [adId, w] of freshByAd) {
-      await applyAdDelta(client, workspaceId, adId, revenue * w, 1);
-    }
+    // 4) Ta'sirlangan reklamalarni qayta hisoblaymiz — eskilari ham, yangilari
+    //    ham. Yig'indi lidlardan olinadi, shuning uchun necha marta
+    //    chaqirilgani ahamiyatsiz.
+    await recomputeAdMetrics(client, workspaceId, [
+      ...new Set([...priorAdIds, ...uniqueAdIds(storedRes.rows)]),
+    ]);
 
     await client.query('COMMIT');
     return { touches: tps.length, firstAdId, lastAdId };

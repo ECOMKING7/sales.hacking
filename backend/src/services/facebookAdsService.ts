@@ -308,10 +308,6 @@ function metricsFromInsight(row: InsightRow | undefined): Metrics {
   };
 }
 
-function roasOf(revenue: number, spend: number): number | null {
-  return spend > 0 ? revenue / spend : null;
-}
-
 function cacOf(spend: number, purchases: number): number | null {
   return purchases > 0 ? spend / purchases : null;
 }
@@ -535,22 +531,26 @@ export async function syncCampaigns(
     const row = await pool.query<{ id: string }>(
       `INSERT INTO campaigns
          (workspace_id, fb_campaign_id, name, status, objective, spend, impressions, clicks,
-          leads_count, purchases_count, revenue, roas, cac,
+          leads_count, fb_purchases, fb_revenue, cac,
           result_type, results, cost_per_result, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
        ON CONFLICT (workspace_id, fb_campaign_id) DO UPDATE SET
           name=EXCLUDED.name, status=EXCLUDED.status, objective=EXCLUDED.objective,
           spend=EXCLUDED.spend,
           impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
-          leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
-          revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, cac=EXCLUDED.cac,
+          leads_count=EXCLUDED.leads_count,
+          -- ⚠ revenue / purchases_count / roas GA TEGILMAYDI.
+          -- Ular atribusiya dvigatelining mulki (CRM haqiqati). Sync faqat
+          -- Facebook'ning O'Z raqamini fb_* ustunlariga yozadi (016).
+          fb_purchases=EXCLUDED.fb_purchases, fb_revenue=EXCLUDED.fb_revenue,
+          cac=EXCLUDED.cac,
           result_type=EXCLUDED.result_type, results=EXCLUDED.results,
           cost_per_result=EXCLUDED.cost_per_result,
           synced_at=now()
        RETURNING id`,
       [workspaceId, c.id, c.name ?? null, c.status ?? null, c.objective ?? null,
        m.spend, m.impressions,
-       m.clicks, m.leads, m.purchases, m.revenue, roasOf(m.revenue, m.spend),
+       m.clicks, m.leads, m.purchases, m.revenue,
        cacOf(m.spend, m.purchases), r.resultType, r.results, r.costPerResult]
     );
     map.set(c.id, { dbId: row.rows[0].id, objective: c.objective ?? null });
@@ -598,22 +598,23 @@ export async function syncAdSets(
     const row = await pool.query<{ id: string }>(
       `INSERT INTO adsets
          (workspace_id, campaign_id, fb_adset_id, name, status, objective, spend, impressions,
-          clicks, leads_count, purchases_count, revenue, roas, cost_per_lead,
+          clicks, leads_count, fb_purchases, fb_revenue, cost_per_lead,
           result_type, results, cost_per_result, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
        ON CONFLICT (workspace_id, fb_adset_id) DO UPDATE SET
           campaign_id=EXCLUDED.campaign_id, name=EXCLUDED.name, status=EXCLUDED.status,
           objective=EXCLUDED.objective,
           spend=EXCLUDED.spend, impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
-          leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
-          revenue=EXCLUDED.revenue, roas=EXCLUDED.roas, cost_per_lead=EXCLUDED.cost_per_lead,
+          leads_count=EXCLUDED.leads_count,
+          fb_purchases=EXCLUDED.fb_purchases, fb_revenue=EXCLUDED.fb_revenue,
+          cost_per_lead=EXCLUDED.cost_per_lead,
           result_type=EXCLUDED.result_type, results=EXCLUDED.results,
           cost_per_result=EXCLUDED.cost_per_result,
           synced_at=now()
        RETURNING id`,
       [workspaceId, campaignDbId, a.id, a.name ?? null, a.status ?? null, objective, m.spend,
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
-       roasOf(m.revenue, m.spend), costPerLead, r.resultType, r.results, r.costPerResult]
+       costPerLead, r.resultType, r.results, r.costPerResult]
     );
     map.set(a.id, { dbId: row.rows[0].id, campaignDbId, objective, spec: goalSpec });
   }
@@ -682,23 +683,23 @@ export async function syncAds(
     await pool.query(
       `INSERT INTO ads
          (workspace_id, adset_id, campaign_id, fb_ad_id, name, status, creative_type,
-          thumbnail_url, objective, spend, impressions, clicks, leads_count, purchases_count,
-          revenue, roas, result_type, results, cost_per_result, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now())
+          thumbnail_url, objective, spend, impressions, clicks, leads_count, fb_purchases,
+          fb_revenue, result_type, results, cost_per_result, synced_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
        ON CONFLICT (workspace_id, fb_ad_id) DO UPDATE SET
           adset_id=EXCLUDED.adset_id, campaign_id=EXCLUDED.campaign_id,
           name=EXCLUDED.name, status=EXCLUDED.status, creative_type=EXCLUDED.creative_type,
           thumbnail_url=EXCLUDED.thumbnail_url, objective=EXCLUDED.objective,
           spend=EXCLUDED.spend,
           impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
-          leads_count=EXCLUDED.leads_count, purchases_count=EXCLUDED.purchases_count,
-          revenue=EXCLUDED.revenue, roas=EXCLUDED.roas,
+          leads_count=EXCLUDED.leads_count,
+          fb_purchases=EXCLUDED.fb_purchases, fb_revenue=EXCLUDED.fb_revenue,
           result_type=EXCLUDED.result_type, results=EXCLUDED.results,
           cost_per_result=EXCLUDED.cost_per_result, synced_at=now()`,
       [workspaceId, adsetDbId, campaignDbId, ad.id, ad.name ?? null, ad.status ?? null,
        creativeType(creative), creative?.thumbnail_url ?? null, objective, m.spend,
        m.impressions, m.clicks, m.leads, m.purchases, m.revenue,
-       roasOf(m.revenue, m.spend), r.resultType, r.results, r.costPerResult]
+       r.resultType, r.results, r.costPerResult]
     );
   }
   return ads.length;

@@ -88,7 +88,11 @@ function entitySelect(table: 'campaigns' | 'adsets' | 'ads'): string {
            results,
            cost_per_result                         AS "costPerResult",
            revenue,
-           roas${extra}
+           roas,
+           -- Facebook'ning O'Z daromad raqami (piksel nima ko'rgan);
+           -- revenue esa CRM haqiqati. Ikkalasi yonma-yon tursin —
+           -- farqi tafovut metrikasi bo'ladi (§7).
+           fb_revenue                              AS "fbRevenue"${extra}
     FROM ${table}`;
 }
 
@@ -114,6 +118,7 @@ function totalsSelect(table: 'campaigns' | 'adsets' | 'ads'): string {
            COALESCE(SUM(purchases_count), 0)          AS purchases,
            COALESCE(SUM(results), 0)                  AS results,
            COALESCE(SUM(revenue), 0)                  AS revenue,
+           COALESCE(SUM(fb_revenue), 0)               AS "fbRevenue",
            SUM(spend) / NULLIF(SUM(clicks), 0)              AS cpc,
            SUM(spend) / NULLIF(SUM(impressions), 0) * 1000  AS cpm,
            SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) * 100 AS ctr,

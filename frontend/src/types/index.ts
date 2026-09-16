@@ -69,6 +69,8 @@ export interface EntityRow {
   costPerPurchase: string | number | null;
   revenue: string | number;
   roas: string | number | null;
+  /** Facebook'ning o'z daromad raqami — CRM'niki bilan solishtirish uchun. */
+  fbRevenue?: string | number | null;
   thumbnailUrl?: string | null;
   creativeType?: string | null;
   /** Kampaniya maqsadi (OUTCOME_LEADS, OUTCOME_SALES, ...) */
@@ -93,6 +95,7 @@ export interface EntityTotals {
   purchases: string | number;
   results: string | number;
   revenue: string | number;
+  fbRevenue: string | number;
   cpc: string | number | null;
   cpm: string | number | null;
   ctr: string | number | null;
