@@ -2,6 +2,13 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { getLead, getContact, hashPhone, hashEmail } from '../services/amocrmService';
+import { phoneShape } from '../utils/phone';
+import {
+  loadCapiConfig,
+  loadCapiLead,
+  sendCapiEvent,
+  type CapiEventName,
+} from '../services/metaCapi';
 import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
@@ -47,12 +54,18 @@ interface WorkspaceCrmConfig {
   amocrm_pipeline_id: string | null;
   /** §3.1: bog'lanish kaliti kodda emas, konfiguratsiyada. */
   attribution_key: string;
+  /** §3.1: telefon mamlakat kodi ham konfiguratsiyadan (E.164 uchun). */
+  phone_country_code: string;
+  /** §3.3 etaplar.sifatli — qaysi etap "sifatli lid" deb hisoblanadi. */
+  amocrm_qualified_stage_ids: string[];
 }
 
 async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrmConfig | null> {
   const { rows } = await pool.query<WorkspaceCrmConfig>(
     `SELECT id, amocrm_won_stage_id, amocrm_pipeline_id,
-            COALESCE(attribution_key, 'utm_term') AS attribution_key
+            COALESCE(attribution_key, 'utm_term') AS attribution_key,
+            COALESCE(phone_country_code, '998') AS phone_country_code,
+            COALESCE(amocrm_qualified_stage_ids, '{}') AS amocrm_qualified_stage_ids
        FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
   );
@@ -99,7 +112,18 @@ async function handleLeadAdd(
     contactId = full._embedded?.contacts?.[0]?.id ?? null;
     if (contactId) {
       const contact = await getContact(workspaceId, contactId);
-      if (contact.phone) phoneHash = hashPhone(contact.phone);
+      if (contact.phone) {
+        phoneHash = hashPhone(contact.phone, config.phone_country_code);
+        // Raqamning o'zi emas, faqat "shakli" log'ga tushadi (§4.2 ruhida).
+        if (!phoneHash) {
+          console.warn(
+            `lead ${lead.id}: telefon E.164 ga kelmadi (${phoneShape(
+              contact.phone,
+              config.phone_country_code
+            )})`
+          );
+        }
+      }
       if (contact.email) emailHash = hashEmail(contact.email);
     }
   } catch (err) {
@@ -166,6 +190,10 @@ async function handleLeadAdd(
       match.method,
     ]
   );
+
+  // Meta'ga "yangi lid" signali. Moslik kaliti bo'lmasa (telefon ham,
+  // email ham, fbclid ham yo'q) metaCapi o'zi o'tkazib yuboradi.
+  await notifyMeta(workspaceId, lead.id, 'Lead');
 }
 
 async function handleLeadStatus(
@@ -195,13 +223,24 @@ async function handleLeadStatus(
     revenue = await resolveWonRevenue(workspaceId, lead.id, revenue);
   }
 
+  // §3.3 etaplar.sifatli — lid shu etaplardan biriga YETGAN payt yoziladi.
+  // Faqat birinchi marta: lid orqaga qaytsa ham "sifatli bo'lgan" fakti
+  // yo'qolmasligi kerak, aks holda konversiya raqamlari o'zgaruvchan bo'ladi.
+  const reachedQualified =
+    statusId !== null && config.amocrm_qualified_stage_ids.includes(statusId);
+  // Yutilgan lid ta'rifi bo'yicha sifatli bosqichdan o'tgan.
+  const markQualified = reachedQualified || newStatus === 'won';
+
   const result = await pool.query(
     `UPDATE leads
        SET status = $1,
            revenue = CASE WHEN $1 = 'won' THEN $2 ELSE revenue END,
-           won_at  = CASE WHEN $1 = 'won' THEN now() ELSE won_at END
+           won_at  = CASE WHEN $1 = 'won' THEN now() ELSE won_at END,
+           lost_at = CASE WHEN $1 = 'lost' THEN COALESCE(lost_at, now()) ELSE lost_at END,
+           qualified_at = CASE WHEN $5 THEN COALESCE(qualified_at, now()) ELSE qualified_at END,
+           crm_stage = COALESCE($6, crm_stage)
      WHERE workspace_id = $3 AND crm_lead_id = $4`,
-    [newStatus, revenue, workspaceId, lead.id]
+    [newStatus, revenue, workspaceId, lead.id, markQualified, statusId]
   );
 
   // Lead arrived via status event before we saw its add — create it.
@@ -230,13 +269,51 @@ async function handleLeadStatus(
       console.error('attribution after won failed:', (err as Error).message);
     }
   }
+
+  // Meta'ga xabar beramiz: shu lid sifatli bo'ldi / sotuvga aylandi.
+  // Atribusiyadan KEYIN — o'shanda revenue va won_at yozilgan bo'ladi.
+  if (markQualified || newStatus === 'won') {
+    await notifyMeta(workspaceId, lead.id, newStatus === 'won' ? 'Purchase' : 'QualifiedLead');
+  }
 }
 
-async function handleContactAdd(workspaceId: string, contact: AmoContactEvent): Promise<void> {
+/**
+ * CAPI hodisasini yuborish — fail-soft o'ram. CAPI o'chirilgan bo'lsa yoki
+ * xato bersa, lid qayta ishlash oqimi hech qanday zarar ko'rmaydi.
+ */
+async function notifyMeta(
+  workspaceId: string,
+  crmLeadId: string,
+  eventName: CapiEventName
+): Promise<void> {
+  try {
+    const config = await loadCapiConfig(workspaceId);
+    if (!config) return; // CAPI yoqilmagan — normal holat
+
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM leads WHERE workspace_id = $1 AND crm_lead_id = $2`,
+      [workspaceId, crmLeadId]
+    );
+    if (!rows[0]) return;
+
+    const capiLead = await loadCapiLead(workspaceId, rows[0].id);
+    if (!capiLead) return;
+
+    await sendCapiEvent(workspaceId, capiLead, eventName, config);
+  } catch (err) {
+    console.error(`CAPI (${eventName}) o'ram xatosi:`, (err as Error).message);
+  }
+}
+
+async function handleContactAdd(
+  workspaceId: string,
+  contact: AmoContactEvent,
+  config: WorkspaceCrmConfig
+): Promise<void> {
   if (!contact.id) return;
   try {
     const info = await getContact(workspaceId, contact.id);
-    const phoneHash = info.phone ? hashPhone(info.phone) : null;
+    const phoneHash = info.phone ? hashPhone(info.phone, config.phone_country_code) : null;
     const emailHash = info.email ? hashEmail(info.email) : null;
     if (!phoneHash && !emailHash) return;
     // Attach hashes to any lead already linked to this contact.
@@ -276,7 +353,7 @@ async function processWebhookBody(body: AmoWebhookBody): Promise<void> {
     await handleLeadStatus(workspace.id, lead, workspace);
   }
   for (const contact of body.contacts?.add ?? []) {
-    await handleContactAdd(workspace.id, contact);
+    await handleContactAdd(workspace.id, contact, workspace);
   }
 }
 

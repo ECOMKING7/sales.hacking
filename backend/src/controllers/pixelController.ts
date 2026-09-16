@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { recordTouchpoint } from '../services/attributionEngine';
 import { hashPhone, hashEmail } from '../services/amocrmService';
+import { pool } from '../db/pool';
 
 // 1x1 transparent GIF.
 const TRANSPARENT_GIF = Buffer.from(
@@ -32,6 +33,31 @@ function hashIp(ip: string | undefined): string | null {
   return crypto.createHash('sha256').update(ip).digest('hex');
 }
 
+/**
+ * Workspace'ning telefon mamlakat kodi (§3.1 — kodda qotirilmaydi).
+ * Qiymat kamdan-kam o'zgaradi, shuning uchun 5 daqiqaga eslab qolinadi;
+ * so'rov faqat piksel telefon yuborganda ketadi.
+ */
+const CC_TTL_MS = 5 * 60_000;
+const ccCache = new Map<string, { value: string; expiresAt: number }>();
+
+async function phoneCountryCode(workspaceId: string): Promise<string> {
+  const hit = ccCache.get(workspaceId);
+  if (hit && Date.now() < hit.expiresAt) return hit.value;
+  try {
+    const { rows } = await pool.query<{ cc: string }>(
+      `SELECT COALESCE(phone_country_code, '998') AS cc FROM workspaces WHERE id = $1`,
+      [workspaceId]
+    );
+    const value = rows[0]?.cc ?? '998';
+    ccCache.set(workspaceId, { value, expiresAt: Date.now() + CC_TTL_MS });
+    return value;
+  } catch {
+    // Piksel yo'li hech qachon xato qaytarmaydi — standartga tushamiz.
+    return '998';
+  }
+}
+
 // ---- POST /api/pixel/event (public, called from customer sites) ----
 // Always responds 200 — tracking must never break a customer's page.
 export async function trackEvent(req: Request, res: Response): Promise<void> {
@@ -55,7 +81,11 @@ export async function trackEvent(req: Request, res: Response): Promise<void> {
 
     // Hash PII immediately — raw email/phone/IP are never stored.
     const emailHash = body.email ? hashEmail(String(body.email)) : null;
-    const phoneHash = body.phone ? hashPhone(String(body.phone)) : null;
+    // Mamlakat kodi konfiguratsiyadan (§3.1). Qo'shimcha so'rov faqat
+    // telefon kelganda ketadi — piksel yo'li tez qolishi kerak.
+    const phoneHash = body.phone
+      ? hashPhone(String(body.phone), await phoneCountryCode(workspaceId))
+      : null;
     const ipHash = hashIp((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip);
     const fbEventId = `evt_${crypto.randomUUID()}`;
 

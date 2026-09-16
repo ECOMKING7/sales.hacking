@@ -39,6 +39,27 @@ export interface AmocrmStatus {
   domain: string | null;
   pipelineId: string | null;
   wonStageId: string | null;
+  /** §3.3 etaplar.sifatli — "sifatli lid" hisoblanadigan etaplar. */
+  qualifiedStageIds: string[];
+}
+
+/**
+ * Meta Conversions API holati. Token bu yerda YO'Q va hech qachon
+ * bo'lmaydi — faqat .env da bor-yo'qligi (`tokenConfigured`).
+ */
+export interface MetaCapiStatus {
+  enabled: boolean;
+  datasetId: string | null;
+  currency: string;
+  phoneCountryCode: string;
+  tokenConfigured: boolean;
+  secretKey: string | null;
+  events: Array<{
+    eventName: string;
+    status: string;
+    count: number;
+    lastAt: string | null;
+  }>;
 }
 
 export interface PipelineStatus {

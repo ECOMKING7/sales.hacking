@@ -1,8 +1,24 @@
 import { useEffect, useState, useCallback, type ReactNode } from 'react';
-import { Megaphone, Database, Code2, Check, Copy, ExternalLink, KeyRound } from 'lucide-react';
-import { facebookApi, amocrmApi } from '../services/api';
+import {
+  Megaphone,
+  Database,
+  Code2,
+  Check,
+  Copy,
+  ExternalLink,
+  KeyRound,
+  Send,
+} from 'lucide-react';
+import { facebookApi, amocrmApi, metaCapiApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
-import type { FbStatus, AdAccount, AmocrmStatus, Pipeline } from '../types';
+import type {
+  FbStatus,
+  AdAccount,
+  AmocrmStatus,
+  MetaCapiStatus,
+  Pipeline,
+} from '../types';
+import Checkbox from '../components/dashboard/Checkbox';
 import {
   Badge,
   Button,
@@ -305,6 +321,7 @@ function AmocrmSection() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pipelineId, setPipelineId] = useState('');
   const [wonStageId, setWonStageId] = useState('');
+  const [qualifiedIds, setQualifiedIds] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -316,6 +333,7 @@ function AmocrmSection() {
       setStatus(s);
       setPipelineId(s.pipelineId ?? '');
       setWonStageId(s.wonStageId ?? '');
+      setQualifiedIds(s.qualifiedStageIds ?? []);
       if (s.connected) {
         try {
           const { pipelines } = await amocrmApi.pipelines();
@@ -348,7 +366,7 @@ function AmocrmSection() {
     if (!pipelineId || !wonStageId) return;
     setBusy(true);
     try {
-      await amocrmApi.savePipeline(pipelineId, wonStageId);
+      await amocrmApi.savePipeline(pipelineId, wonStageId, qualifiedIds);
       await load();
     } catch (err) {
       setError(errMsg(err, 'Failed to save pipeline'));
@@ -420,6 +438,48 @@ function AmocrmSection() {
             </div>
           </div>
 
+          {/* §3.3 etaplar.sifatli — CQL, sifatli lid % va Meta'ga
+              yuboriladigan QualifiedLead hodisasi shu tanlovga tayanadi.
+              Bo'sh qolsa voronkaning o'rta bosqichi doim 0 chiqadi. */}
+          <div className="mt-5">
+            <span className={LABEL}>Sifatli lid etaplari</span>
+            <p className="mb-2.5 text-xs text-ink-3">
+              Lid shu etaplardan biriga yetsa — "sifatli" hisoblanadi. Sifatli lid
+              narxi (CQL) va Meta'ga yuboriladigan signal shunga bog'liq.
+            </p>
+
+            {stages.length === 0 ? (
+              <p className="text-xs text-ink-3">Avval voronkani tanlang.</p>
+            ) : (
+              <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                {stages
+                  .filter((s) => String(s.id) !== wonStageId)
+                  .map((s) => {
+                    const id = String(s.id);
+                    const checked = qualifiedIds.includes(id);
+                    const toggle = (next: boolean) =>
+                      setQualifiedIds((prev) =>
+                        next ? [...prev, id] : prev.filter((x) => x !== id)
+                      );
+                    return (
+                      // `<label>` matni `<button>` ga uzatilmaydi, shuning uchun
+                      // matn ham alohida tugma — ikkalasi bir xil ishni qiladi.
+                      <div key={id} className="flex items-center gap-2.5">
+                        <Checkbox checked={checked} onChange={toggle} label={s.name} />
+                        <button
+                          type="button"
+                          onClick={() => toggle(!checked)}
+                          className="min-w-0 truncate text-left text-sm text-ink"
+                        >
+                          {s.name}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+
           <CardFooterRow>
             <Button
               onClick={save}
@@ -450,6 +510,181 @@ function AmocrmSection() {
             >
               amoMarket orqali ulash (ommaviy integratsiya uchun)
             </Button>
+          </CardFooterRow>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------- Meta Conversions API ----------
+/**
+ * CAPI — amoCRM'dagi natijani Meta'ga qaytaradigan ko'prik.
+ *
+ * ⚠ Token bu formada YO'Q va bo'lmaydi (§4.1). Foydalanuvchi faqat
+ * Dataset ID ni kiritadi; token .env / Vercel secret da yashaydi va
+ * server uni faqat "bor/yo'q" deb xabar qiladi.
+ */
+function MetaCapiSection() {
+  const [status, setStatus] = useState<MetaCapiStatus | null>(null);
+  const [datasetId, setDatasetId] = useState('');
+  const [countryCode, setCountryCode] = useState('');
+  const [currency, setCurrency] = useState('');
+  const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      const s = await metaCapiApi.status();
+      setStatus(s);
+      setDatasetId(s.datasetId ?? '');
+      setCountryCode(s.phoneCountryCode);
+      setCurrency(s.currency);
+    } catch (err) {
+      setError(errMsg(err, 'Meta CAPI holati yuklanmadi'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const persist = async (patch: Parameters<typeof metaCapiApi.save>[0]) => {
+    setBusy(true);
+    setError('');
+    setWarning('');
+    try {
+      const res = await metaCapiApi.save(patch);
+      if (res.warning) setWarning(res.warning);
+      await load();
+    } catch (err) {
+      setError(errMsg(err, 'Saqlanmadi'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sent = status?.events.filter((e) => e.status === 'ok') ?? [];
+  const failed = status?.events.filter((e) => e.status === 'error') ?? [];
+
+  return (
+    <Card padding="lg">
+      <CardHeader
+        title="Meta Conversions API"
+        description="amoCRM natijasini Meta algoritmiga qaytaradi."
+        icon={<Send className="h-5 w-5" />}
+        action={
+          status?.enabled ? (
+            <Badge tone="ok" dot>
+              Yoqilgan
+            </Badge>
+          ) : (
+            <Badge tone="neutral">O'chirilgan</Badge>
+          )
+        }
+      />
+
+      {error && <ErrorRow message={error} onRetry={() => void load()} />}
+      {warning && <p className="mb-4 text-sm text-warn">{warning}</p>}
+
+      {loading ? (
+        <SkeletonText lines={3} />
+      ) : (
+        <div>
+          <p className="mb-4 text-xs leading-relaxed text-ink-2">
+            Yo'nalish: <b>amoCRM → Meta</b>. Bu dashboard'ga to'g'ridan-to'g'ri raqam
+            qo'shmaydi — Meta hodisani o'zi reklamaga bog'laydi va u keyin{' '}
+            <code>fb_purchases</code> / <code>fb_revenue</code> ustunlarida qaytadi.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <Input
+                label="Dataset ID (piksel)"
+                placeholder="1234567890"
+                value={datasetId}
+                onChange={(e) => setDatasetId(e.target.value)}
+                hint="Events Manager → Data sources → Settings"
+                inputMode="numeric"
+                autoComplete="off"
+              />
+            </div>
+            <Input
+              label="Telefon kodi"
+              placeholder="998"
+              value={countryCode}
+              onChange={(e) => setCountryCode(e.target.value)}
+              hint="E.164 uchun"
+              inputMode="numeric"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="mt-3 sm:w-40">
+            <Input
+              label="Valyuta"
+              placeholder="UZS"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+              autoComplete="off"
+            />
+          </div>
+
+          <dl className="mt-5">
+            <StatRow
+              label="Token (.env)"
+              value={
+                status?.tokenConfigured ? (
+                  <span className="text-ok">o'rnatilgan</span>
+                ) : (
+                  <span className="text-bad">yo'q</span>
+                )
+              }
+            />
+            <StatRow
+              label="Yuborilgan hodisalar"
+              value={sent.length ? sent.map((e) => `${e.eventName} ${e.count}`).join(' · ') : '—'}
+            />
+            {failed.length > 0 && (
+              <StatRow
+                label="Xatolar"
+                value={
+                  <span className="text-bad">
+                    {failed.map((e) => `${e.eventName} ${e.count}`).join(' · ')}
+                  </span>
+                }
+              />
+            )}
+          </dl>
+
+          <CardFooterRow>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={() =>
+                  void persist({
+                    datasetId: datasetId.trim() || null,
+                    phoneCountryCode: countryCode.trim() || undefined,
+                    currency: currency.trim() || undefined,
+                  })
+                }
+                loading={busy}
+                className="sm:w-28"
+              >
+                Save
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => void persist({ enabled: !status?.enabled })}
+                disabled={busy || (!status?.enabled && !datasetId.trim())}
+              >
+                {status?.enabled ? 'O‘chirish' : 'Yoqish'}
+              </Button>
+            </div>
           </CardFooterRow>
         </div>
       )}
@@ -536,6 +771,7 @@ export default function SettingsPage() {
 
       <FacebookSection />
       <AmocrmSection />
+      <MetaCapiSection />
       <PixelSection />
     </div>
   );

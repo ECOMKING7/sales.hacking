@@ -16,6 +16,10 @@ import {
   listPipelines as amocrmListPipelines,
   savePipeline as amocrmSavePipeline,
 } from '../controllers/amocrmController';
+import {
+  status as metaCapiStatus,
+  save as metaCapiSave,
+} from '../controllers/metaCapiController';
 import { verifyToken } from '../middleware/auth';
 
 const router = Router();
@@ -32,6 +36,10 @@ router.get('/fb-status', verifyToken, fbStatus);
 router.get('/amocrm-status', verifyToken, amocrmStatus);
 router.get('/amocrm-pipelines', verifyToken, amocrmListPipelines);
 router.post('/amocrm-pipeline', verifyToken, amocrmSavePipeline);
+
+// Meta Conversions API (token bu yerdan o'tmaydi — faqat .env da, §4.1)
+router.get('/meta-capi', verifyToken, metaCapiStatus);
+router.post('/meta-capi', verifyToken, metaCapiSave);
 
 // Workspace management
 router.get('/list', verifyToken, listWorkspaces);

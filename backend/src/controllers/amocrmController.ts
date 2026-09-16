@@ -145,8 +145,10 @@ export async function status(req: Request, res: Response): Promise<void> {
       amocrm_access_token: string | null;
       amocrm_pipeline_id: string | null;
       amocrm_won_stage_id: string | null;
+      amocrm_qualified_stage_ids: string[] | null;
     }>(
-      `SELECT amocrm_domain, amocrm_access_token, amocrm_pipeline_id, amocrm_won_stage_id
+      `SELECT amocrm_domain, amocrm_access_token, amocrm_pipeline_id,
+              amocrm_won_stage_id, amocrm_qualified_stage_ids
          FROM workspaces WHERE id = $1`,
       [req.user.workspaceId]
     );
@@ -156,6 +158,7 @@ export async function status(req: Request, res: Response): Promise<void> {
       domain: ws?.amocrm_domain ?? null,
       pipelineId: ws?.amocrm_pipeline_id ?? null,
       wonStageId: ws?.amocrm_won_stage_id ?? null,
+      qualifiedStageIds: ws?.amocrm_qualified_stage_ids ?? [],
     });
   } catch (err) {
     console.error('amocrm status error:', err);
@@ -193,6 +196,14 @@ export async function listPipelines(req: Request, res: Response): Promise<void> 
 const pipelineSchema = z.object({
   pipelineId: z.union([z.string(), z.number()]).transform((v) => String(v)),
   wonStageId: z.union([z.string(), z.number()]).transform((v) => String(v)),
+  /**
+   * §3.3 etaplar.sifatli. Ixtiyoriy: yuborilmasa mavjud qiymat saqlanadi.
+   * ID lar foydalanuvchi tanlagan ro'yxatdan keladi — taxmin yo'q (§3.5).
+   */
+  qualifiedStageIds: z
+    .array(z.union([z.string(), z.number()]))
+    .optional()
+    .transform((v) => (v ? v.map((x) => String(x)) : undefined)),
 });
 
 export async function savePipeline(req: Request, res: Response): Promise<void> {
@@ -208,9 +219,18 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
   try {
     const result = await pool.query(
       `UPDATE workspaces
-         SET amocrm_pipeline_id = $1, amocrm_won_stage_id = $2, updated_at = now()
-       WHERE id = $3`,
-      [parsed.data.pipelineId, parsed.data.wonStageId, req.user.workspaceId]
+         SET amocrm_pipeline_id = $1,
+             amocrm_won_stage_id = $2,
+             amocrm_qualified_stage_ids =
+               COALESCE($3::text[], amocrm_qualified_stage_ids),
+             updated_at = now()
+       WHERE id = $4`,
+      [
+        parsed.data.pipelineId,
+        parsed.data.wonStageId,
+        parsed.data.qualifiedStageIds ?? null,
+        req.user.workspaceId,
+      ]
     );
     if (!result.rowCount) {
       res.status(404).json({ error: 'Workspace not found' });
@@ -220,6 +240,7 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
       success: true,
       pipelineId: parsed.data.pipelineId,
       wonStageId: parsed.data.wonStageId,
+      qualifiedStageIds: parsed.data.qualifiedStageIds ?? null,
     });
   } catch (err) {
     console.error('amocrm savePipeline error:', err);

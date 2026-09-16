@@ -7,6 +7,7 @@ import type {
   FbStatus,
   AdAccount,
   AmocrmStatus,
+  MetaCapiStatus,
   Pipeline,
   EntityRow,
   Paginated,
@@ -79,8 +80,25 @@ export const amocrmApi = {
   status: () => api.get<AmocrmStatus>('/api/workspace/amocrm-status').then((r) => r.data),
   pipelines: () =>
     api.get<{ pipelines: Pipeline[] }>('/api/workspace/amocrm-pipelines').then((r) => r.data),
-  savePipeline: (pipelineId: string, wonStageId: string) =>
-    api.post('/api/workspace/amocrm-pipeline', { pipelineId, wonStageId }).then((r) => r.data),
+  savePipeline: (pipelineId: string, wonStageId: string, qualifiedStageIds?: string[]) =>
+    api
+      .post('/api/workspace/amocrm-pipeline', { pipelineId, wonStageId, qualifiedStageIds })
+      .then((r) => r.data),
+};
+
+// ---- Meta Conversions API ----
+export const metaCapiApi = {
+  status: () => api.get<MetaCapiStatus>('/api/workspace/meta-capi').then((r) => r.data),
+  save: (payload: {
+    datasetId?: string | null;
+    enabled?: boolean;
+    currency?: string;
+    phoneCountryCode?: string;
+    secretKey?: string | null;
+  }) =>
+    api
+      .post<{ success: boolean; warning: string | null }>('/api/workspace/meta-capi', payload)
+      .then((r) => r.data),
 };
 
 // ---- Dashboard ----

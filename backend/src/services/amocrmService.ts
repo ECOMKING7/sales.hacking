@@ -2,6 +2,7 @@ import axios, { AxiosError } from 'axios';
 import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { encrypt, decrypt } from '../utils/encryption';
+import { normalizePhoneE164 } from '../utils/phone';
 
 const AUTH_BASE = 'https://www.amocrm.ru/oauth';
 
@@ -23,10 +24,19 @@ function redirectUri(): string {
 
 // ---------- hashing ----------
 
-/** Normalize a phone (digits only) and SHA-256 hash it. */
-export function hashPhone(phone: string): string {
-  const normalized = phone.replace(/\D/g, '');
-  return crypto.createHash('sha256').update(normalized).digest('hex');
+/**
+ * Telefonni E.164 ga keltirib SHA-256 hash qiladi.
+ *
+ * Keltirib bo'lmasa `null` qaytaradi — buzuq raqamni hash qilishdan ko'ra
+ * hash qilmagan ma'qul: birinchisi jim ravishda hech kimga mos kelmaydi
+ * va buni keyin aniqlash imkonsiz bo'ladi.
+ *
+ * `countryCode` konfiguratsiyadan keladi (§3.1).
+ */
+export function hashPhone(phone: string, countryCode?: string): string | null {
+  const e164 = normalizePhoneE164(phone, countryCode);
+  if (!e164) return null;
+  return crypto.createHash('sha256').update(e164).digest('hex');
 }
 
 /** Lowercase/trim an email and SHA-256 hash it. */
