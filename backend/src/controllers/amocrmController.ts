@@ -6,6 +6,7 @@ import {
   generateAuthURL,
   exchangeCodeForTokens,
   getPipelines,
+  saveCredentials,
 } from '../services/amocrmService';
 
 function frontendUrl(): string {
@@ -22,7 +23,16 @@ export async function connect(req: Request, res: Response): Promise<void> {
     userId: req.user.userId,
     workspaceId: req.user.workspaceId,
   });
-  res.json({ url: generateAuthURL(state) });
+  try {
+    res.json({ url: await generateAuthURL(req.user.workspaceId, state) });
+  } catch (err) {
+    // Kalitlar yo'q — foydalanuvchiga nima qilishni aytamiz.
+    res.status(400).json({
+      error:
+        'amoCRM kalitlari sozlanmagan. Avval Client ID va Секретный ключ ni kiriting.',
+    });
+    console.error('amocrm connect:', (err as Error).message);
+  }
 }
 
 // ---- GET /api/auth/amocrm/callback (public; called by AmoCRM redirect) ----
@@ -75,7 +85,31 @@ export async function callback(req: Request, res: Response): Promise<void> {
 const manualSchema = z.object({
   code: z.string().min(20, 'Avtorizatsiya kodi juda qisqa'),
   domain: z.string().min(4, 'Domen kerak'),
+  /**
+   * Xususiy integratsiya har mijozning o'z CRM'ida yaratilgani uchun
+   * kalitlar ham har mijozda boshqa. Yuborilmasa — .env dagi umumiy
+   * kalitlar ishlatiladi (ommaviy integratsiya holati).
+   */
+  clientId: z
+    .string()
+    .trim()
+    .uuid('Client ID (ID интеграции) UUID ko\'rinishida bo\'lishi kerak')
+    .optional(),
+  clientSecret: z.string().trim().min(20, 'Секретный ключ juda qisqa').optional(),
 });
+
+/**
+ * API'ning tashqi manzili — webhook URL'ini yasash uchun.
+ * Proksi ortida `x-forwarded-proto`/`host` ishlatiladi; `PUBLIC_API_URL`
+ * bo'lsa u ustun turadi (masalan o'z domen ulanganda).
+ */
+function apiBaseUrl(req: Request): string {
+  const override = process.env.PUBLIC_API_URL;
+  if (override) return override.replace(/\/$/, '');
+  const proto = (req.header('x-forwarded-proto') ?? req.protocol ?? 'https').split(',')[0];
+  const host = req.header('x-forwarded-host') ?? req.header('host') ?? '';
+  return `${proto}://${host}`;
+}
 
 /** "https://xxx.amocrm.ru/" -> "xxx.amocrm.ru" */
 function normalizeDomain(raw: string): string {
@@ -107,7 +141,26 @@ export async function manualConnect(req: Request, res: Response): Promise<void> 
   }
 
   try {
+    // Kalitlar yuborilsa — almashtirishdan OLDIN saqlaymiz, chunki
+    // exchangeCodeForTokens ularni bazadan o'qiydi.
+    if (parsed.data.clientId && parsed.data.clientSecret) {
+      await saveCredentials(req.user.workspaceId, {
+        clientId: parsed.data.clientId,
+        clientSecret: parsed.data.clientSecret,
+      });
+    }
+
     await exchangeCodeForTokens(parsed.data.code.trim(), domain, req.user.workspaceId);
+
+    // Webhook siri hali bo'lmasa — yasab beramiz (yangi workspace).
+    // Migratsiya faqat allaqachon ulangan akkauntlarga yozgan edi.
+    await pool.query(
+      `UPDATE workspaces
+          SET amocrm_webhook_secret = replace(gen_random_uuid()::text, '-', '')
+        WHERE id = $1 AND amocrm_webhook_secret IS NULL`,
+      [req.user.workspaceId]
+    );
+
     res.json({ success: true, domain });
   } catch (err) {
     // amoCRM javobidan sababni olamiz; kod/token hech qachon log'ga tushmaydi.
@@ -148,14 +201,30 @@ export async function status(req: Request, res: Response): Promise<void> {
       amocrm_qualified_stage_ids: string[] | null;
       amocrm_won_pairs: string[] | null;
       amocrm_qualified_pairs: string[] | null;
+      amocrm_client_id: string | null;
+      amocrm_client_secret: string | null;
+      amocrm_webhook_secret: string | null;
+      amocrm_token_expires_at: Date | null;
     }>(
       `SELECT amocrm_domain, amocrm_access_token, amocrm_pipeline_id,
               amocrm_won_stage_id, amocrm_qualified_stage_ids,
-              amocrm_won_pairs, amocrm_qualified_pairs
+              amocrm_won_pairs, amocrm_qualified_pairs,
+              amocrm_client_id, amocrm_client_secret,
+              amocrm_webhook_secret, amocrm_token_expires_at
          FROM workspaces WHERE id = $1`,
       [req.user.workspaceId]
     );
     const ws = rows[0];
+
+    // Webhook URL'ni to'liq ko'rinishda beramiz — mijoz uni amoCRM'ga
+    // nusxalaydi. Sir bu yerda ochiq: u faqat KIRUVCHI webhook'ni
+    // tasdiqlaydi, CRM'ga kirish huquqi bermaydi. Va bu so'rov
+    // workspace egasining o'ziga, JWT ostida javob qaytaradi.
+    const base = apiBaseUrl(req);
+    const webhookUrl = ws?.amocrm_webhook_secret
+      ? `${base}/api/webhooks/amocrm?secret=${ws.amocrm_webhook_secret}`
+      : null;
+
     res.json({
       connected: Boolean(ws?.amocrm_access_token),
       domain: ws?.amocrm_domain ?? null,
@@ -165,6 +234,12 @@ export async function status(req: Request, res: Response): Promise<void> {
       /** '<voronka>:<etap>' juftliklari — sotuv va sifatli lid ta'rifi. */
       wonPairs: ws?.amocrm_won_pairs ?? [],
       qualifiedPairs: ws?.amocrm_qualified_pairs ?? [],
+      /** Client ID maxfiy emas — OAuth'da ochiq yuboriladi. */
+      clientId: ws?.amocrm_client_id ?? null,
+      /** Secret hech qachon qaytarilmaydi — faqat bor/yo'q (§4.1). */
+      clientSecretConfigured: Boolean(ws?.amocrm_client_secret),
+      webhookUrl,
+      tokenExpiresAt: ws?.amocrm_token_expires_at ?? null,
     });
   } catch (err) {
     console.error('amocrm status error:', err);

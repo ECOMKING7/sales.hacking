@@ -48,6 +48,13 @@ export interface AmocrmStatus {
    */
   wonPairs: string[];
   qualifiedPairs: string[];
+  /** Client ID maxfiy emas, shuning uchun qaytariladi. */
+  clientId: string | null;
+  /** Secret hech qachon qaytarilmaydi — faqat o'rnatilgani ma'lum. */
+  clientSecretConfigured: boolean;
+  /** amoCRM'ga joylanadigan to'liq webhook manzili. */
+  webhookUrl: string | null;
+  tokenExpiresAt: string | null;
 }
 
 /**

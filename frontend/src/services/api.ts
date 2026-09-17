@@ -72,10 +72,19 @@ export const facebookApi = {
 // ---- AmoCRM ----
 export const amocrmApi = {
   connect: () => api.get<{ url: string }>('/api/auth/amocrm/connect').then((r) => r.data),
-  /** Xususiy (Личная) integratsiya: "Код авторизации" ni qo'lda almashtirish. */
-  manualConnect: (code: string, domain: string) =>
+  /**
+   * Xususiy integratsiyani qo'lda ulash. Kalitlar ixtiyoriy: yuborilsa
+   * shu workspace uchun saqlanadi (har mijozning o'z integratsiyasi),
+   * yuborilmasa .env dagi umumiy kalitlar ishlatiladi.
+   */
+  manualConnect: (payload: {
+    code: string;
+    domain: string;
+    clientId?: string;
+    clientSecret?: string;
+  }) =>
     api
-      .post<{ success: boolean; domain: string }>('/api/auth/amocrm/manual', { code, domain })
+      .post<{ success: boolean; domain: string }>('/api/auth/amocrm/manual', payload)
       .then((r) => r.data),
   status: () => api.get<AmocrmStatus>('/api/workspace/amocrm-status').then((r) => r.data),
   pipelines: () =>

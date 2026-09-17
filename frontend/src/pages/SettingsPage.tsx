@@ -247,19 +247,60 @@ function FacebookSection() {
  *
  * Kod bir martalik — xato bo'lsa amoCRM'dan yangisini olish kerak.
  */
+/** Mijoz o'z amoCRM'ida bajaradigan qadamlar — formadan oldin turadi. */
+const CONNECT_STEPS = [
+  "amoCRM'ga kiring → amoМаркет bo'limi",
+  "O'ng yuqoridagi ⋯ → «Создать интеграцию» → «Внешняя интеграция» → + Создать",
+  "Ссылка для перенаправления maydoniga quyidagi manzilni joylang",
+  "Nom bering, «Предоставить доступ: Все» ni belgilang va Сохранить bosing. Pochtaga kelgan 6 xonali kodni kiritasiz",
+  "Integratsiyani ochib «Ключи и доступы» tabidan uchta qiymatni shu yerga ko'chiring",
+] as const;
+
+/**
+ * Xususiy integratsiyani qo'lda ulash.
+ *
+ * amoCRM xususiy integratsiyani faqat yaratilgan akkauntda ishlatishga
+ * ruxsat beradi (amoMarket'ning install oqimi «Нет доступных аккаунтов»
+ * qaytaradi). Shuning uchun har mijoz o'z CRM'ida o'z integratsiyasini
+ * yaratadi — ya'ni kalitlar ham har mijozda boshqa bo'ladi va ular
+ * shu formadan keladi, umumiy .env dan emas.
+ */
 function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
   const [domain, setDomain] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const redirectUri = `${
+    import.meta.env.VITE_API_URL || 'https://sales-hacking-api.vercel.app'
+  }/api/auth/amocrm/callback`;
+
+  const copyRedirect = async () => {
+    try {
+      await navigator.clipboard.writeText(redirectUri);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard bloklangan bo'lishi mumkin — matn baribir ko'rinib turadi */
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setBusy(true);
     try {
-      await amocrmApi.manualConnect(code.trim(), domain.trim());
+      await amocrmApi.manualConnect({
+        code: code.trim(),
+        domain: domain.trim(),
+        clientId: clientId.trim() || undefined,
+        clientSecret: clientSecret.trim() || undefined,
+      });
       setCode('');
+      setClientSecret('');
       onConnected();
     } catch (err) {
       setError(errMsg(err, 'Ulanmadi'));
@@ -272,13 +313,39 @@ function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
     <form onSubmit={submit} className="mt-5 border-t border-line pt-5">
       <div className="mb-3 flex items-center gap-2">
         <KeyRound className="h-4 w-4 text-ink-3" />
-        <h3 className="text-sm font-semibold text-ink">Avtorizatsiya kodi bilan ulash</h3>
+        <h3 className="text-sm font-semibold text-ink">amoCRM'ni ulash</h3>
       </div>
 
-      <p className="mb-4 text-xs leading-relaxed text-ink-2">
-        amoCRM → amoМаркет → integratsiyangiz → <b>Ключи и доступы</b> →{' '}
-        <b>Код авторизации</b>. Kod 20 daqiqa amal qiladi va bir marta ishlatiladi.
-      </p>
+      <ol className="mb-4 flex flex-col gap-1.5">
+        {CONNECT_STEPS.map((step, i) => (
+          <li key={i} className="flex gap-2.5 text-xs leading-relaxed text-ink-2">
+            <span className="flex-none font-mono text-ink-3">{i + 1}.</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mb-4 rounded-sm border-[1.5px] border-line bg-surface-2 p-3">
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <span className="text-xs font-semibold text-ink-2">
+            Ссылка для перенаправления
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={copyRedirect}
+            icon={
+              copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />
+            }
+          >
+            {copied ? 'Nusxalandi' : 'Nusxalash'}
+          </Button>
+        </div>
+        <code className="block overflow-x-auto whitespace-nowrap font-mono text-xs text-ink">
+          {redirectUri}
+        </code>
+      </div>
 
       <div className="grid gap-3">
         <Input
@@ -290,6 +357,25 @@ function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
           spellCheck={false}
         />
         <Input
+          label="ID интеграции"
+          placeholder="dcd456d0-5d66-429f-8df3-5b6a6aa8170d"
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          hint="Maxfiy emas — OAuth'da ochiq yuboriladi."
+        />
+        <Input
+          label="Секретный ключ"
+          placeholder="••••••••••••"
+          type="password"
+          value={clientSecret}
+          onChange={(e) => setClientSecret(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          hint="Shifrlangan holda saqlanadi va hech qachon qaytarilmaydi."
+        />
+        <Input
           label="Код авторизации"
           placeholder="def502..."
           type="password"
@@ -297,7 +383,7 @@ function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
           onChange={(e) => setCode(e.target.value)}
           autoComplete="off"
           spellCheck={false}
-          hint="Kod hech qayerda saqlanmaydi — faqat tokenga almashtiriladi."
+          hint="20 daqiqa amal qiladi, bir marta ishlatiladi. Saqlanmaydi — faqat tokenga almashtiriladi."
         />
       </div>
 
@@ -326,6 +412,7 @@ function AmocrmSection() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [hookCopied, setHookCopied] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -384,6 +471,17 @@ function AmocrmSection() {
   };
 
   const stages = pipelines.find((p) => String(p.id) === pipelineId)?.statuses ?? [];
+
+  const copyWebhook = async () => {
+    if (!status?.webhookUrl) return;
+    try {
+      await navigator.clipboard.writeText(status.webhookUrl);
+      setHookCopied(true);
+      setTimeout(() => setHookCopied(false), 2000);
+    } catch {
+      /* clipboard bloklangan — manzil baribir ko'rinib turadi */
+    }
+  };
 
   /** Belgilangan juftliklarni ro'yxatga qo'shadi yoki olib tashlaydi. */
   const togglePair = (
@@ -528,6 +626,38 @@ function AmocrmSection() {
           </div>
 
           {stagePicker}
+
+          {/* Webhook manzili — buni mijoz amoCRM'ga joylaydi, aks holda
+              lidlar real vaqtda kelmaydi. Sir har mijozga alohida. */}
+          {status.webhookUrl && (
+            <div className="mt-5">
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <span className={LABEL}>Webhook manzili</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void copyWebhook()}
+                  icon={
+                    hookCopied ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )
+                  }
+                >
+                  {hookCopied ? 'Nusxalandi' : 'Nusxalash'}
+                </Button>
+              </div>
+              <p className="mb-2 text-xs leading-relaxed text-ink-3">
+                amoCRM → amoМаркет → <b>+ WEB HOOKS</b> → shu manzilni qo'shing.
+                Hodisalar: <i>сделка создана</i>, <i>сделка изменена</i>,{' '}
+                <i>контакт создан</i>. Bu manzil faqat sizga tegishli — ulashmang.
+              </p>
+              <code className="block overflow-x-auto whitespace-nowrap rounded-sm border-[1.5px] border-line bg-surface-2 p-3 font-mono text-xs text-ink">
+                {status.webhookUrl}
+              </code>
+            </div>
+          )}
 
           <CardFooterRow>
             <Button

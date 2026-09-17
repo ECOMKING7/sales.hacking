@@ -6,20 +6,80 @@ import { normalizePhoneE164 } from '../utils/phone';
 
 const AUTH_BASE = 'https://www.amocrm.ru/oauth';
 
-function clientId(): string {
-  const v = process.env.AMOCRM_CLIENT_ID;
-  if (!v) throw new Error('AMOCRM_CLIENT_ID is not set');
-  return v;
-}
-function clientSecret(): string {
-  const v = process.env.AMOCRM_CLIENT_SECRET;
-  if (!v) throw new Error('AMOCRM_CLIENT_SECRET is not set');
-  return v;
-}
 function redirectUri(): string {
   const v = process.env.AMOCRM_REDIRECT_URI;
   if (!v) throw new Error('AMOCRM_REDIRECT_URI is not set');
   return v;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   OAuth kalitlari: workspace'dan, .env fallback bilan.
+
+   amoCRM xususiy integratsiyani faqat yaratilgan akkauntda
+   ishlatishga ruxsat beradi. Ya'ni har mijoz o'z CRM'ida o'z
+   integratsiyasini yaratadi va uning client_id/secret'i boshqa
+   bo'ladi — umumiy env bilan ikkinchi mijozni ulash imkonsiz.
+
+   amoMarket'dagi ommaviy integratsiyada esa bitta client_id
+   hamma mijoz uchun ishlaydi. Shuning uchun ikki manba ham
+   qoladi: workspace'da bo'lsa — o'shani, bo'lmasa — env.
+   ───────────────────────────────────────────────────────────── */
+
+export interface AmoCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
+function envCredentials(): AmoCredentials | null {
+  const id = process.env.AMOCRM_CLIENT_ID;
+  const secret = process.env.AMOCRM_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  return { clientId: id, clientSecret: secret };
+}
+
+/**
+ * Workspace uchun OAuth kalitlari. Ikkisi ham topilmasa otadi —
+ * chunki kalitsiz hech qanday so'rov ishlamaydi va buni jim
+ * o'tkazib yuborish keyinroq tushunarsiz 401 ga olib keladi.
+ */
+export async function loadCredentials(workspaceId: string): Promise<AmoCredentials> {
+  const { rows } = await pool.query<{
+    amocrm_client_id: string | null;
+    amocrm_client_secret: string | null;
+  }>(
+    `SELECT amocrm_client_id, amocrm_client_secret FROM workspaces WHERE id = $1`,
+    [workspaceId]
+  );
+
+  const ws = rows[0];
+  if (ws?.amocrm_client_id && ws.amocrm_client_secret) {
+    return {
+      clientId: ws.amocrm_client_id,
+      clientSecret: decrypt(ws.amocrm_client_secret),
+    };
+  }
+
+  const fromEnv = envCredentials();
+  if (fromEnv) return fromEnv;
+
+  throw new Error(
+    'amoCRM kalitlari topilmadi: workspace\'da ham, .env da ham yo\'q'
+  );
+}
+
+/** Workspace uchun kalitlarni saqlash. Secret shifrlanadi (§4.1). */
+export async function saveCredentials(
+  workspaceId: string,
+  creds: AmoCredentials
+): Promise<void> {
+  await pool.query(
+    `UPDATE workspaces
+        SET amocrm_client_id = $1,
+            amocrm_client_secret = $2,
+            updated_at = now()
+      WHERE id = $3`,
+    [creds.clientId, encrypt(creds.clientSecret), workspaceId]
+  );
 }
 
 // ---------- hashing ----------
@@ -47,9 +107,13 @@ export function hashEmail(email: string): string {
 
 // ---------- OAuth ----------
 
-export function generateAuthURL(state: string): string {
+export async function generateAuthURL(
+  workspaceId: string,
+  state: string
+): Promise<string> {
+  const { clientId } = await loadCredentials(workspaceId);
   const params = new URLSearchParams({
-    client_id: clientId(),
+    client_id: clientId,
     state,
     mode: 'post_message',
   });
@@ -71,9 +135,11 @@ export async function exchangeCodeForTokens(
   domain: string,
   workspaceId: string
 ): Promise<void> {
+  const creds = await loadCredentials(workspaceId);
+
   const res = await axios.post<TokenResponse>(`https://${domain}/oauth2/access_token`, {
-    client_id: clientId(),
-    client_secret: clientSecret(),
+    client_id: creds.clientId,
+    client_secret: creds.clientSecret,
     grant_type: 'authorization_code',
     code,
     redirect_uri: redirectUri(),
@@ -84,9 +150,16 @@ export async function exchangeCodeForTokens(
        SET amocrm_domain = $1,
            amocrm_access_token = $2,
            amocrm_refresh_token = $3,
+           amocrm_token_expires_at = now() + make_interval(secs => $4::int),
            updated_at = now()
-     WHERE id = $4`,
-    [domain, encrypt(res.data.access_token), encrypt(res.data.refresh_token), workspaceId]
+     WHERE id = $5`,
+    [
+      domain,
+      encrypt(res.data.access_token),
+      encrypt(res.data.refresh_token),
+      res.data.expires_in,
+      workspaceId,
+    ]
   );
 }
 
@@ -96,17 +169,32 @@ interface AmoWorkspaceRow {
   amocrm_refresh_token: string | null;
   amocrm_pipeline_id: string | null;
   amocrm_won_stage_id: string | null;
+  amocrm_token_expires_at: Date | null;
 }
 
 async function loadAmoWorkspace(workspaceId: string): Promise<AmoWorkspaceRow> {
   const res = await pool.query<AmoWorkspaceRow>(
     `SELECT amocrm_domain, amocrm_access_token, amocrm_refresh_token,
-            amocrm_pipeline_id, amocrm_won_stage_id
+            amocrm_pipeline_id, amocrm_won_stage_id, amocrm_token_expires_at
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
   if (!res.rows[0]) throw new Error('Workspace not found');
   return res.rows[0];
+}
+
+/**
+ * Token muddati shu oraliqdan kam qolsa — so'rovdan OLDIN yangilanadi.
+ *
+ * amoCRM tokeni 24 soat yashaydi. 401 ni kutib turish har mijozda
+ * kuniga kamida bitta behuda so'rov va lidning kechikishini beradi;
+ * webhook'da bu "lid keldi-yu atribusiya qilinmadi" ga aylanishi mumkin.
+ */
+const REFRESH_MARGIN_MS = 5 * 60_000;
+
+function expiringSoon(expiresAt: Date | null): boolean {
+  if (!expiresAt) return false; // muddat noma'lum — 401 bo'yicha ishlaymiz
+  return new Date(expiresAt).getTime() - Date.now() < REFRESH_MARGIN_MS;
 }
 
 /**
@@ -118,11 +206,13 @@ export async function refreshAccessToken(workspaceId: string): Promise<string> {
   if (!ws.amocrm_domain || !ws.amocrm_refresh_token) {
     throw new Error('AmoCRM is not connected');
   }
+  const creds = await loadCredentials(workspaceId);
+
   const res = await axios.post<TokenResponse>(
     `https://${ws.amocrm_domain}/oauth2/access_token`,
     {
-      client_id: clientId(),
-      client_secret: clientSecret(),
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
       grant_type: 'refresh_token',
       refresh_token: decrypt(ws.amocrm_refresh_token),
       redirect_uri: redirectUri(),
@@ -131,9 +221,17 @@ export async function refreshAccessToken(workspaceId: string): Promise<string> {
 
   await pool.query(
     `UPDATE workspaces
-       SET amocrm_access_token = $1, amocrm_refresh_token = $2, updated_at = now()
-     WHERE id = $3`,
-    [encrypt(res.data.access_token), encrypt(res.data.refresh_token), workspaceId]
+       SET amocrm_access_token = $1,
+           amocrm_refresh_token = $2,
+           amocrm_token_expires_at = now() + make_interval(secs => $3::int),
+           updated_at = now()
+     WHERE id = $4`,
+    [
+      encrypt(res.data.access_token),
+      encrypt(res.data.refresh_token),
+      res.data.expires_in,
+      workspaceId,
+    ]
   );
   return res.data.access_token;
 }
@@ -148,6 +246,17 @@ async function amoGet<T = unknown>(workspaceId: string, path: string): Promise<T
   }
   const url = `https://${ws.amocrm_domain}${path}`;
   let token = decrypt(ws.amocrm_access_token);
+
+  // Muddati tugayotgan bo'lsa — so'rovni yuborishdan oldin yangilaymiz.
+  if (expiringSoon(ws.amocrm_token_expires_at)) {
+    try {
+      token = await refreshAccessToken(workspaceId);
+    } catch (err) {
+      // Yangilash ishlamasa ham eski token bilan urinib ko'ramiz:
+      // u hali tirik bo'lishi mumkin va 401 yo'li quyida bor.
+      console.warn('amocrm proaktiv yangilash ishlamadi:', (err as Error).message);
+    }
+  }
 
   try {
     const res = await axios.get<T>(url, { headers: { Authorization: `Bearer ${token}` } });

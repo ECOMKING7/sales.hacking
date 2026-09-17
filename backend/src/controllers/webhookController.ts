@@ -22,19 +22,34 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function sameSecret(provided: string, expected: string): boolean {
+  if (!provided || provided.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+}
+
 /**
- * AmoCRM cannot HMAC-sign webhooks, so we verify a shared secret passed either
- * as ?secret= or the X-Webhook-Secret header (the webhook URL embeds it).
+ * AmoCRM webhook'ni HMAC bilan imzolay olmaydi, shuning uchun umumiy sir
+ * ishlatiladi: `?secret=` yoki `X-Webhook-Secret` (URL ichiga yoziladi).
+ *
+ * Sir HAR MIJOZGA ALOHIDA. Ilgari bitta umumiy `.env` siri bor edi:
+ * u sizib chiqsa, hamma mijozning webhook manziliga yolg'on lid
+ * yuborish mumkin bo'lardi — ya'ni bitta sir butun bazani ochardi.
+ *
+ * `.env` dagi umumiy sir fallback sifatida qoldi: workspace'da sir
+ * yo'q bo'lgan holatlar (migratsiyadan oldin ulangan akkauntlar)
+ * ishlashda davom etadi.
  */
-function verifySignature(req: Request): boolean {
-  const secret = process.env.AMOCRM_WEBHOOK_SECRET;
-  if (!secret) return true; // not configured (dev) → allow
+function verifySignature(req: Request, workspaceSecret: string | null): boolean {
   const provided =
     (typeof req.query.secret === 'string' ? req.query.secret : '') ||
     req.header('x-webhook-secret') ||
     '';
-  if (provided.length !== secret.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret));
+
+  if (workspaceSecret) return sameSecret(provided, workspaceSecret);
+
+  const envSecret = process.env.AMOCRM_WEBHOOK_SECRET;
+  if (!envSecret) return true; // hech qanday sir sozlanmagan (dev) → ruxsat
+  return sameSecret(provided, envSecret);
 }
 
 interface AmoLeadEvent {
@@ -68,6 +83,8 @@ interface WorkspaceCrmConfig {
    */
   amocrm_won_pairs: string[];
   amocrm_qualified_pairs: string[];
+  /** Har mijozga alohida webhook siri; bo'lmasa .env dagi umumiysi. */
+  amocrm_webhook_secret: string | null;
 }
 
 /** Hodisaning (voronka:etap) kaliti. Ikkisi ham bo'lmasa — null. */
@@ -83,7 +100,8 @@ async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrm
             COALESCE(phone_country_code, '998') AS phone_country_code,
             COALESCE(amocrm_qualified_stage_ids, '{}') AS amocrm_qualified_stage_ids,
             COALESCE(amocrm_won_pairs, '{}')           AS amocrm_won_pairs,
-            COALESCE(amocrm_qualified_pairs, '{}')     AS amocrm_qualified_pairs
+            COALESCE(amocrm_qualified_pairs, '{}')     AS amocrm_qualified_pairs,
+            amocrm_webhook_secret
        FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
   );
@@ -368,17 +386,15 @@ interface AmoWebhookBody {
   contacts?: { add?: AmoContactEvent[] };
 }
 
-/** Webhook tanasini qayta ishlash — javobdan mustaqil, alohida funksiya. */
-async function processWebhookBody(body: AmoWebhookBody): Promise<void> {
-  const subdomain = body.account?.subdomain;
-  if (!subdomain) return;
-
-  const workspace = await findWorkspaceBySubdomain(subdomain);
-  if (!workspace) {
-    console.warn('webhook: no workspace for subdomain', subdomain);
-    return;
-  }
-
+/**
+ * Webhook tanasini qayta ishlash. Workspace tashqarida topiladi, chunki
+ * sirni tekshirish uchun u allaqachon kerak bo'ladi — ikki marta
+ * so'rov yubormaymiz.
+ */
+async function processWebhookBody(
+  body: AmoWebhookBody,
+  workspace: WorkspaceCrmConfig
+): Promise<void> {
   for (const lead of body.leads?.add ?? []) {
     await handleLeadAdd(workspace.id, lead, workspace);
   }
@@ -396,8 +412,23 @@ const WEBHOOK_DEADLINE_MS = Number(process.env.WEBHOOK_DEADLINE_MS ?? 8000);
 
 // ---- POST /api/webhooks/amocrm ----
 export async function amocrmWebhook(req: Request, res: Response): Promise<void> {
-  if (!verifySignature(req)) {
+  const body = req.body as AmoWebhookBody;
+
+  // Workspace avval topiladi: sir har mijozga alohida bo'lgani uchun
+  // tekshirishdan oldin kimning webhook'i kelganini bilish kerak.
+  const subdomain = body.account?.subdomain;
+  const workspace = subdomain ? await findWorkspaceBySubdomain(subdomain) : null;
+
+  if (!verifySignature(req, workspace?.amocrm_webhook_secret ?? null)) {
     res.status(401).json({ error: 'Invalid webhook signature' });
+    return;
+  }
+
+  if (!workspace) {
+    // Noma'lum subdomen. 200 qaytaramiz — aks holda amoCRM cheksiz
+    // qayta yuborib turadi va bizning log'ni to'ldiradi.
+    if (subdomain) console.warn('webhook: no workspace for subdomain', subdomain);
+    res.status(200).json({ ok: true, processed: false });
     return;
   }
 
@@ -412,7 +443,7 @@ export async function amocrmWebhook(req: Request, res: Response): Promise<void> 
    * (amoCRM non-2xx da qayta yuboradi, bu esa dublikat ishga olib keladi).
    */
   const { finished } = await awaitWithDeadline(
-    processWebhookBody(req.body as AmoWebhookBody),
+    processWebhookBody(body, workspace),
     WEBHOOK_DEADLINE_MS,
     'amocrm webhook'
   );
