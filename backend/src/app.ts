@@ -53,10 +53,19 @@ const allowedOrigins = (process.env.FRONTEND_URL ?? '')
   .map((s) => s.trim())
   .filter(Boolean);
 
+/**
+ * `Retry-After` — CORS'ning standart ro'yxatida yo'q, shuning uchun
+ * brauzer uni JS'dan yashiradi. Login to'sig'i 429 bilan bu sarlavhani
+ * yuboradi, lekin frontend uni o'qiy olmasdi va "necha daqiqa kutish
+ * kerak" deb ko'rsatishga ma'lumot yo'q edi.
+ */
+const EXPOSED_HEADERS = ['Retry-After'];
+
 app.use(
   cors(
     isProd && allowedOrigins.length
       ? {
+          exposedHeaders: EXPOSED_HEADERS,
           origin: (origin, cb) => {
             // origin yo'q = server-to-server yoki curl — ruxsat.
             if (!origin) return cb(null, true);
@@ -68,7 +77,7 @@ app.use(
             return cb(new Error('Not allowed by CORS'));
           },
         }
-      : {}
+      : { exposedHeaders: EXPOSED_HEADERS }
   )
 );
 

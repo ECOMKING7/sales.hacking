@@ -280,10 +280,23 @@ const pairList = z
   .max(50, 'Juftliklar soni 50 dan oshmasin')
   .optional();
 
+/**
+ * amoCRM ID si — faqat raqam va aqlli uzunlikda.
+ *
+ * Ilgari bu `z.string()` edi va istalgan matnni qabul qilardi: test
+ * paytida 40 xonali axlat qiymat jimgina saqlanib ketdi. Bunday xato
+ * hech qanday belgi bermaydi — hisobot shunchaki bo'sh chiqadi va
+ * sababini topish uchun bazani ochish kerak bo'ladi.
+ */
+const amoId = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v).trim())
+  .refine((v) => /^\d{1,18}$/.test(v), 'ID faqat raqamdan iborat bo\'lishi kerak');
+
 const pipelineSchema = z.object({
   /** Hisobotdagi standart voronka. Juftliklar bundan mustaqil ishlaydi. */
-  pipelineId: z.union([z.string(), z.number()]).transform((v) => String(v)),
-  wonStageId: z.union([z.string(), z.number()]).transform((v) => String(v)),
+  pipelineId: amoId,
+  wonStageId: amoId,
   /**
    * §3.3 etaplar.sifatli — eski, bitta voronkali shakl. Orqaga moslik uchun.
    */
