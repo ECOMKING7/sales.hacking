@@ -106,6 +106,9 @@ export const metaCapiApi = {
     currency?: string;
     phoneCountryCode?: string;
     secretKey?: string | null;
+    eventLead?: string;
+    eventQualified?: string;
+    eventPurchase?: string;
   }) =>
     api
       .post<{ success: boolean; warning: string | null }>('/api/workspace/meta-capi', payload)

@@ -16,7 +16,32 @@ interface CapiStatusRow {
   secret_key: string | null;
   currency: string;
   phone_country_code: string;
+  capi_event_lead: string;
+  capi_event_qualified: string;
+  capi_event_purchase: string;
 }
+
+/**
+ * Meta'ning standart hodisalari. Standart nom Ads Manager'da darhol
+ * ishlaydi; boshqa har qanday nom — custom, va uni ishlatish uchun
+ * Events Manager'da Custom Conversion yasash kerak.
+ */
+const STANDARD_EVENTS = [
+  'Lead',
+  'Contact',
+  'Schedule',
+  'SubmitApplication',
+  'CompleteRegistration',
+  'StartTrial',
+  'Subscribe',
+  'Purchase',
+] as const;
+
+/** Nom Meta talabiga mos keladimi: harf, raqam va pastki chiziq. */
+const eventNameSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z][A-Za-z0-9_]{1,39}$/, 'Hodisa nomi harf bilan boshlanib, faqat harf/raqam/_ dan iborat bo\'lsin');
 
 function tokenPresent(secretKey: string | null): boolean {
   if (secretKey) {
@@ -36,7 +61,10 @@ export async function status(req: Request, res: Response): Promise<void> {
     const { rows } = await pool.query<CapiStatusRow>(
       `SELECT meta_dataset_id, meta_capi_enabled, secret_key,
               COALESCE(currency, 'UZS') AS currency,
-              COALESCE(phone_country_code, '998') AS phone_country_code
+              COALESCE(phone_country_code, '998') AS phone_country_code,
+              COALESCE(capi_event_lead, 'Lead')          AS capi_event_lead,
+              COALESCE(capi_event_qualified, 'Schedule') AS capi_event_qualified,
+              COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase
          FROM workspaces WHERE id = $1`,
       [req.user.workspaceId]
     );
@@ -65,6 +93,14 @@ export async function status(req: Request, res: Response): Promise<void> {
       /** Token .env da bormi — qiymati emas, faqat bor/yo'q. */
       tokenConfigured: tokenPresent(ws?.secret_key ?? null),
       secretKey: ws?.secret_key ?? null,
+      /** Bosqichlar uchun Meta hodisa nomlari (§3.1 — kodda emas). */
+      eventNames: {
+        lead: ws?.capi_event_lead ?? 'Lead',
+        qualified: ws?.capi_event_qualified ?? 'Schedule',
+        purchase: ws?.capi_event_purchase ?? 'Purchase',
+      },
+      /** UI ro'yxati uchun: standart nomlar darhol ishlaydi. */
+      standardEvents: STANDARD_EVENTS,
       events: stats.map((s) => ({
         eventName: s.event_name,
         status: s.status,
@@ -104,6 +140,10 @@ const saveSchema = z.object({
     .regex(/^[A-Za-z0-9_-]{1,40}$/, 'Kalit faqat harf, raqam, _ va - dan iborat')
     .nullable()
     .optional(),
+  /** Bosqichlar uchun Meta hodisa nomlari. */
+  eventLead: eventNameSchema.optional(),
+  eventQualified: eventNameSchema.optional(),
+  eventPurchase: eventNameSchema.optional(),
 });
 
 export async function save(req: Request, res: Response): Promise<void> {
@@ -127,8 +167,11 @@ export async function save(req: Request, res: Response): Promise<void> {
               currency            = COALESCE($3, currency),
               phone_country_code  = COALESCE($4, phone_country_code),
               secret_key          = COALESCE($5, secret_key),
+              capi_event_lead      = COALESCE($6, capi_event_lead),
+              capi_event_qualified = COALESCE($7, capi_event_qualified),
+              capi_event_purchase  = COALESCE($8, capi_event_purchase),
               updated_at          = now()
-        WHERE id = $6
+        WHERE id = $9
         RETURNING secret_key`,
       [
         d.datasetId ?? null,
@@ -136,6 +179,9 @@ export async function save(req: Request, res: Response): Promise<void> {
         d.currency ?? null,
         d.phoneCountryCode ?? null,
         d.secretKey ?? null,
+        d.eventLead ?? null,
+        d.eventQualified ?? null,
+        d.eventPurchase ?? null,
         req.user.workspaceId,
       ]
     );

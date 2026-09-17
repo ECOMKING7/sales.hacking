@@ -709,6 +709,9 @@ function MetaCapiSection() {
   const [datasetId, setDatasetId] = useState('');
   const [countryCode, setCountryCode] = useState('');
   const [currency, setCurrency] = useState('');
+  const [evLead, setEvLead] = useState('');
+  const [evQual, setEvQual] = useState('');
+  const [evPurchase, setEvPurchase] = useState('');
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [busy, setBusy] = useState(false);
@@ -722,6 +725,9 @@ function MetaCapiSection() {
       setDatasetId(s.datasetId ?? '');
       setCountryCode(s.phoneCountryCode);
       setCurrency(s.currency);
+      setEvLead(s.eventNames.lead);
+      setEvQual(s.eventNames.qualified);
+      setEvPurchase(s.eventNames.purchase);
     } catch (err) {
       setError(errMsg(err, 'Meta CAPI holati yuklanmadi'));
     } finally {
@@ -814,6 +820,57 @@ function MetaCapiSection() {
             />
           </div>
 
+          {/* §3.1: hodisa nomlari kodda emas. Meta'da standart nom
+              Ads Manager'da darhol ishlaydi, custom nom esa avval
+              Custom Conversion talab qiladi — shuning uchun tanlov. */}
+          <div className="mt-5">
+            <span className={LABEL}>Meta hodisa nomlari</span>
+            <p className="mt-1 mb-2.5 text-xs leading-relaxed text-ink-3">
+              Ro'yxatdagi <b>standart</b> nomlar Ads Manager'da darhol ishlaydi va
+              optimizatsiya maqsadi qilib tanlanadi. O'z nomingizni yozsangiz — u
+              custom bo'ladi va Events Manager'da <b>Custom Conversion</b> yasash kerak.
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {(
+                [
+                  ['Lid tushdi', evLead, setEvLead, 'capi-ev-lead'],
+                  ['Sifatli lid', evQual, setEvQual, 'capi-ev-qual'],
+                  ['Sotuv', evPurchase, setEvPurchase, 'capi-ev-purchase'],
+                ] as const
+              ).map(([label, value, setter, id]) => (
+                <div key={id}>
+                  <label htmlFor={id} className={LABEL}>
+                    {label}
+                  </label>
+                  <input
+                    id={id}
+                    list="capi-standard-events"
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={cn(
+                      'h-10 w-full rounded-sm border-[1.5px] border-line-2 bg-surface px-3.5',
+                      'text-sm text-ink placeholder:text-ink-3',
+                      'transition-[box-shadow,border-color] duration-200',
+                      'focus:border-edge focus:shadow-glow-md focus:outline-none'
+                    )}
+                  />
+                  {!status?.standardEvents.includes(value) && value.trim() !== '' && (
+                    <p className="mt-1.5 text-xs text-warn">custom — Custom Conversion kerak</p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <datalist id="capi-standard-events">
+              {(status?.standardEvents ?? []).map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </div>
+
           <dl className="mt-5">
             <StatRow
               label="Token (.env)"
@@ -849,6 +906,9 @@ function MetaCapiSection() {
                     datasetId: datasetId.trim() || null,
                     phoneCountryCode: countryCode.trim() || undefined,
                     currency: currency.trim() || undefined,
+                    eventLead: evLead.trim() || undefined,
+                    eventQualified: evQual.trim() || undefined,
+                    eventPurchase: evPurchase.trim() || undefined,
                   })
                 }
                 loading={busy}

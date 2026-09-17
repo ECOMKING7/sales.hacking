@@ -29,8 +29,16 @@ import { GRAPH_URL } from '../config/graph';
 /** Meta `event_time` ni 7 kundan eskisini qabul qilmaydi. */
 const MAX_EVENT_AGE_SEC = 7 * 24 * 60 * 60;
 
-/** Hodisa nomlari — Meta standart + bitta custom. */
-export type CapiEventName = 'Lead' | 'QualifiedLead' | 'Purchase';
+/**
+ * Voronka bosqichi. Meta'ga ketadigan ASL NOM bundan emas,
+ * konfiguratsiyadan olinadi (§3.1) — chunki standart hodisa
+ * (Lead, Schedule, Purchase) Ads Manager'da darhol ishlaydi,
+ * custom nom esa avval Custom Conversion talab qiladi.
+ */
+export type CapiStage = 'lead' | 'qualified' | 'purchase';
+
+/** Orqaga moslik uchun eski nom. */
+export type CapiEventName = CapiStage;
 
 export interface CapiLead {
   id: string;
@@ -48,6 +56,8 @@ interface CapiConfig {
   datasetId: string;
   token: string;
   currency: string;
+  /** Bosqich -> Meta hodisa nomi. Konfiguratsiyadan keladi. */
+  eventNames: Record<CapiStage, string>;
 }
 
 /**
@@ -73,9 +83,15 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     meta_capi_enabled: boolean;
     secret_key: string | null;
     currency: string | null;
+    capi_event_lead: string | null;
+    capi_event_qualified: string | null;
+    capi_event_purchase: string | null;
   }>(
     `SELECT meta_dataset_id, meta_capi_enabled, secret_key,
-            COALESCE(currency, 'UZS') AS currency
+            COALESCE(currency, 'UZS')              AS currency,
+            COALESCE(capi_event_lead, 'Lead')      AS capi_event_lead,
+            COALESCE(capi_event_qualified, 'Schedule') AS capi_event_qualified,
+            COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
@@ -94,6 +110,11 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     datasetId: ws.meta_dataset_id,
     token,
     currency: ws.currency ?? 'UZS',
+    eventNames: {
+      lead: ws.capi_event_lead ?? 'Lead',
+      qualified: ws.capi_event_qualified ?? 'Schedule',
+      purchase: ws.capi_event_purchase ?? 'Purchase',
+    },
   };
 }
 
@@ -132,14 +153,22 @@ function matchKeysOf(userData: Record<string, unknown>): string {
 export async function sendCapiEvent(
   workspaceId: string,
   lead: CapiLead,
-  eventName: CapiEventName,
+  stage: CapiStage,
   config?: CapiConfig | null
 ): Promise<boolean> {
+  // catch blokida ham kerak, shuning uchun try'dan tashqarida.
+  let eventName: string = stage;
+  let eventId = '';
+
   try {
     const cfg = config ?? (await loadCapiConfig(workspaceId));
     if (!cfg) return false;
 
-    const eventId = `${lead.crm_lead_id ?? lead.id}:${eventName}`;
+    // Meta'ga ketadigan nom konfiguratsiyadan. Dedup kaliti ham
+    // shu nomga tayanadi: nom o'zgarsa hodisa yangi signal sifatida
+    // bir marta qayta ketadi, bu ataylab shunday.
+    eventName = cfg.eventNames[stage];
+    eventId = `${lead.crm_lead_id ?? lead.id}:${eventName}`;
 
     // Takror yuborishni bazada to'samiz — Meta'ning 48 soatlik dedup
     // oynasidan uzoqroq muddatda ham ishlaydi.
@@ -152,7 +181,7 @@ export async function sendCapiEvent(
     );
     if (!claimed.rowCount) return false; // allaqachon yuborilgan
 
-    const occurredAt = eventName === 'Purchase' ? lead.won_at : lead.crm_created_at;
+    const occurredAt = stage === 'purchase' ? lead.won_at : lead.crm_created_at;
 
     const userData: Record<string, unknown> = {};
     const fbc = buildFbc(lead.fbclid, lead.crm_created_at);
@@ -179,7 +208,10 @@ export async function sendCapiEvent(
       user_data: userData,
     };
 
-    if (eventName === 'Purchase') {
+    // Summa faqat sotuv bosqichida ketadi — hodisa nomi qanday
+    // atalganidan qat'i nazar (mijoz uni 'Purchase' emas, boshqa
+    // nom bilan atagan bo'lishi mumkin).
+    if (stage === 'purchase') {
       const value = Number(lead.revenue ?? 0);
       if (value > 0) {
         event.custom_data = { value, currency: cfg.currency };
@@ -206,11 +238,14 @@ export async function sendCapiEvent(
 
     console.error(`CAPI ${eventName} yuborilmadi (lead ${lead.id}):`, reason.slice(0, 300));
 
+    // eventId bo'sh bo'lsa config yuklashda uzilgan — yozadigan qator yo'q.
+    if (!eventId) return false;
+
     try {
       await pool.query(
         `UPDATE capi_events SET status = 'error', error = $4
           WHERE workspace_id = $1 AND event_id = $2 AND event_name = $3`,
-        [workspaceId, `${lead.crm_lead_id ?? lead.id}:${eventName}`, eventName, reason.slice(0, 500)]
+        [workspaceId, eventId, eventName, reason.slice(0, 500)]
       );
     } catch {
       /* diagnostika yozuvi ham yozilmasa — jim o'tamiz, bu asosiy oqim emas */

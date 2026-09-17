@@ -68,6 +68,13 @@ export interface MetaCapiStatus {
   phoneCountryCode: string;
   tokenConfigured: boolean;
   secretKey: string | null;
+  /**
+   * Bosqich -> Meta hodisa nomi. Standart nom (Lead, Schedule,
+   * Purchase) Ads Manager'da darhol ishlaydi; boshqa nom custom
+   * bo'lib, Events Manager'da Custom Conversion talab qiladi.
+   */
+  eventNames: { lead: string; qualified: string; purchase: string };
+  standardEvents: string[];
   events: Array<{
     eventName: string;
     status: string;

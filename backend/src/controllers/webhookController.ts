@@ -7,7 +7,7 @@ import {
   loadCapiConfig,
   loadCapiLead,
   sendCapiEvent,
-  type CapiEventName,
+  type CapiStage,
 } from '../services/metaCapi';
 import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
@@ -229,7 +229,7 @@ async function handleLeadAdd(
 
   // Meta'ga "yangi lid" signali. Moslik kaliti bo'lmasa (telefon ham,
   // email ham, fbclid ham yo'q) metaCapi o'zi o'tkazib yuboradi.
-  await notifyMeta(workspaceId, lead.id, 'Lead');
+  await notifyMeta(workspaceId, lead.id, 'lead');
 }
 
 async function handleLeadStatus(
@@ -324,7 +324,7 @@ async function handleLeadStatus(
   // Meta'ga xabar beramiz: shu lid sifatli bo'ldi / sotuvga aylandi.
   // Atribusiyadan KEYIN — o'shanda revenue va won_at yozilgan bo'ladi.
   if (markQualified || newStatus === 'won') {
-    await notifyMeta(workspaceId, lead.id, newStatus === 'won' ? 'Purchase' : 'QualifiedLead');
+    await notifyMeta(workspaceId, lead.id, newStatus === 'won' ? 'purchase' : 'qualified');
   }
 }
 
@@ -335,7 +335,7 @@ async function handleLeadStatus(
 async function notifyMeta(
   workspaceId: string,
   crmLeadId: string,
-  eventName: CapiEventName
+  stage: CapiStage
 ): Promise<void> {
   try {
     const config = await loadCapiConfig(workspaceId);
@@ -350,9 +350,9 @@ async function notifyMeta(
     const capiLead = await loadCapiLead(workspaceId, rows[0].id);
     if (!capiLead) return;
 
-    await sendCapiEvent(workspaceId, capiLead, eventName, config);
+    await sendCapiEvent(workspaceId, capiLead, stage, config);
   } catch (err) {
-    console.error(`CAPI (${eventName}) o'ram xatosi:`, (err as Error).message);
+    console.error(`CAPI (${stage}) o'ram xatosi:`, (err as Error).message);
   }
 }
 
