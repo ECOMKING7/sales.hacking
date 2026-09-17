@@ -321,7 +321,8 @@ function AmocrmSection() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pipelineId, setPipelineId] = useState('');
   const [wonStageId, setWonStageId] = useState('');
-  const [qualifiedIds, setQualifiedIds] = useState<string[]>([]);
+  const [wonPairs, setWonPairs] = useState<string[]>([]);
+  const [qualPairs, setQualPairs] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -333,7 +334,8 @@ function AmocrmSection() {
       setStatus(s);
       setPipelineId(s.pipelineId ?? '');
       setWonStageId(s.wonStageId ?? '');
-      setQualifiedIds(s.qualifiedStageIds ?? []);
+      setWonPairs(s.wonPairs ?? []);
+      setQualPairs(s.qualifiedPairs ?? []);
       if (s.connected) {
         try {
           const { pipelines } = await amocrmApi.pipelines();
@@ -365,17 +367,104 @@ function AmocrmSection() {
   const save = async () => {
     if (!pipelineId || !wonStageId) return;
     setBusy(true);
+    setError('');
     try {
-      await amocrmApi.savePipeline(pipelineId, wonStageId, qualifiedIds);
+      await amocrmApi.savePipeline({
+        pipelineId,
+        wonStageId,
+        wonPairs,
+        qualifiedPairs: qualPairs,
+      });
       await load();
     } catch (err) {
-      setError(errMsg(err, 'Failed to save pipeline'));
+      setError(errMsg(err, 'Saqlanmadi'));
     } finally {
       setBusy(false);
     }
   };
 
   const stages = pipelines.find((p) => String(p.id) === pipelineId)?.statuses ?? [];
+
+  /** Belgilangan juftliklarni ro'yxatga qo'shadi yoki olib tashlaydi. */
+  const togglePair = (
+    setter: React.Dispatch<React.SetStateAction<string[]>>,
+    pair: string,
+    on: boolean
+  ) => setter((prev) => (on ? [...new Set([...prev, pair])] : prev.filter((x) => x !== pair)));
+
+  /**
+   * Har voronka ostida etaplar ro'yxati, ikki ustunli: "sotuv" va "sifatli".
+   *
+   * Nega hamma voronka ko'rsatiladi: amoCRM'da sotuv boshqa voronkada
+   * yopilishi mumkin. Furninglass'da 60 kunda 232.5 mln so'm `guli`
+   * voronkasida, 5.8 mln esa `Kvalifikatsiya` da yopilgan — faqat
+   * bittasini kuzatsak daromadning 2.4% i ko'rinadi.
+   */
+  const stagePicker = (
+    <div className="mt-5 flex flex-col gap-4">
+      <div>
+        <span className={LABEL}>Sotuv va sifatli lid etaplari</span>
+        <p className="mt-1 text-xs leading-relaxed text-ink-3">
+          Har voronkadan belgilang. <b>Sotuv</b> — daromad hisoblanadigan etap.{' '}
+          <b>Sifatli</b> — lid bo'sh raqam emasligi ma'lum bo'lgan etap.
+          amoCRM'da <code>142</code> va <code>143</code> har voronkada takrorlanadi,
+          shuning uchun voronka ham birga tanlanadi.
+        </p>
+      </div>
+
+      {pipelines.length === 0 ? (
+        <p className="text-xs text-ink-3">Voronkalar yuklanmadi — amoCRM tokeni tekshirilsin.</p>
+      ) : (
+        pipelines.map((p) => (
+          <div key={p.id} className="rounded-sm border-[1.5px] border-line bg-surface-2 p-3">
+            <p className="mb-2 text-xs font-semibold text-ink">{p.name}</p>
+
+            <div className="mb-1.5 grid grid-cols-[1fr_56px_56px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+              <span>Etap</span>
+              <span className="text-center">Sotuv</span>
+              <span className="text-center">Sifatli</span>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              {p.statuses.map((s) => {
+                const pair = `${p.id}:${s.id}`;
+                const isWon = wonPairs.includes(pair);
+                const isQual = qualPairs.includes(pair);
+                return (
+                  <div
+                    key={s.id}
+                    className="grid grid-cols-[1fr_56px_56px] items-center gap-2"
+                  >
+                    <span className="min-w-0 truncate text-sm text-ink">{s.name}</span>
+                    <span className="flex justify-center">
+                      <Checkbox
+                        checked={isWon}
+                        onChange={(on) => togglePair(setWonPairs, pair, on)}
+                        label={`${p.name} / ${s.name} — sotuv`}
+                      />
+                    </span>
+                    <span className="flex justify-center">
+                      <Checkbox
+                        checked={isQual}
+                        onChange={(on) => togglePair(setQualPairs, pair, on)}
+                        label={`${p.name} / ${s.name} — sifatli`}
+                      />
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+
+      {wonPairs.length === 0 && (
+        <p className="text-sm text-bad">
+          Hech bir etap "sotuv" deb belgilanmagan — daromad 0 bo'lib qoladi.
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <Card padding="lg">
@@ -399,7 +488,7 @@ function AmocrmSection() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label htmlFor="amo-pipeline" className={LABEL}>
-                Pipeline
+                Asosiy voronka <span className="font-normal text-ink-3">(hisobot filtri)</span>
               </label>
               <select
                 id="amo-pipeline"
@@ -438,47 +527,7 @@ function AmocrmSection() {
             </div>
           </div>
 
-          {/* §3.3 etaplar.sifatli — CQL, sifatli lid % va Meta'ga
-              yuboriladigan QualifiedLead hodisasi shu tanlovga tayanadi.
-              Bo'sh qolsa voronkaning o'rta bosqichi doim 0 chiqadi. */}
-          <div className="mt-5">
-            <span className={LABEL}>Sifatli lid etaplari</span>
-            <p className="mb-2.5 text-xs text-ink-3">
-              Lid shu etaplardan biriga yetsa — "sifatli" hisoblanadi. Sifatli lid
-              narxi (CQL) va Meta'ga yuboriladigan signal shunga bog'liq.
-            </p>
-
-            {stages.length === 0 ? (
-              <p className="text-xs text-ink-3">Avval voronkani tanlang.</p>
-            ) : (
-              <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
-                {stages
-                  .filter((s) => String(s.id) !== wonStageId)
-                  .map((s) => {
-                    const id = String(s.id);
-                    const checked = qualifiedIds.includes(id);
-                    const toggle = (next: boolean) =>
-                      setQualifiedIds((prev) =>
-                        next ? [...prev, id] : prev.filter((x) => x !== id)
-                      );
-                    return (
-                      // `<label>` matni `<button>` ga uzatilmaydi, shuning uchun
-                      // matn ham alohida tugma — ikkalasi bir xil ishni qiladi.
-                      <div key={id} className="flex items-center gap-2.5">
-                        <Checkbox checked={checked} onChange={toggle} label={s.name} />
-                        <button
-                          type="button"
-                          onClick={() => toggle(!checked)}
-                          className="min-w-0 truncate text-left text-sm text-ink"
-                        >
-                          {s.name}
-                        </button>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
+          {stagePicker}
 
           <CardFooterRow>
             <Button

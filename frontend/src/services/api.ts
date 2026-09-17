@@ -80,10 +80,12 @@ export const amocrmApi = {
   status: () => api.get<AmocrmStatus>('/api/workspace/amocrm-status').then((r) => r.data),
   pipelines: () =>
     api.get<{ pipelines: Pipeline[] }>('/api/workspace/amocrm-pipelines').then((r) => r.data),
-  savePipeline: (pipelineId: string, wonStageId: string, qualifiedStageIds?: string[]) =>
-    api
-      .post('/api/workspace/amocrm-pipeline', { pipelineId, wonStageId, qualifiedStageIds })
-      .then((r) => r.data),
+  savePipeline: (payload: {
+    pipelineId: string;
+    wonStageId: string;
+    wonPairs?: string[];
+    qualifiedPairs?: string[];
+  }) => api.post('/api/workspace/amocrm-pipeline', payload).then((r) => r.data),
 };
 
 // ---- Meta Conversions API ----

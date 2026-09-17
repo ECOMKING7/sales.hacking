@@ -146,9 +146,12 @@ export async function status(req: Request, res: Response): Promise<void> {
       amocrm_pipeline_id: string | null;
       amocrm_won_stage_id: string | null;
       amocrm_qualified_stage_ids: string[] | null;
+      amocrm_won_pairs: string[] | null;
+      amocrm_qualified_pairs: string[] | null;
     }>(
       `SELECT amocrm_domain, amocrm_access_token, amocrm_pipeline_id,
-              amocrm_won_stage_id, amocrm_qualified_stage_ids
+              amocrm_won_stage_id, amocrm_qualified_stage_ids,
+              amocrm_won_pairs, amocrm_qualified_pairs
          FROM workspaces WHERE id = $1`,
       [req.user.workspaceId]
     );
@@ -159,6 +162,9 @@ export async function status(req: Request, res: Response): Promise<void> {
       pipelineId: ws?.amocrm_pipeline_id ?? null,
       wonStageId: ws?.amocrm_won_stage_id ?? null,
       qualifiedStageIds: ws?.amocrm_qualified_stage_ids ?? [],
+      /** '<voronka>:<etap>' juftliklari — sotuv va sifatli lid ta'rifi. */
+      wonPairs: ws?.amocrm_won_pairs ?? [],
+      qualifiedPairs: ws?.amocrm_qualified_pairs ?? [],
     });
   } catch (err) {
     console.error('amocrm status error:', err);
@@ -193,17 +199,32 @@ export async function listPipelines(req: Request, res: Response): Promise<void> 
 }
 
 // ---- POST /api/workspace/amocrm-pipeline (protected) ----
+/** '10742882:142' — voronka:etap. Boshqa shakl qabul qilinmaydi. */
+const pairList = z
+  .array(z.string().regex(/^\d+:\d+$/, 'Juftlik "voronka:etap" ko\'rinishida bo\'lsin'))
+  .max(50, 'Juftliklar soni 50 dan oshmasin')
+  .optional();
+
 const pipelineSchema = z.object({
+  /** Hisobotdagi standart voronka. Juftliklar bundan mustaqil ishlaydi. */
   pipelineId: z.union([z.string(), z.number()]).transform((v) => String(v)),
   wonStageId: z.union([z.string(), z.number()]).transform((v) => String(v)),
   /**
-   * §3.3 etaplar.sifatli. Ixtiyoriy: yuborilmasa mavjud qiymat saqlanadi.
-   * ID lar foydalanuvchi tanlagan ro'yxatdan keladi — taxmin yo'q (§3.5).
+   * §3.3 etaplar.sifatli — eski, bitta voronkali shakl. Orqaga moslik uchun.
    */
   qualifiedStageIds: z
     .array(z.union([z.string(), z.number()]))
     .optional()
     .transform((v) => (v ? v.map((x) => String(x)) : undefined)),
+  /**
+   * Yangi shakl: sotuv va sifatli lid (voronka:etap) juftliklari ro'yxati.
+   *
+   * Bitta voronka yetarli emas — mijozda voronka ikki bosqichli bo'lishi
+   * mumkin va pul ikkinchisida yopiladi. Voronkasiz etap ID si ham
+   * yetarli emas: amoCRM'da 142/143 har voronkada takrorlanadi.
+   */
+  wonPairs: pairList,
+  qualifiedPairs: pairList,
 });
 
 export async function savePipeline(req: Request, res: Response): Promise<void> {
@@ -217,18 +238,36 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
+    // Sotuv juftligi bo'sh qolmasin: bo'sh ro'yxat "hech bir sotuv
+    // hisoblanmaydi" degani va u jimgina daromadni nolga tushiradi.
+    // Yuborilmagan bo'lsa — tanlangan voronka+etapdan yasaymiz.
+    const wonPairs =
+      parsed.data.wonPairs && parsed.data.wonPairs.length > 0
+        ? parsed.data.wonPairs
+        : parsed.data.wonPairs // bo'sh massiv ataylab yuborilgan
+          ? [`${parsed.data.pipelineId}:${parsed.data.wonStageId}`]
+          : null; // umuman yuborilmagan — mavjud qiymat saqlanadi
+
+    const qualifiedPairs = parsed.data.qualifiedPairs ?? null;
+
     const result = await pool.query(
       `UPDATE workspaces
          SET amocrm_pipeline_id = $1,
              amocrm_won_stage_id = $2,
              amocrm_qualified_stage_ids =
                COALESCE($3::text[], amocrm_qualified_stage_ids),
+             amocrm_won_pairs =
+               COALESCE($4::text[], amocrm_won_pairs),
+             amocrm_qualified_pairs =
+               COALESCE($5::text[], amocrm_qualified_pairs),
              updated_at = now()
-       WHERE id = $4`,
+       WHERE id = $6`,
       [
         parsed.data.pipelineId,
         parsed.data.wonStageId,
         parsed.data.qualifiedStageIds ?? null,
+        wonPairs,
+        qualifiedPairs,
         req.user.workspaceId,
       ]
     );
@@ -240,7 +279,8 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
       success: true,
       pipelineId: parsed.data.pipelineId,
       wonStageId: parsed.data.wonStageId,
-      qualifiedStageIds: parsed.data.qualifiedStageIds ?? null,
+      wonPairs: wonPairs,
+      qualifiedPairs: qualifiedPairs,
     });
   } catch (err) {
     console.error('amocrm savePipeline error:', err);

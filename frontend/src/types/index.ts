@@ -39,8 +39,15 @@ export interface AmocrmStatus {
   domain: string | null;
   pipelineId: string | null;
   wonStageId: string | null;
-  /** §3.3 etaplar.sifatli — "sifatli lid" hisoblanadigan etaplar. */
+  /** Eski shakl — bitta voronka ichidagi etap ID lari. */
   qualifiedStageIds: string[];
+  /**
+   * '<voronka>:<etap>' juftliklari. Sotuv va sifatli lid ta'rifi shu
+   * yerda: amoCRM'da 142/143 har voronkada takrorlanadi, shuning uchun
+   * etap ID si yakka o'zi yetarli emas.
+   */
+  wonPairs: string[];
+  qualifiedPairs: string[];
 }
 
 /**

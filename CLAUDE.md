@@ -61,6 +61,17 @@ Whichever succeeded is recorded in `leads.match_method` (`utm` / `fbclid` / `con
 
 When no touchpoint exists but UTM matches, the engine **creates** a touchpoint with `attribution_weight = 1.0` rather than attributing off-book. Every contribution lives in `touchpoints.attribution_weight`, which is the single input the recompute reads.
 
+### What counts as "won" — pipeline+stage pairs, not one stage
+
+`workspaces.amocrm_won_pairs` and `amocrm_qualified_pairs` hold `'<pipelineId>:<statusId>'` strings; `handleLeadStatus` matches the incoming event's pair against them. The older single `amocrm_pipeline_id` + `amocrm_won_stage_id` remains as the report's default pipeline filter and as a **fallback used only when `amocrm_won_pairs` is empty**.
+
+Two facts force the pair:
+
+1. **A customer's funnel can span pipelines.** Real data from the first customer: 232.5M UZS of revenue closes in a *sales* pipeline while the configured pipeline (*qualification*) held 5.8M. Pinning to one pipeline reported 2.4% of revenue — and a silently understated ROAS is worse than no number, because the operator acts on it.
+2. **amoCRM's `142` (won) and `143` (lost) exist in every pipeline.** So dropping the pipeline filter and matching on stage `142` alone is equally wrong: a "review collected" stage also carries id `142`.
+
+Do not reintroduce a single-pipeline won condition. When adding a report filter, remember it must not silently exclude pipelines that `amocrm_won_pairs` includes.
+
 ### One owner per column
 
 `revenue`, `purchases_count` and `roas` on campaigns/adsets/ads belong to the **attribution engine** (CRM truth). `fb_revenue` and `fb_purchases` belong to the **Facebook sync** (what the pixel reported). The sync must never touch the first set, and the engine never touches the second.

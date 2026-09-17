@@ -56,8 +56,24 @@ interface WorkspaceCrmConfig {
   attribution_key: string;
   /** §3.1: telefon mamlakat kodi ham konfiguratsiyadan (E.164 uchun). */
   phone_country_code: string;
-  /** §3.3 etaplar.sifatli — qaysi etap "sifatli lid" deb hisoblanadi. */
+  /** §3.3 etaplar.sifatli — bitta voronka ichida (eski shakl, fallback). */
   amocrm_qualified_stage_ids: string[];
+  /**
+   * §3.3 etaplar — (voronka:etap) juftliklari, '10742882:142' ko'rinishida.
+   *
+   * Bitta voronka yetarli emas: mijozda voronka ikki bosqichli bo'lishi
+   * mumkin (kvalifikatsiya -> sotuv) va pul ikkinchisida yopiladi.
+   * Voronkasiz "142" ham yetarli emas — 142 har voronkada bor va
+   * "otziv olindi" kabi etaplar ham 142 bo'lib chiqadi.
+   */
+  amocrm_won_pairs: string[];
+  amocrm_qualified_pairs: string[];
+}
+
+/** Hodisaning (voronka:etap) kaliti. Ikkisi ham bo'lmasa — null. */
+function pairKey(pipelineId: string | null, statusId: string | null): string | null {
+  if (!pipelineId || !statusId) return null;
+  return `${pipelineId}:${statusId}`;
 }
 
 async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrmConfig | null> {
@@ -65,7 +81,9 @@ async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrm
     `SELECT id, amocrm_won_stage_id, amocrm_pipeline_id,
             COALESCE(attribution_key, 'utm_term') AS attribution_key,
             COALESCE(phone_country_code, '998') AS phone_country_code,
-            COALESCE(amocrm_qualified_stage_ids, '{}') AS amocrm_qualified_stage_ids
+            COALESCE(amocrm_qualified_stage_ids, '{}') AS amocrm_qualified_stage_ids,
+            COALESCE(amocrm_won_pairs, '{}')           AS amocrm_won_pairs,
+            COALESCE(amocrm_qualified_pairs, '{}')     AS amocrm_qualified_pairs
        FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
   );
@@ -206,13 +224,25 @@ async function handleLeadStatus(
   const pipelineId = lead.pipeline_id ? String(lead.pipeline_id) : null;
   let revenue = num(lead.price);
 
-  // A deal is "won" when it lands on the customer-selected won stage. When a
-  // pipeline is configured, the event must also belong to that pipeline.
-  const wonStageId = config.amocrm_won_stage_id;
-  const pipelineMatches = !config.amocrm_pipeline_id || pipelineId === config.amocrm_pipeline_id;
+  // "Sotuv" — (voronka:etap) juftligi ro'yxatda bo'lsa.
+  //
+  // Juftlik kerak, chunki amoCRM'da 142 (yutildi) va 143 (yutqazildi)
+  // universal: har voronkada bor. Furninglass misolida sotuv `guli`
+  // voronkasida yopiladi, `Kvalifikatsiya` da esa "sotuvga o'tkazildi"
+  // degan boshqa ma'noli 142 turadi — ikkisini ajratish shart.
+  const key = pairKey(pipelineId, statusId);
+
+  // Juftliklar sozlanmagan bo'lsa — eski bitta-voronkali mantiqqa tushamiz,
+  // shunda mavjud akkauntlar migratsiyadan keyin ham ishlashda davom etadi.
+  const wonByPair = key !== null && config.amocrm_won_pairs.includes(key);
+  const wonByLegacy =
+    config.amocrm_won_pairs.length === 0 &&
+    Boolean(config.amocrm_won_stage_id) &&
+    statusId === config.amocrm_won_stage_id &&
+    (!config.amocrm_pipeline_id || pipelineId === config.amocrm_pipeline_id);
 
   let newStatus: 'won' | 'lost' | 'in_progress' = 'in_progress';
-  if (wonStageId && statusId === wonStageId && pipelineMatches) {
+  if (wonByPair || wonByLegacy) {
     newStatus = 'won';
   } else if (statusId === DEFAULT_LOST_STATUS_ID) {
     newStatus = 'lost';
@@ -227,7 +257,10 @@ async function handleLeadStatus(
   // Faqat birinchi marta: lid orqaga qaytsa ham "sifatli bo'lgan" fakti
   // yo'qolmasligi kerak, aks holda konversiya raqamlari o'zgaruvchan bo'ladi.
   const reachedQualified =
-    statusId !== null && config.amocrm_qualified_stage_ids.includes(statusId);
+    (key !== null && config.amocrm_qualified_pairs.includes(key)) ||
+    (config.amocrm_qualified_pairs.length === 0 &&
+      statusId !== null &&
+      config.amocrm_qualified_stage_ids.includes(statusId));
   // Yutilgan lid ta'rifi bo'yicha sifatli bosqichdan o'tgan.
   const markQualified = reachedQualified || newStatus === 'won';
 

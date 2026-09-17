@@ -81,7 +81,14 @@ export default function OnboardingPage() {
   const finish = async () => {
     if (pipelineId && wonStageId) {
       try {
-        await amocrmApi.savePipeline(pipelineId, wonStageId);
+        // Onboarding'da faqat bitta voronka tanlanadi; juftlik shundan
+        // yasaladi. Boshqa voronkalardagi sotuv etaplari keyin
+        // Settings'da qo'shiladi.
+        await amocrmApi.savePipeline({
+          pipelineId,
+          wonStageId,
+          wonPairs: [`${pipelineId}:${wonStageId}`],
+        });
       } catch {
         /* allow finishing even if save fails */
       }
