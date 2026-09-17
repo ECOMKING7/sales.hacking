@@ -709,6 +709,39 @@ interface WorkspaceTokenRow {
   fb_ad_account_id: string | null;
   fb_access_token: string | null;
   fb_token_expires_at: string | null;
+  fb_currency: string | null;
+}
+
+/**
+ * Reklama akkauntining valyutasi.
+ *
+ * ROAS = revenue / spend. Daromad CRM valyutasida, xarajat esa shu
+ * yerdagi valyutada. Teng bo'lmasa ROAS ko'rsatilmaydi (utils/currencyGuard).
+ *
+ * Faqat `fb_currency` NULL bo'lganda chaqiriladi — har sync'da emas.
+ * Sababi: ad account darajasidagi rate limit tor (xato kodi 17), ortiqcha
+ * so'rov qo'shmaymiz. Valyuta esa amalda o'zgarmaydi.
+ */
+async function backfillAccountCurrency(
+  workspaceId: string,
+  actId: string,
+  token: string
+): Promise<void> {
+  try {
+    const res = await axios.get(`${GRAPH}/${actId}`, {
+      params: { fields: 'currency', access_token: token },
+      timeout: 15_000,
+    });
+    const currency = res.data?.currency ? String(res.data.currency).toUpperCase() : null;
+    if (!currency) return;
+    await pool.query(`UPDATE workspaces SET fb_currency = $1 WHERE id = $2`, [
+      currency,
+      workspaceId,
+    ]);
+  } catch (err) {
+    // Sync bu sababdan to'xtamaydi — valyuta keyingi urinishda o'qiladi.
+    console.error('fb currency backfill failed:', (err as Error).message);
+  }
 }
 
 /**
@@ -722,6 +755,7 @@ export async function syncWorkspace(
 ): Promise<{ campaigns: number; adsets: number; ads: number }> {
   const wsRes = await pool.query<WorkspaceTokenRow>(
     `SELECT w.fb_ad_account_id,
+            w.fb_currency,
             u.fb_access_token,
             u.fb_token_expires_at
        FROM workspaces w
@@ -739,6 +773,13 @@ export async function syncWorkspace(
 
   const token = decrypt(ws.fb_access_token);
   const actId = normalizeActId(ws.fb_ad_account_id);
+
+  // Valyuta bir marta o'qiladi va bazada qoladi. Bilinmaguncha ROAS
+  // qo'riqchisi ishlamaydi, ya'ni eski workspace'lar birinchi sync'da
+  // o'zini o'zi tuzatadi.
+  if (!ws.fb_currency) {
+    await backfillAccountCurrency(workspaceId, actId, token);
+  }
 
   // Account-level bulk sync: campaigns → adsets → ads (≈6 Graph calls total).
   //

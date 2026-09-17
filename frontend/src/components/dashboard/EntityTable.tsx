@@ -7,6 +7,7 @@ import {
   Play,
   Image as ImageIcon,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import Checkbox from './Checkbox';
 import { dashboardApi } from '../../services/api';
@@ -143,6 +144,11 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
     case 'revenue':
       return formatCurrency(row.revenue);
     case 'roas':
+      // null = hisoblanmadi (valyuta mos emas). Rang berilmaydi: "—" ni
+      // qizil qilish "yomon ROAS" degan yolg'on signal bo'lardi.
+      if (row.roas === null || row.roas === undefined) {
+        return <span className="text-ink-3">—</span>;
+      }
       // Natija rangi: 1x — pulni qaytarish chegarasi. Havorang ishlatilmaydi.
       return (
         <span
@@ -166,7 +172,7 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
  * O'rtacha ustunlar (cpc, ctr, cost per result) QO'SHILMAYDI — jamidan qayta
  * hisoblanadi, aks holda raqam noto'g'ri chiqadi.
  */
-function totalsFromRows(rows: EntityRow[]): EntityTotals {
+function totalsFromRows(rows: EntityRow[], roasBlocked = false): EntityTotals {
   const sum = (pick: (r: EntityRow) => unknown) =>
     rows.reduce((acc, r) => acc + n(pick(r) as string | number | null), 0);
 
@@ -198,7 +204,9 @@ function totalsFromRows(rows: EntityRow[]): EntityTotals {
     costPerLead: per(spend, leads),
     costPerPurchase: per(spend, purchases),
     costPerResult: per(spend, results),
-    roas: spend > 0 ? revenue / spend : null,
+    // Mijoz tomonidagi qayta hisob server qo'riqchisini chetlab o'tmasin:
+    // valyutalar mos bo'lmasa bu yerda ham ROAS chiqarilmaydi.
+    roas: roasBlocked ? null : spend > 0 ? revenue / spend : null,
     resultType: types.size === 1 ? [...types][0]! : null,
   };
 }
@@ -245,6 +253,9 @@ function renderTotal(t: EntityTotals, key: string) {
     case 'revenue':
       return formatCurrency(t.revenue);
     case 'roas':
+      if (t.roas === null || t.roas === undefined) {
+        return <span className="text-ink-3">—</span>;
+      }
       return (
         <span className={cn('tabular-nums', n(t.roas) >= 1 ? 'text-ok' : 'text-bad')}>
           {formatRoas(n(t.roas))}
@@ -342,8 +353,10 @@ export default function EntityTable({
   // aks holda jadval 3 qator ko'rsatib, pastda 100 qatorning puli turardi.
   const filtered = Boolean(search) || filter !== 'all';
   const serverTotals = query.data?.totals;
+  const currency = query.data?.currency;
+  const roasBlocked = Boolean(currency?.mismatch);
   const totals: EntityTotals | null = filtered
-    ? totalsFromRows(rows)
+    ? totalsFromRows(rows, roasBlocked)
     : serverTotals ?? null;
   const showTotals = totals !== null && rows.length > 0;
 
@@ -407,6 +420,19 @@ export default function EntityTable({
           >
             Tanlovni bekor qilish
           </Button>
+        </div>
+      )}
+
+      {/* Valyuta ogohlantirishi — jadval ustida, chunki bu raqamlarga
+          ishonish masalasi: ROAS ustuni "—" bo'lib turibdi va sababi
+          shu yerda yozilgan. */}
+      {roasBlocked && currency?.reason && (
+        <div className="flex items-start gap-2 border-b border-warn/40 bg-warn/5 px-4 py-2.5 text-sm">
+          <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 flex-none text-warn" />
+          <div className="text-ink-2">
+            <span className="font-medium text-ink">{currency.reason}</span> Boshqa ustunlar
+            (xarajat, lid, CAC) to'g'ri — faqat ROAS ikki valyutani bo'ladi.
+          </div>
         </div>
       )}
 

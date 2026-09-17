@@ -111,7 +111,14 @@ export default function DashboardPage() {
   const cards: KpiSpec[] = [
     { title: 'Amount Spent', value: formatCurrency(d?.amountSpent) },
     { title: 'Revenue', value: formatCurrency(d?.revenue), subtitle: `${metaPct}% from Meta Ads` },
-    { title: 'ROAS', value: formatRoas(d?.roas), hero: true },
+    {
+      title: 'ROAS',
+      value: formatRoas(d?.roas),
+      // Valyuta mos kelmasa qiymat "—" bo'ladi; sababsiz "—" esa
+      // "ma'lumot yo'q" deb tushuniladi, shuning uchun sabab shu yerda.
+      subtitle: d?.currency?.mismatch ? d.currency.reason ?? undefined : undefined,
+      hero: true,
+    },
     { title: 'CAC', value: formatCurrency(d?.cac) },
     { title: 'Conversion Rate', value: formatPercent(d?.conversionRate) },
     { title: 'Deal Time', value: formatDays(d?.dealTime) },

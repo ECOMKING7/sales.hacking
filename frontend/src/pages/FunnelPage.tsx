@@ -75,6 +75,13 @@ interface FunnelResponse {
   stuckDays: number;
   data: FunnelRow[];
   totals: FunnelTotals;
+  /** Valyuta holati: mos bo'lmasa ROAS null keladi. */
+  currency?: {
+    fb: string | null;
+    crm: string | null;
+    mismatch: boolean;
+    reason: string | null;
+  };
 }
 
 const LEVELS: { key: Level; label: string }[] = [
@@ -280,6 +287,20 @@ export default function FunnelPage() {
           ))}
         </div>
       </header>
+
+      {/* Valyuta ogohlantirishi. ROAS ustuni "—" bo'lib turibdi — sababi
+          shu yerda. Boshqa ustunlar (xarajat, CPL, CAC, AOV) bitta valyuta
+          ichida qoladi va to'g'ri. */}
+      {query.data?.currency?.mismatch && query.data.currency.reason && (
+        <div className="flex items-start gap-2 rounded-md border-[1.5px] border-warn/40 bg-warn/5 px-3 py-2.5 text-sm">
+          <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 flex-none text-warn" />
+          <div className="text-ink-2">
+            <span className="font-medium text-ink">{query.data.currency.reason}</span> ROAS
+            ikki valyutani bo'lardi — raqam ~12 600 barobar shishadi. Kurs qatlami
+            qo'shilgunicha bu ustun bo'sh turadi.
+          </div>
+        </div>
+      )}
 
       {/* Tafovut ogohlantirishi — jadval ustida, chunki bu diagnostika
           signali: raqamlarga ishonishdan oldin ko'rilishi kerak. */}

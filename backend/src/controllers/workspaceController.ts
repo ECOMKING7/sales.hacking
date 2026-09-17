@@ -98,11 +98,41 @@ export async function selectAdAccount(req: Request, res: Response): Promise<void
     const previousId = prev.rows[0].fb_ad_account_id;
     const changed = previousId !== adAccountId;
 
+    /**
+     * Akkaunt valyutasi ham shu yerda saqlanadi.
+     *
+     * NEGA: ROAS = revenue / spend. Daromad CRM valyutasida (UZS),
+     * xarajat esa reklama akkaunti valyutasida (USD). Ikkisi teng
+     * bo'lmasa formula so'mni dollarga bo'ladi — real ma'lumotda
+     * ~12 600 barobar shishgan raqam chiqqan edi. Valyutani bilsak,
+     * ROAS'ni ko'rsatmay turib sababini aytamiz.
+     *
+     * Xato bo'lsa to'xtatmaymiz: akkaunt tanlash valyuta o'qib
+     * bo'lmagani uchun buzilmasin. Sync keyin to'ldiradi.
+     */
+    let currency: string | null = null;
+    try {
+      const ws = await loadFbWorkspace(workspaceId);
+      if (ws?.fb_access_token) {
+        const accounts = await getAdAccounts(decrypt(ws.fb_access_token));
+        const found = accounts.find((a) => a.id === adAccountId || a.account_id === adAccountId);
+        currency = found?.currency ? String(found.currency).toUpperCase() : null;
+      }
+    } catch (err) {
+      console.error('ad account currency not read:', (err as Error).message);
+    }
+
     await pool.query(
       `UPDATE workspaces
-         SET fb_ad_account_id = $1, updated_at = now()
+         SET fb_ad_account_id = $1,
+             -- Akkaunt almashsa eski valyuta saqlanmaydi: noto'g'ri
+             -- valyuta noma'lum valyutadan xavfliroq (ROAS jim xato
+             -- chiqaradi). O'qib bo'lmasa NULL — sync to'ldiradi.
+             fb_currency = CASE WHEN $4::boolean THEN $3
+                                ELSE COALESCE($3, fb_currency) END,
+             updated_at = now()
        WHERE id = $2`,
-      [adAccountId, workspaceId]
+      [adAccountId, workspaceId, currency, changed]
     );
 
     // Ad account almashtirilganda eski kampaniya/adset/ad qatorlari qolib

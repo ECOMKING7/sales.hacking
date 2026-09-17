@@ -15,6 +15,7 @@ import type {
   LeadDetailData,
   Usage,
   Member,
+  CurrencyState,
 } from '../types';
 
 const api = axios.create({
@@ -119,7 +120,9 @@ export const metaCapiApi = {
 export interface DashboardOverview {
   amountSpent: number;
   revenue: number;
-  roas: number;
+  /** null — valyutalar mos emas, hisoblab bo'lmadi (0 bilan aralashtirmang). */
+  roas: number | null;
+  currency?: CurrencyState;
   cac: number;
   conversionRate: number;
   dealTime: number;

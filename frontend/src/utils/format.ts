@@ -15,7 +15,13 @@ export function formatPercent(v: unknown): string {
   return `${n(v).toFixed(1)}%`;
 }
 
+/**
+ * ROAS. `null` — "hisoblab bo'lmadi" (masalan reklama valyutasi CRM
+ * valyutasidan farq qiladi), 0 esa "pul kelmadi". Ikkisi bir xil
+ * ko'rinmasligi kerak, shuning uchun null'da "—" chiqadi.
+ */
 export function formatRoas(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
   return `${n(v).toFixed(2)}x`;
 }
 

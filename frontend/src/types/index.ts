@@ -149,12 +149,25 @@ export interface EntityTotals {
   resultType: string | null;
 }
 
+/**
+ * Valyuta holati. `mismatch` bo'lsa ROAS backend'da `null` qilib yuboriladi:
+ * daromad CRM valyutasida, xarajat reklama akkaunti valyutasida — ikkisini
+ * bo'lish yolg'on raqam beradi (real holatda ~12 600 barobar shishgan edi).
+ */
+export interface CurrencyState {
+  fb: string | null;
+  crm: string | null;
+  mismatch: boolean;
+  reason: string | null;
+}
+
 export interface Paginated<T> {
   data: T[];
   page: number;
   limit: number;
   total: number;
   totals?: EntityTotals;
+  currency?: CurrencyState;
 }
 
 export interface WonDeal {

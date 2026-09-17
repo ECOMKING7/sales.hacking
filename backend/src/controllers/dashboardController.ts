@@ -1,6 +1,12 @@
 import { Request, Response } from 'express';
 import { pool } from '../db/pool';
 import { cacheGet, cacheSet, overviewCacheKey } from '../utils/cache';
+import {
+  loadCurrencyGuard,
+  guardRoas,
+  guardRoasAll,
+  currencyMeta,
+} from '../utils/currencyGuard';
 
 // ---------- helpers ----------
 
@@ -62,6 +68,29 @@ const TOP_METRICS: Record<string, string> = {
 
 function ws(req: Request): string | null {
   return req.user?.workspaceId ?? null;
+}
+
+/**
+ * Jadval javobi. ROAS reklama valyutasi CRM valyutasidan farq qilsa
+ * chiqarilmaydi — revenue/spend so'mni dollarga bo'lardi (~12 600x xato).
+ * Sabab `currency` blokida boradi, UI shuni ko'rsatadi.
+ */
+async function entityPayload(
+  workspaceId: string,
+  rows: Array<Record<string, unknown>>,
+  totals: Record<string, unknown>,
+  page: number,
+  limit: number
+) {
+  const guard = await loadCurrencyGuard(workspaceId);
+  return {
+    data: guardRoasAll(rows, guard),
+    page,
+    limit,
+    total: num(totals.rowCount),
+    totals: guardRoas(totals, guard),
+    currency: currencyMeta(guard),
+  };
 }
 
 // Shared SELECT for campaign/adset/ad list rows.
@@ -196,11 +225,15 @@ export async function overview(req: Request, res: Response): Promise<void> {
     const wonCount = num(wonR.rows[0].won);
     const totalLeads = num(totalR.rows[0].total);
     const prevRevenue = num(prevR.rows[0].revenue);
+    const guard = await loadCurrencyGuard(workspaceId);
 
     const payload = {
       amountSpent,
       revenue,
-      roas: amountSpent > 0 ? revenue / amountSpent : 0,
+      currency: currencyMeta(guard),
+      // Valyutalar teng bo'lmasa ROAS = null. 0 emas: 0 "reklama pul
+      // keltirmadi" degani, null esa "hisoblab bo'lmaydi" degani.
+      roas: guard.mismatch ? null : amountSpent > 0 ? revenue / amountSpent : 0,
       cac: wonCount > 0 ? amountSpent / wonCount : 0,
       conversionRate: totalLeads > 0 ? (wonCount / totalLeads) * 100 : 0,
       dealTime: num(wonR.rows[0].deal_time),
@@ -263,7 +296,7 @@ export async function campaigns(req: Request, res: Response): Promise<void> {
       params.slice(0, params.length - 2)
     );
     const t = totalR.rows[0];
-    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
+    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit));
   } catch (err) {
     console.error('campaigns error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load campaigns' });
@@ -335,7 +368,7 @@ async function listEntities(
     );
     const totalR = await pool.query(`${totalsSelect(table)} ${where}`, params);
     const t = totalR.rows[0];
-    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
+    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit));
   } catch (err) {
     console.error(`${table} error:`, (err as Error).message);
     res.status(500).json({ error: `Failed to load ${table}` });
@@ -437,7 +470,7 @@ export async function campaignAdsets(req: Request, res: Response): Promise<void>
       [workspaceId, campaignId]
     );
     const t = totalR.rows[0];
-    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
+    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit));
   } catch (err) {
     console.error('campaignAdsets error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load adsets' });
@@ -470,7 +503,7 @@ export async function adsetAds(req: Request, res: Response): Promise<void> {
       [workspaceId, adsetId]
     );
     const t = totalR.rows[0];
-    res.json({ data: rows.rows, page, limit, total: num(t.rowCount), totals: t });
+    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit));
   } catch (err) {
     console.error('adsetAds error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load ads' });
@@ -497,7 +530,11 @@ async function topEntities(
         LIMIT 5`,
       [workspaceId]
     );
-    res.json({ data: rows.rows });
+    // Tartib saqlanadi: bitta workspace ichida hamma qator bir xil valyuta
+    // juftligida, shuning uchun ROAS bo'yicha saralash to'g'ri qoladi —
+    // faqat RAQAMNI ko'rsatib bo'lmaydi.
+    const guard = await loadCurrencyGuard(workspaceId);
+    res.json({ data: guardRoasAll(rows.rows, guard), currency: currencyMeta(guard) });
   } catch (err) {
     console.error(`top ${table} error:`, (err as Error).message);
     res.status(500).json({ error: 'Failed to load top entities' });

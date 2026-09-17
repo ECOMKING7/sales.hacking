@@ -72,6 +72,21 @@ Two facts force the pair:
 
 Do not reintroduce a single-pipeline won condition. When adding a report filter, remember it must not silently exclude pipelines that `amocrm_won_pairs` includes.
 
+### ROAS is blocked when currencies differ — never estimated
+
+`ROAS = revenue / spend`. Revenue comes from the CRM in `workspaces.currency`; spend comes from Facebook in `workspaces.fb_currency` (the ad account's own currency). If the two differ the division mixes units. Real data from the first customer: every one of their 15 ad accounts is **USD** while amoCRM closes in **UZS**, so the funnel endpoint returned `roas: 6558` where the true figure was ≈23 — inflated ~12,600×, which is just the exchange rate.
+
+`utils/currencyGuard.ts` is the single decision point: `loadCurrencyGuard(workspaceId)` compares the two columns, and every endpoint that emits `roas` (`funnelController`, `dashboardController` — overview, entity lists, totals, top-N) nulls the field and ships a `currency: { fb, crm, mismatch, reason }` block that the UI renders as `—` plus the reason. `EntityTable`'s client-side totals recompute (used when a search/filter is active) honours the same flag — otherwise the frontend would quietly reconstruct the number the backend refused to send.
+
+Two rules here:
+
+- **`null` is not `0`.** Zero means the ads returned nothing; null means the figure cannot be computed. Never coalesce one into the other.
+- **Do not substitute an estimated rate.** A wrong number is worse than no number: an operator who sees 6558× raises the budget, one who sees `—` checks. This matches the product's existing stance on duplicate ad names — ambiguous attribution is reported as ambiguous, not guessed.
+
+`fb_currency` is filled by `workspaceController.selectAdAccount` (from the FB account list) and backfilled by `syncWorkspace` **only when NULL** — the ad-account rate limit is tight (error code 17) and the currency does not change. A NULL `fb_currency` does *not* block: it means "not known yet", and the 15-minute sync resolves it. When the ad account changes, the old currency is cleared rather than kept.
+
+A daily FX-rate layer is the planned next step; it will replace the block with a conversion, not remove it.
+
 ### One owner per column
 
 `revenue`, `purchases_count` and `roas` on campaigns/adsets/ads belong to the **attribution engine** (CRM truth). `fb_revenue` and `fb_purchases` belong to the **Facebook sync** (what the pixel reported). The sync must never touch the first set, and the engine never touches the second.
