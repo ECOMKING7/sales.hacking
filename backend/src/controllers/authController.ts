@@ -3,6 +3,12 @@ import bcrypt from 'bcrypt';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { signToken } from '../utils/jwt';
+import {
+  checkLoginThrottle,
+  recordLoginFailure,
+  clearLoginFailures,
+  clientIp,
+} from '../utils/loginThrottle';
 
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
 
@@ -116,6 +122,19 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
   const { email, password } = parsed.data;
+  const ip = clientIp(req.headers as Record<string, unknown>, req.ip);
+
+  // Brute-force to'sig'i. Hisoblagich bazada — Vercel'da har so'rov
+  // boshqa nusxada ishlashi mumkin va xotiradagi hisoblagich amalda
+  // hech narsa to'smaydi.
+  const throttle = await checkLoginThrottle(email, ip);
+  if (throttle.blocked) {
+    res.setHeader('Retry-After', String(throttle.retryAfterSec));
+    res.status(429).json({
+      error: `Juda ko'p urinish. ${Math.ceil(throttle.retryAfterSec / 60)} daqiqadan keyin qayta urinib ko'ring.`,
+    });
+    return;
+  }
 
   try {
     const userResult = await pool.query<UserRow>(
@@ -124,16 +143,24 @@ export async function login(req: Request, res: Response): Promise<void> {
     );
     const user = userResult.rows[0];
 
+    // Xato matni ikki holatda BIR XIL: aks holda "bu email ro'yxatda
+    // bor" degan ma'lumot oshkor bo'ladi va hujumchi email yig'adi.
     if (!user) {
+      await recordLoginFailure(email, ip);
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
+      await recordLoginFailure(email, ip);
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
+
+    // Muvaffaqiyatli kirish — hisoblagich tozalanadi, shunda haqiqiy
+    // foydalanuvchi bir necha xato terishdan keyin bloklanib qolmaydi.
+    await clearLoginFailures(email, ip);
 
     const workspaceResult = await pool.query<WorkspaceRow>(
       `SELECT id, name, owner_id, plan, created_at

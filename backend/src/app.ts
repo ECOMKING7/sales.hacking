@@ -76,15 +76,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    runtime: process.env.VERCEL ? 'vercel-serverless' : 'node-server',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get('/', (_req: Request, res: Response) => {
-  res.json({ message: 'Attribution Platform API' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 app.use('/api/auth', authRoutes);
@@ -97,8 +89,30 @@ app.use('/api/attribution', attributionRoutes);
 app.use('/api/pixel', pixelRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
-// Xato ishlovchisi. Pixel endpoint'lari mijoz saytiga hech qachon xato
-// qaytarmaydi (buzuq JSON ham) — har doim 200.
+/**
+ * Topilmagan marshrut. Express'ning standart javobi HTML sahifa bo'lib,
+ * unda "Cannot GET /..." va server turi ko'rinadi — bu keraksiz ma'lumot.
+ */
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+/**
+ * Xato ishlovchisi.
+ *
+ * ⚠ XAVFSIZLIK: ilgari bu yerda `err.message` to'g'ridan-to'g'ri mijozga
+ * qaytarilardi. Postgres xatosi esa ICHKI NOMLARNI oshkor qiladi:
+ *   column "amocrm_won_pairs" does not exist
+ *   relation "capi_events" does not exist
+ *   duplicate key value violates unique constraint "capi_events_unique"
+ * Ya'ni tashqi odam bir necha so'rov bilan sxemani chizib olishi mumkin.
+ * Bugun Vena AI'da aynan shu yo'l bilan ichki jadval nomlarini ko'rdim.
+ *
+ * Endi qoida: 4xx — bizning ataylab yozgan matnimiz, mijozga kerak.
+ * 5xx — umumiy matn; haqiqiy sabab faqat server log'ida.
+ *
+ * Pixel endpoint'lari mijoz saytiga hech qachon xato qaytarmaydi.
+ */
 app.use((err: Error & { status?: number }, req: Request, res: Response, next: NextFunction) => {
   if (req.path.startsWith('/api/pixel')) {
     res.status(200).json({ success: true, eventId: null });
@@ -108,8 +122,13 @@ app.use((err: Error & { status?: number }, req: Request, res: Response, next: Ne
     next(err);
     return;
   }
-  console.error('Unhandled error:', err.message);
-  res.status(err.status || 500).json({ error: err.message || 'Internal error' });
+
+  const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
+  console.error(`Unhandled error [${status}] ${req.method} ${req.path}:`, err.message);
+
+  res.status(status).json({
+    error: status < 500 ? err.message || 'Bad request' : 'Internal error',
+  });
 });
 
 export default app;
