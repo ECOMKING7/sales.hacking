@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { trigger, status, cronSync } from '../controllers/syncController';
+import { trigger, status, cronSync, amocrmImport } from '../controllers/syncController';
 import { verifyToken } from '../middleware/auth';
 
 const router = Router();
@@ -9,6 +9,8 @@ const router = Router();
 // Foydalanuvchi qo'lda bosadigan sync — JWT talab qiladi.
 router.post('/trigger', verifyToken, trigger);
 router.get('/status', verifyToken, status);
+// amoCRM tarixini import qilish — bir chaqiruvda bitta sahifa.
+router.post('/amocrm-import', verifyToken, amocrmImport);
 
 // Tashqi rejalashtiruvchi (cron-job.org) uchun — JWT emas, CRON_SECRET.
 // GET ham qabul qilinadi, chunki ba'zi bepul cron xizmatlari faqat GET yuboradi.

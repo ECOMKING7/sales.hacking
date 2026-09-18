@@ -16,8 +16,8 @@
  * Shuning uchun:
  *   - lidlar 250 talab sahifa bilan olinadi (maksimal ruxsat etilgan),
  *   - UTM lid javobining o'zida keladi — har lid uchun alohida so'rov YO'Q,
- *   - kontaktlar ham 250 talab, ALOHIDA ro'yxat bo'lib olinadi va
- *     xotirada xaritaga aylantiriladi (har lid uchun so'rov o'rniga),
+ *   - kontaktlar id bo'yicha guruhlab olinadi (40 tadan), har lid
+ *     uchun alohida so'rov o'rniga,
  *   - har so'rovdan keyin pauza (PAUZA_MS), ya'ni ~4 so'rov/sekund.
  * 10 000 lid ≈ 40 sahifa ≈ 10 soniya. Bu amoCRM uchun xavfsiz tezlik.
  *
@@ -153,127 +153,191 @@ export function holatAniqla(
 }
 
 /**
- * Kontaktlar xaritasi: id -> { phone, email }.
+ * Kerakli kontaktlarni id bo'yicha oladi: id -> { phone, email }.
  *
- * Har lid uchun alohida so'rov o'rniga hammasi ro'yxat bo'lib olinadi.
- * 5 000 kontakt = 20 so'rov, har lid uchun so'rovda esa 5 000 so'rov
- * bo'lardi — akkaunt aniq bloklanardi.
+ * Ilgari BUTUN kontaktlar ro'yxati oldindan yuklanardi. Bo'lakli
+ * import'da bu ishlamaydi: har bo'lak butun bazani qayta tortardi.
+ * Endi faqat shu bo'lakdagi lidlarning kontaktlari so'raladi.
+ *
+ * URL uzunligi cheklovi bor, shuning uchun id lar 40 talab yuboriladi.
+ * 250 lid ≈ 7 so'rov.
  */
-async function kontaktXaritasi(
+async function kontaktlarniOl(
   workspaceId: string,
+  idlar: string[],
   hisob: { sorovlar: number }
 ): Promise<Map<string, { phone: string | null; email: string | null }>> {
   const xarita = new Map<string, { phone: string | null; email: string | null }>();
+  const noyob = [...new Set(idlar)].filter(Boolean);
+  const BOLAK = 40;
 
-  for (let sahifa = 1; sahifa <= MAX_SAHIFA; sahifa += 1) {
-    const data = await amoGetPath<AmoRoyxat<AmoKontakt>>(
-      workspaceId,
-      `/api/v4/contacts?limit=${SAHIFA}&page=${sahifa}`
-    );
-    hisob.sorovlar += 1;
+  for (let i = 0; i < noyob.length; i += BOLAK) {
+    const qism = noyob.slice(i, i + BOLAK);
+    const q = qism.map((id) => `filter[id][]=${encodeURIComponent(id)}`).join('&');
 
-    const list = data?._embedded?.contacts ?? [];
-    if (list.length === 0) break;
+    try {
+      const data = await amoGetPath<AmoRoyxat<AmoKontakt>>(
+        workspaceId,
+        `/api/v4/contacts?limit=${BOLAK}&${q}`
+      );
+      hisob.sorovlar += 1;
 
-    for (const k of list) {
-      const f = k.custom_fields_values ?? [];
-      const top = (code: string) =>
-        f.find((x) => x.field_code === code)?.values?.[0]?.value ?? null;
-      xarita.set(String(k.id), { phone: top('PHONE'), email: top('EMAIL') });
+      for (const k of data?._embedded?.contacts ?? []) {
+        const f = k.custom_fields_values ?? [];
+        const top = (code: string) =>
+          f.find((x) => x.field_code === code)?.values?.[0]?.value ?? null;
+        xarita.set(String(k.id), { phone: top('PHONE'), email: top('EMAIL') });
+      }
+    } catch (err) {
+      // Kontakt olinmasa lid baribir yoziladi — faqat telefon/email bo'lmaydi.
+      console.error('kontaktlar olinmadi:', (err as Error).message);
     }
 
-    if (list.length < SAHIFA) break;
-    await kut(PAUZA_MS);
+    if (i + BOLAK < noyob.length) await kut(PAUZA_MS);
   }
 
   return xarita;
 }
 
+/** Bitta bo'lak natijasi. */
+export interface BolakNatija extends ImportNatija {
+  /** Keyingi sahifa raqami; null — tugadi. */
+  keyingiSahifa: number | null;
+  sahifa: number;
+}
+
 /**
- * Tarixiy lidlarni import qiladi.
+ * BITTA sahifani (250 lid) import qiladi.
  *
- * @param kunlar  Necha kunlik tarix olinadi. 0 yoki undefined — hammasi.
- * @param onLog   Jarayonni ko'rsatish uchun (skript konsolga yozadi).
+ * NEGA BO'LAK-BO'LAK: serverless funksiya 10–60 soniyada uziladi.
+ * Butun tarixni bitta so'rovda tortib bo'lmaydi — funksiya o'rtada
+ * o'ladi va qayerda to'xtaganini hech kim bilmaydi. Bo'lak esa o'zini
+ * o'zi tugatadi va "keyingi sahifa" raqamini qaytaradi; chaqiruvchi
+ * (frontend yoki skript) oxirigacha aylantiradi.
+ *
+ * Har bo'lak idempotent: ON CONFLICT bilan yoziladi, ya'ni bir sahifa
+ * ikki marta ishlansa ham dublikat paydo bo'lmaydi.
+ */
+export async function importChunk(
+  workspaceId: string,
+  opts: { kunlar?: number; sahifa?: number } = {}
+): Promise<BolakNatija> {
+  const config = await loadImportConfig(workspaceId);
+
+  if (config.amocrm_won_pairs.length === 0 && !config.amocrm_won_stage_id) {
+    // Sotuv ta'rifi yo'q bo'lsa import ma'nosiz: hamma lid 'in_progress'
+    // bo'lib qoladi va daromad hech qachon hisoblanmaydi.
+    throw Object.assign(
+      new Error(
+        "Sotuv etaplari sozlanmagan. Avval Sozlamalar > amoCRM da sotuv etapini belgilang."
+      ),
+      { status: 400 }
+    );
+  }
+
+  const sahifa = Math.max(1, Math.min(MAX_SAHIFA, opts.sahifa ?? 1));
+  const kunlar = opts.kunlar;
+  const filtr =
+    kunlar && kunlar > 0
+      ? `&filter[created_at][from]=${Math.floor(Date.now() / 1000) - kunlar * 86400}`
+      : '';
+
+  const natija: BolakNatija = {
+    lidlar: 0,
+    yangilangan: 0,
+    yutilgan: 0,
+    sifatli: 0,
+    kontaktlar: 0,
+    sorovlar: 0,
+    xatolar: 0,
+    sahifa,
+    keyingiSahifa: null,
+  };
+
+  const data = await amoGetPath<AmoRoyxat<AmoLid>>(
+    workspaceId,
+    `/api/v4/leads?limit=${SAHIFA}&page=${sahifa}&with=contacts${filtr}`
+  );
+  natija.sorovlar += 1;
+
+  const list = data?._embedded?.leads ?? [];
+  if (list.length === 0) return natija;
+
+  // Shu sahifadagi lidlarning kontaktlari — bitta guruh bo'lib.
+  const kontaktIdlar = list
+    .map((l) => l._embedded?.contacts?.[0]?.id)
+    .filter((v): v is number => typeof v === 'number')
+    .map(String);
+  const hisob = { sorovlar: 0 };
+  const kontaktlar = await kontaktlarniOl(workspaceId, kontaktIdlar, hisob);
+  natija.sorovlar += hisob.sorovlar;
+  natija.kontaktlar = kontaktlar.size;
+
+  const yutilganIdlar: string[] = [];
+
+  for (const lid of list) {
+    try {
+      await lidYoz(workspaceId, lid, config, kontaktlar, natija, yutilganIdlar);
+    } catch (err) {
+      // Bitta lid qolganlarini to'xtatmaydi.
+      natija.xatolar += 1;
+      console.error(`lid ${lid.id}: ${(err as Error).message}`);
+    }
+  }
+
+  // Atribusiya — faqat yutilganlar uchun, va faqat bizning bazada
+  // (amoCRM ga so'rov ketmaydi).
+  for (const leadId of yutilganIdlar) {
+    try {
+      await processLeadAttribution(leadId, workspaceId);
+    } catch (err) {
+      natija.xatolar += 1;
+      console.error(`atribusiya ${leadId}: ${(err as Error).message}`);
+    }
+  }
+
+  // To'liq sahifa kelgan bo'lsa — yana bor demak.
+  natija.keyingiSahifa = list.length === SAHIFA ? sahifa + 1 : null;
+  return natija;
+}
+
+/**
+ * Hamma bo'lakni ketma-ket ishlaydi. Skript uchun — u yerda vaqt
+ * cheklovi yo'q.
  */
 export async function importAmoLeads(
   workspaceId: string,
   kunlar?: number,
   onLog: (s: string) => void = () => undefined
 ): Promise<ImportNatija> {
-  const config = await loadImportConfig(workspaceId);
-  const hisob = { sorovlar: 0 };
-
-  if (config.amocrm_won_pairs.length === 0 && !config.amocrm_won_stage_id) {
-    // Sotuv ta'rifi yo'q bo'lsa import ma'nosiz: hamma lid 'in_progress'
-    // bo'lib qoladi va daromad hech qachon hisoblanmaydi.
-    throw new Error(
-      'Sotuv etaplari sozlanmagan (amocrm_won_pairs bo\'sh). ' +
-        'Avval Sozlamalar > amoCRM da sotuv etaplarini belgilang.'
-    );
-  }
-
-  onLog('Kontaktlar yuklanmoqda...');
-  const kontaktlar = await kontaktXaritasi(workspaceId, hisob);
-  onLog(`  ${kontaktlar.size} ta kontakt`);
-
-  const natija: ImportNatija = {
+  const jami: ImportNatija = {
     lidlar: 0,
     yangilangan: 0,
     yutilgan: 0,
     sifatli: 0,
-    kontaktlar: kontaktlar.size,
-    sorovlar: hisob.sorovlar,
+    kontaktlar: 0,
+    sorovlar: 0,
     xatolar: 0,
   };
 
-  const filtr =
-    kunlar && kunlar > 0
-      ? `&filter[created_at][from]=${Math.floor(Date.now() / 1000) - kunlar * 86400}`
-      : '';
+  let sahifa: number | null = 1;
+  while (sahifa !== null) {
+    const b = await importChunk(workspaceId, { kunlar, sahifa });
+    jami.lidlar += b.lidlar;
+    jami.yangilangan += b.yangilangan;
+    jami.yutilgan += b.yutilgan;
+    jami.sifatli += b.sifatli;
+    jami.kontaktlar += b.kontaktlar;
+    jami.sorovlar += b.sorovlar;
+    jami.xatolar += b.xatolar;
 
-  const yutilganIdlar: string[] = [];
+    onLog(`  sahifa ${b.sahifa}: ${b.lidlar} lid, ${b.yutilgan} sotuv`);
 
-  onLog('Lidlar yuklanmoqda...');
-  for (let sahifa = 1; sahifa <= MAX_SAHIFA; sahifa += 1) {
-    const data = await amoGetPath<AmoRoyxat<AmoLid>>(
-      workspaceId,
-      `/api/v4/leads?limit=${SAHIFA}&page=${sahifa}&with=contacts${filtr}`
-    );
-    natija.sorovlar += 1;
-
-    const list = data?._embedded?.leads ?? [];
-    if (list.length === 0) break;
-
-    for (const lid of list) {
-      try {
-        await lidYoz(workspaceId, lid, config, kontaktlar, natija, yutilganIdlar);
-      } catch (err) {
-        // Bitta lid qolganlarini to'xtatmaydi.
-        natija.xatolar += 1;
-        console.error(`lid ${lid.id}: ${(err as Error).message}`);
-      }
-    }
-
-    onLog(`  ${natija.lidlar} ta lid...`);
-    if (list.length < SAHIFA) break;
-    await kut(PAUZA_MS);
+    sahifa = b.keyingiSahifa;
+    if (sahifa !== null) await kut(PAUZA_MS);
   }
 
-  // Atribusiya — yutilgan lidlar uchun. Bu bosqich amoCRM ga so'rov
-  // yubormaydi, faqat bizning bazada hisoblanadi.
-  if (yutilganIdlar.length) {
-    onLog(`Atribusiya: ${yutilganIdlar.length} ta yutilgan lid...`);
-    for (const leadId of yutilganIdlar) {
-      try {
-        await processLeadAttribution(leadId, workspaceId);
-      } catch (err) {
-        natija.xatolar += 1;
-        console.error(`atribusiya ${leadId}: ${(err as Error).message}`);
-      }
-    }
-  }
-
-  return natija;
+  return jami;
 }
 
 async function lidYoz(

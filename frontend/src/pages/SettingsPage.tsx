@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, type ReactNode } from 'react';
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import {
   Megaphone,
   Database,
@@ -8,8 +8,9 @@ import {
   ExternalLink,
   KeyRound,
   Send,
+  DownloadCloud,
 } from 'lucide-react';
-import { facebookApi, amocrmApi, metaCapiApi } from '../services/api';
+import { facebookApi, amocrmApi, metaCapiApi, syncApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import type {
   FbStatus,
@@ -472,6 +473,60 @@ function AmocrmSection() {
 
   const stages = pipelines.find((p) => String(p.id) === pipelineId)?.statuses ?? [];
 
+  /**
+   * amoCRM tarixini import qilish.
+   *
+   * Server bitta chaqiruvda bitta sahifani (250 lid) ishlaydi —
+   * serverless funksiya uzoq yashamaydi. Sahifalarni shu yerda
+   * aylantiramiz va har qadamda holat ko'rsatiladi.
+   *
+   * To'xtatish tugmasi bor: amoCRM limiti yaqin bo'lsa yoki xato
+   * ko'paysa foydalanuvchi jarayonni uzishi kerak.
+   */
+  const [impBusy, setImpBusy] = useState(false);
+  const [impLog, setImpLog] = useState<string | null>(null);
+  const [impErr, setImpErr] = useState<string | null>(null);
+  // Ref, state emas: sikl ichidagi tekshiruv eski state nusxasini
+  // ko'rib qolmasligi kerak.
+  const impStopRef = useRef(false);
+
+  const runImport = async (days?: number) => {
+    setImpBusy(true);
+    impStopRef.current = false;
+    setImpErr(null);
+    const jami = { leads: 0, won: 0, qualified: 0, errors: 0, pages: 0 };
+    let page: number | null = 1;
+
+    try {
+      while (page !== null) {
+        const r = await syncApi.amocrmImport({ days, page });
+        jami.leads += r.leads;
+        jami.won += r.won;
+        jami.qualified += r.qualified;
+        jami.errors += r.errors;
+        jami.pages += 1;
+        setImpLog(
+          `${jami.leads} lid · ${jami.qualified} sifatli · ${jami.won} sotuv` +
+            (jami.errors ? ` · ${jami.errors} xato` : '')
+        );
+        page = r.nextPage;
+        // Foydalanuvchi to'xtatgan bo'lsa keyingi sahifaga o'tmaymiz.
+        if (impStopRef.current) break;
+      }
+      setImpLog(
+        `Tugadi: ${jami.leads} lid · ${jami.qualified} sifatli · ${jami.won} sotuv` +
+          (jami.errors ? ` · ${jami.errors} xato` : '')
+      );
+    } catch (e) {
+      const msg =
+        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'Import bajarilmadi';
+      setImpErr(msg);
+    } finally {
+      setImpBusy(false);
+    }
+  };
+
   const copyWebhook = async () => {
     if (!status?.webhookUrl) return;
     try {
@@ -658,6 +713,59 @@ function AmocrmSection() {
               </code>
             </div>
           )}
+
+          {/* Tarixiy import. Webhook faqat ulangandan KEYINGI hodisalarni
+              ko'radi — usiz dashboard birinchi sotuvgacha bo'sh turadi. */}
+          <div className="mt-5 rounded-md border-[1.5px] border-line bg-surface-2 p-3">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className={LABEL}>Tarixni import qilish</span>
+              {impBusy && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    impStopRef.current = true;
+                  }}
+                >
+                  To'xtatish
+                </Button>
+              )}
+            </div>
+            <p className="mb-2.5 text-xs leading-relaxed text-ink-3">
+              Webhook faqat ulangandan keyingi lidlarni ko'radi. Bu tugma amoCRM'dagi
+              mavjud lidlarni, etaplarini va summasini bir marta tortib oladi.
+              Qayta bosish xavfsiz — mavjud yozuvlar yangilanadi, dublikat chiqmaydi.
+              amoCRM'ga hech narsa yozilmaydi.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={impBusy}
+                onClick={() => void runImport(90)}
+                icon={<DownloadCloud className="h-3.5 w-3.5" />}
+              >
+                Oxirgi 90 kun
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={impBusy}
+                onClick={() => void runImport(undefined)}
+                icon={<DownloadCloud className="h-3.5 w-3.5" />}
+              >
+                Butun tarix
+              </Button>
+            </div>
+            {impLog && (
+              <p className="mt-2 font-mono text-xs tabular-nums text-ink-2">{impLog}</p>
+            )}
+            {impErr && (
+              <p role="alert" className="mt-2 text-xs text-bad">
+                {impErr}
+              </p>
+            )}
+          </div>
 
           <CardFooterRow>
             <Button

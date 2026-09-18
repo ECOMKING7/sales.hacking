@@ -185,6 +185,31 @@ export const dashboardApi = {
     api.get<LeadDetailData>(`/api/dashboard/leads/${leadId}`).then((r) => r.data),
 };
 
+// ---- Sync / import ----
+export interface ImportChunk {
+  success: boolean;
+  page: number;
+  /** null — tugadi. */
+  nextPage: number | null;
+  leads: number;
+  updated: number;
+  qualified: number;
+  won: number;
+  contacts: number;
+  amoRequests: number;
+  errors: number;
+}
+
+export const syncApi = {
+  /**
+   * amoCRM tarixini import qiladi — bitta chaqiruv = bitta sahifa (250 lid).
+   * Serverless funksiya uzoq ishlay olmaydi, shuning uchun sahifalarni
+   * chaqiruvchi aylantiradi.
+   */
+  amocrmImport: (payload: { days?: number; page?: number }) =>
+    api.post<ImportChunk>('/api/sync/amocrm-import', payload).then((r) => r.data),
+};
+
 // ---- Workspace / SaaS ----
 export const workspaceApi = {
   usage: () => api.get<Usage>('/api/workspace/usage').then((r) => r.data),

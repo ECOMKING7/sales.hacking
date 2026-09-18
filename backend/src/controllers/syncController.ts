@@ -6,6 +6,7 @@ import { enqueueSync } from '../jobs/syncJob';
 import { DateRange } from '../services/facebookAdsService';
 import { fbUsage } from '../services/fbRateLimit';
 import { ensureFreshFxRates } from '../services/fxRates';
+import { importChunk } from '../services/amocrmImport';
 
 const triggerSchema = z
   .object({
@@ -167,5 +168,65 @@ export async function cronSync(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('cron sync error:', err);
     res.status(500).json({ error: 'Cron sync failed', durationMs: Date.now() - startedAt });
+  }
+}
+
+
+/**
+ * ---- POST /api/sync/amocrm-import ----
+ * amoCRM tarixini import qiladi — BITTA sahifa (250 lid) har chaqiruvda.
+ *
+ * NEGA SERVERDA, skript emas: shifrlash kaliti faqat serverda bor
+ * (Vercel'da "sensitive" env, o'qib bo'lmaydi), va mijoz terminalda
+ * skript ishga tushirmaydi.
+ *
+ * NEGA BITTA SAHIFA: serverless funksiya 10–60 soniyada uziladi.
+ * Javobdagi `nextPage` bilan chaqiruvchi oxirigacha aylantiradi.
+ *
+ * amoCRM ga faqat GET ketadi (§4.3).
+ */
+export async function amocrmImport(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const schema = z.object({
+    days: z.number().int().min(0).max(3650).optional(),
+    page: z.number().int().min(1).max(400).optional(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+
+  try {
+    const b = await importChunk(workspaceId, {
+      kunlar: parsed.data.days,
+      sahifa: parsed.data.page,
+    });
+    res.json({
+      success: true,
+      page: b.sahifa,
+      nextPage: b.keyingiSahifa,
+      leads: b.lidlar,
+      updated: b.yangilangan,
+      qualified: b.sifatli,
+      won: b.yutilgan,
+      contacts: b.kontaktlar,
+      amoRequests: b.sorovlar,
+      errors: b.xatolar,
+    });
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    // 400 — bizning ataylab yozgan matnimiz (sozlama yetishmaydi).
+    if (e.status === 400) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    console.error('amocrm import error:', e.message);
+    res.status(500).json({ error: 'Import bajarilmadi' });
   }
 }
