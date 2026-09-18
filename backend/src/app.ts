@@ -25,13 +25,15 @@ import dashboardRoutes from './routes/dashboard';
  *   api/index.ts   → export default app    (Vercel serverless)
  */
 
+import { xatoQayd, xatolarniYubor } from './utils/xatolar';
+
 // Xavfsizlik to'ri: adashgan async xato (masalan ixtiyoriy navbatdagi Redis
 // ECONNREFUSED) butun API ni yiqitmasin.
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled rejection:', reason);
+  xatoQayd(reason, { joy: 'unhandledRejection' });
 });
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
+  xatoQayd(err, { joy: 'uncaughtException' });
 });
 
 const app: Application = express();
@@ -133,11 +135,37 @@ app.use((err: Error & { status?: number }, req: Request, res: Response, next: Ne
   }
 
   const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
-  console.error(`Unhandled error [${status}] ${req.method} ${req.path}:`, err.message);
 
-  res.status(status).json({
-    error: status < 500 ? err.message || 'Bad request' : 'Internal error',
-  });
+  /**
+   * 4xx — mijozning xatosi (noto'g'ri so'rov, ruxsat yo'q). Bu kutilgan
+   * holat, Sentry ga yubormaymiz: aks holda oylik limit bekorga tugaydi.
+   * 5xx — BIZNING xatomiz. Aynan shu Sentry ga tushishi kerak.
+   */
+  if (status >= 500) {
+    xatoQayd(err, {
+      joy: 'api',
+      workspaceId: (req as Request & { user?: { workspaceId?: string } }).user?.workspaceId,
+      qoshimcha: { method: req.method, path: req.path },
+    });
+  } else {
+    console.error(`So'rov xatosi [${status}] ${req.method} ${req.path}: ${err.message}`);
+  }
+
+  const javob = () =>
+    res.status(status).json({
+      error: status < 500 ? err.message || 'Bad request' : 'Internal error',
+    });
+
+  /**
+   * Serverless'da funksiya javobdan keyin darhol muzlaydi — navbatdagi
+   * xato Sentry ga yetib bormay qolishi mumkin. Shuning uchun 5xx da
+   * javobdan OLDIN yuborib olamiz (maks. 1.5 s, faqat xato holatida).
+   */
+  if (status >= 500) {
+    void xatolarniYubor(1500).then(javob, javob);
+    return;
+  }
+  javob();
 });
 
 export default app;

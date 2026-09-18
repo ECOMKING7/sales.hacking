@@ -354,3 +354,56 @@ test('piksel: baza yiqilsa so\'rov o\'tkaziladi (fail-open)', async () => {
   const holat = await pikselCheklovi('00000000-0000-0000-0000-000000000000');
   assert.equal(holat.bloklandi, false);
 });
+
+/* ── Xato hisoboti: maskalash ────────────────────────────────────────
+   §4.2 qoidasi: token log va xato matnida ko'rinmasin. Sentry — TASHQI
+   xizmat, ya'ni bu yerdagi sizib chiqish eng qimmati. Shuning uchun
+   maskalash testdan o'tadi, ko'z bilan tekshirilmaydi. */
+
+test('maska: Bearer token yashiriladi', async () => {
+  const { maskla } = await import('../../utils/xatolar');
+  const m = maskla('Request failed: Authorization: Bearer abc123.def-456_x');
+  assert.equal(m.includes('abc123'), false, 'token qolmasligi kerak');
+  assert.equal(m.includes('Bearer ***'), true);
+});
+
+test('maska: URL dagi secret va token yashiriladi', async () => {
+  const { maskla } = await import('../../utils/xatolar');
+  const m = maskla('POST /api/webhooks/amocrm?secret=s3cr3tvalue&lead=42 failed');
+  assert.equal(m.includes('s3cr3tvalue'), false);
+  assert.equal(m.includes('lead=42'), true, 'zararsiz parametr qolsin');
+});
+
+test('maska: Bitrix24 webhook kodi yashiriladi', async () => {
+  const { maskla } = await import('../../utils/xatolar');
+  const m = maskla('https://demo.bitrix24.ru/rest/1/q7x9abcd1234/crm.lead.list');
+  assert.equal(m.includes('q7x9abcd1234'), false);
+  assert.equal(m.includes('/rest/1/***'), true);
+});
+
+test('maska: JWT yashiriladi', async () => {
+  const { maskla } = await import('../../utils/xatolar');
+  const m = maskla('token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1IjoxfQ.sig');
+  assert.equal(m.includes('IkpXVCJ9'), false);
+});
+
+test('tozala: xavfli sarlavhalar butunlay olib tashlanadi', async () => {
+  const { tozala } = await import('../../utils/xatolar');
+  const hodisa = tozala({
+    request: {
+      headers: { Authorization: 'Bearer secret-token', 'X-Webhook-Secret': 'abc', accept: 'json' },
+    },
+    message: 'Bearer another-secret ishlamadi',
+  });
+  assert.equal(hodisa.request.headers.Authorization, '***');
+  assert.equal(hodisa.request.headers['X-Webhook-Secret'], '***');
+  assert.equal(hodisa.request.headers.accept, 'json', 'zararsiz sarlavha qolsin');
+  assert.equal(hodisa.message.includes('another-secret'), false);
+});
+
+test('xato qaydi: DSN yo\'q bo\'lsa ham otmaydi', async () => {
+  const { xatoQayd, xatolarniYubor } = await import('../../utils/xatolar');
+  // SENTRY_DSN testda qo'yilmagan — hammasi console.error bo'lib qolishi kerak.
+  xatoQayd(new Error('test xatosi'), { joy: 'test', workspaceId: null });
+  await xatolarniYubor(10);
+});

@@ -28,6 +28,20 @@ Infra (Postgres :5432, Redis :6379) via `docker-compose up -d` from repo root.
 
 Two real defects came out of writing it: `normalizePhoneE164('12345')` used to return `'99812345'` — garbage silently became a plausible number that hashed to nothing — and the single-digit country-code case (7 = RU/KZ, 1 = US/CA) is a documented limitation, not a fixed behaviour. Keep that pattern: when a test finds a limit that can't be fixed correctly yet, assert the current behaviour and name it a limitation.
 
+### Error reporting
+
+`utils/xatolar.ts` is the single place an error is reported from. `xatoQayd(err, { joy, workspaceId, qoshimcha })` logs to the console and, **only when `SENTRY_DSN` is set**, forwards to Sentry; `xatolarniYubor()` flushes. With no DSN the module is a console logger and never throws — Sentry is optional in exactly the way Redis is.
+
+Why it exists: Vercel keeps logs for **1 hour** on the free tier, so a sync that fails at 02:00 has no cause left by 09:00 — only the symptom ("the numbers are wrong"). The 14 import errors that turned out to be a pool deadlock were visible as a *count* on screen and nowhere as a *message*.
+
+Three rules:
+
+- **4xx is not reported.** A bad request is the caller's error and expected; sending it burns the monthly event quota. Only 5xx — our error — reaches Sentry.
+- **Everything is masked first** (§4.2). `maskla()` strips `Bearer …`, `secret=/token=/password=…`, Bitrix24 `/rest/<n>/<code>/` and JWTs; `tozala()` walks the whole event object and replaces `Authorization`, `Cookie` and `X-Webhook-Secret` outright. `sendDefaultPii: false`, tracing off. Both are pure functions and are covered by tests, because a leak into a third-party service is the most expensive kind.
+- **Flush before responding on 5xx.** Serverless functions freeze the moment the response is sent, so a queued event would never leave. The error path waits up to 1.5s; the success path waits for nothing.
+
+Wired at: the global error handler and both process-level guards (`app.ts`), the sync cron (both the node-cron and the serverless `POST /api/sync/cron` paths), the amoCRM importer, and the webhook's attribution / CAPI / contact-enrichment catch blocks.
+
 `.github/workflows/ci.yml` runs typecheck + test on the backend and typecheck + build on the frontend for every push and PR. There is still **no linter and no e2e**.
 
 ### Local dev gotchas

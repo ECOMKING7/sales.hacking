@@ -13,6 +13,7 @@ import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
+import { xatoQayd } from '../utils/xatolar';
 
 // AmoCRM's default "closed - lost" status id.
 const DEFAULT_LOST_STATUS_ID = '143';
@@ -316,7 +317,7 @@ async function handleLeadStatus(
       // Fresh won deal — invalidate cached dashboard overviews.
       await cacheDelPattern(overviewCachePattern(workspaceId));
     } catch (err) {
-      console.error('attribution after won failed:', (err as Error).message);
+      xatoQayd(err, { joy: 'webhook-atribusiya', workspaceId, qoshimcha: { crmLeadId: lead.id } });
     }
   }
 
@@ -351,7 +352,7 @@ async function notifyMeta(
 
     await sendCapiEvent(workspaceId, capiLead, stage, config);
   } catch (err) {
-    console.error(`CAPI (${stage}) o'ram xatosi:`, (err as Error).message);
+    xatoQayd(err, { joy: `capi-${stage}`, workspaceId, qoshimcha: { crmLeadId } });
   }
 }
 
@@ -375,7 +376,7 @@ async function handleContactAdd(
       [phoneHash, emailHash, workspaceId, String(contact.id)]
     );
   } catch (err) {
-    console.error('contact add handling failed:', (err as Error).message);
+    xatoQayd(err, { joy: 'webhook-kontakt', workspaceId, qoshimcha: { contactId: contact.id } });
   }
 }
 

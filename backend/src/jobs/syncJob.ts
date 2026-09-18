@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { pool } from '../db/pool';
 import { ensureFreshFxRates } from '../services/fxRates';
 import { DEFAULT_RANGE, syncWorkspace, DateRange } from '../services/facebookAdsService';
+import { xatoQayd } from '../utils/xatolar';
 
 const QUEUE_NAME = 'fb-sync';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -133,11 +134,11 @@ export function startSyncCron(): void {
         try {
           await enqueueSync(ws.id);
         } catch (err) {
-          console.error(`sync cron: workspace ${ws.id} failed:`, err);
+          xatoQayd(err, { joy: 'sync-cron', workspaceId: ws.id });
         }
       }
     } catch (err) {
-      console.error('sync cron error:', err);
+      xatoQayd(err, { joy: 'sync-cron' });
     }
   });
 }

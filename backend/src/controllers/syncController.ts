@@ -7,6 +7,7 @@ import { DateRange } from '../services/facebookAdsService';
 import { fbUsage } from '../services/fbRateLimit';
 import { ensureFreshFxRates } from '../services/fxRates';
 import { importChunk } from '../services/amocrmImport';
+import { xatoQayd } from '../utils/xatolar';
 
 const triggerSchema = z
   .object({
@@ -148,7 +149,7 @@ export async function cronSync(req: Request, res: Response): Promise<void> {
         results.push({ workspaceId: ws.id, ok: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        console.error(`cron sync: workspace ${ws.id} failed:`, message);
+        xatoQayd(err, { joy: 'sync-cron', workspaceId: ws.id });
         results.push({ workspaceId: ws.id, ok: false, error: message });
       }
     }
@@ -166,7 +167,7 @@ export async function cronSync(req: Request, res: Response): Promise<void> {
       results,
     });
   } catch (err) {
-    console.error('cron sync error:', err);
+    xatoQayd(err, { joy: 'sync-cron' });
     res.status(500).json({ error: 'Cron sync failed', durationMs: Date.now() - startedAt });
   }
 }
@@ -226,7 +227,11 @@ export async function amocrmImport(req: Request, res: Response): Promise<void> {
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error('amocrm import error:', e.message);
+    xatoQayd(err, {
+      joy: 'amocrm-import',
+      workspaceId: req.user?.workspaceId,
+      qoshimcha: { sahifa: req.body?.page, kunlar: req.body?.days },
+    });
     res.status(500).json({ error: 'Import bajarilmadi' });
   }
 }
