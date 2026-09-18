@@ -31,6 +31,7 @@
 import { pool } from '../db/pool';
 import { amoGetPath, hashPhone, hashEmail } from './amocrmService';
 import { extractUtm, matchLeadToAd } from './leadMatcher';
+import { extractLeadId, extractLine } from './amocrmFields';
 import { processLeadAttribution } from './attributionEngine';
 
 /** Bitta sahifadagi yozuvlar soni — amoCRM ruxsat bergan maksimum. */
@@ -95,6 +96,10 @@ export interface ImportConfig {
   amocrm_qualified_pairs: string[];
   /** §3.3 etaplar.yangi — voronkaning birinchi bosqichi. */
   amocrm_lead_pairs: string[];
+  /** Meta Lead ID qaysi maydonda (amoCRM field_id). NULL — sozlanmagan. */
+  amocrm_lead_id_field: string | null;
+  /** Qo'ng'iroq liniyasi qaysi maydonda. NULL — sozlanmagan. */
+  amocrm_line_field: string | null;
 }
 
 export interface ImportNatija {
@@ -113,7 +118,9 @@ export async function loadImportConfig(workspaceId: string): Promise<ImportConfi
             COALESCE(phone_country_code, '998')          AS phone_country_code,
             COALESCE(amocrm_won_pairs, '{}')             AS amocrm_won_pairs,
             COALESCE(amocrm_qualified_pairs, '{}')       AS amocrm_qualified_pairs,
-            COALESCE(amocrm_lead_pairs, '{}')            AS amocrm_lead_pairs
+            COALESCE(amocrm_lead_pairs, '{}')            AS amocrm_lead_pairs,
+            amocrm_lead_id_field,
+            amocrm_line_field
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
@@ -351,7 +358,12 @@ async function lidYoz(
   const pipelineId = lid.pipeline_id != null ? String(lid.pipeline_id) : null;
 
   const { status, sifatli } = holatAniqla(pipelineId, statusId, config);
-  const utm = extractUtm(lid.custom_fields_values ?? []);
+  const maydonlar = lid.custom_fields_values ?? [];
+  const utm = extractUtm(maydonlar);
+  // Meta Lead ID va qo'ng'iroq liniyasi — ikkalasi ham konfiguratsiyadagi
+  // maydondan o'qiladi. Sozlanmagan bo'lsa null, bu xato emas.
+  const fbLeadId = extractLeadId(maydonlar, config.amocrm_lead_id_field);
+  const sourceLine = extractLine(maydonlar, config.amocrm_line_field);
 
   const contactId = lid._embedded?.contacts?.[0]?.id ?? null;
   const kontakt = contactId ? kontaktlar.get(String(contactId)) : undefined;
@@ -393,7 +405,8 @@ async function lidYoz(
         status, revenue, crm_created_at, won_at, lost_at, qualified_at, crm_stage,
         deal_time_days,
         utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid,
-        last_click_ad_id, first_click_ad_id, match_method)
+        last_click_ad_id, first_click_ad_id, match_method,
+        fb_lead_id, source_line)
      VALUES ($1,$2,$3,$4,$5,$6,$7,
              CASE WHEN $8::bigint IS NULL THEN NULL ELSE to_timestamp($8::bigint) END,
              CASE WHEN $9::bigint IS NULL THEN NULL ELSE to_timestamp($9::bigint) END,
@@ -408,7 +421,7 @@ async function lidYoz(
              $13,
              CASE WHEN $9::bigint IS NOT NULL AND $8::bigint IS NOT NULL
                   THEN GREATEST(0, (($9::bigint - $8::bigint) / 86400)::int) END,
-             $14,$15,$16,$17,$18,$19,$20,$20,$21)
+             $14,$15,$16,$17,$18,$19,$20,$20,$21,$22,$23)
      ON CONFLICT (workspace_id, crm_lead_id) DO UPDATE SET
         crm_contact_id = COALESCE(EXCLUDED.crm_contact_id, leads.crm_contact_id),
         phone_hash     = COALESCE(EXCLUDED.phone_hash, leads.phone_hash),
@@ -432,7 +445,11 @@ async function lidYoz(
         fbclid       = COALESCE(leads.fbclid,       EXCLUDED.fbclid),
         last_click_ad_id  = COALESCE(leads.last_click_ad_id,  EXCLUDED.last_click_ad_id),
         first_click_ad_id = COALESCE(leads.first_click_ad_id, EXCLUDED.first_click_ad_id),
-        match_method      = COALESCE(leads.match_method,      EXCLUDED.match_method)
+        match_method      = COALESCE(leads.match_method,      EXCLUDED.match_method),
+        -- Manba kalitlari: bir marta topilgach yo'qolmaydi. Maydon
+        -- keyinroq sozlansa, keyingi import ularni to'ldiradi.
+        fb_lead_id        = COALESCE(leads.fb_lead_id,        EXCLUDED.fb_lead_id),
+        source_line       = COALESCE(leads.source_line,       EXCLUDED.source_line)
      RETURNING id, (xmax = 0) AS yangi`,
     [
       workspaceId,
@@ -456,6 +473,8 @@ async function lidYoz(
       utm.fbclid ?? null,
       match.adId,
       match.method,
+      fbLeadId,
+      sourceLine,
     ]
   );
 

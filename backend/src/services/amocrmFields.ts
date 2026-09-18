@@ -42,6 +42,39 @@ const META_LEAD_ID = /^\d{15,17}$/;
 /** Matn ichidan qidirish uchun (lid nomi: "Заявка #1234567890123456"). */
 const MATNDA_LEAD_ID = /(?<!\d)\d{15,17}(?!\d)/;
 
+/**
+ * Telefon shakli: raqamga keltirilganda 9–15 xona.
+ * O'zbekiston: 998901234567 = 12, qisqa ofis raqami = 9.
+ */
+const TELEFON_XONA = { min: 9, max: 15 };
+
+/**
+ * Liniya nomzodi shartlari.
+ *
+ * Mantiq: liniya raqami TAKRORLANADI (bir nechta lid bitta raqamga
+ * qo'ng'iroq qiladi), mijoz raqami esa har lidda boshqa. Shuning uchun
+ * noyob qiymatlar soni ajratuvchi belgi bo'la oladi — maydon nomidan,
+ * tildan va provayderdan mustaqil.
+ */
+const LINIYA = {
+  /** Shuncha lidda to'ldirilgan bo'lsa tekshiriladi (kam namunadan xulosa chiqmaydi). */
+  engKamLid: 10,
+  /** Ko'pi bilan shuncha noyob qiymat — bundan ko'pi mijoz raqamiga o'xshaydi. */
+  engKopNoyob: 8,
+  /** Qiymatlarning kamida shuncha ulushi telefon shaklida bo'lsin. */
+  engKamTelefon: 0.8,
+};
+
+/** Faqat raqam qoldiradi. Ikki tomon bir xil normalizatsiyadan o'tadi. */
+export function raqamlash(v: unknown): string {
+  return String(v ?? '').replace(/\D/g, '');
+}
+
+function telefonShaklidami(v: string): boolean {
+  const r = raqamlash(v);
+  return r.length >= TELEFON_XONA.min && r.length <= TELEFON_XONA.max;
+}
+
 /** Har voronkadan olinadigan lidlar soni. */
 const VORONKADAN = 100;
 /** Ko'pi bilan shuncha voronka tekshiriladi — so'rovlar cheklangan. */
@@ -86,6 +119,12 @@ export interface MaydonHisoboti {
   toldirilgan: number;
   /** Shulardan nechtasi Meta Lead ID shaklida. */
   metaShaklida: number;
+  /** Shulardan nechtasi telefon shaklida. */
+  telefonShaklida: number;
+  /** Nechta NOYOB qiymat uchradi — liniyani mijoz raqamidan ajratadi. */
+  noyob: number;
+  /** Noyob qiymatlar (faqat kam bo'lsa to'ldiriladi — liniya nomzodi). */
+  noyobQiymatlar: string[];
   /** 0–100. `toldirilgan` nolga teng bo'lsa 0. */
   ishonch: number;
   /** Ikkita misol — tanlaganda odam ko'rib tasdiqlashi uchun. */
@@ -118,6 +157,14 @@ export interface MaydonTahlili {
   maydonlar: MaydonHisoboti[];
   /** Kontakt maydonlaridagi nomzodlar (integratsiya u yerga yozgan bo'lishi mumkin). */
   kontaktNomzodlari: MaydonHisoboti[];
+  /**
+   * Qo'ng'iroq liniyasi nomzodlari: telefon shaklida, lekin KAM XIL.
+   * Reklama qo'ng'irog'ini organikdan ajratish uchun kerak.
+   */
+  liniyaNomzodlari: MaydonHisoboti[];
+  /** Hozir sozlangan liniya maydoni va reklama liniyalari. */
+  liniyaMaydoni: string | null;
+  reklamaLiniyalari: string[];
   /** Lid NOMIDA 15–17 xonali son uchragan lidlar soni. */
   nomdaTopildi: number;
   /** Teglar ichida uchragan lidlar soni. */
@@ -161,7 +208,9 @@ async function maydonTariflari(
 function maydonlarniSana(
   hisob: Map<string, MaydonHisoboti>,
   tariflar: Map<string, AmoMaydonTarifi>,
-  maydonlar: AmoMaydonQiymati[]
+  maydonlar: AmoMaydonQiymati[],
+  /** field_id -> ko'rilgan noyob qiymatlar (cheklangan). */
+  noyobHisob: Map<string, Set<string>>
 ): boolean {
   let topildi = false;
   for (const f of maydonlar) {
@@ -180,6 +229,9 @@ function maydonlarniSana(
         field_type: tarif?.type ?? null,
         toldirilgan: 0,
         metaShaklida: 0,
+        telefonShaklida: 0,
+        noyob: 0,
+        noyobQiymatlar: [],
         ishonch: 0,
         namunalar: [],
       };
@@ -192,6 +244,15 @@ function maydonlarniSana(
       topildi = true;
       if (qator.namunalar.length < 2) qator.namunalar.push(qiymat);
     }
+    if (telefonShaklidami(qiymat)) qator.telefonShaklida += 1;
+
+    // Noyob qiymatlar: liniya raqamini mijoz raqamidan shu bilan ajratamiz.
+    // Ro'yxat cheklangan — mijoz raqamlari maydonida u minglab bo'lib ketardi.
+    const kalit = raqamlash(qiymat) || qiymat;
+    const nq = noyobHisob.get(id) ?? new Set<string>();
+    if (nq.size <= LINIYA.engKopNoyob) nq.add(kalit);
+    noyobHisob.set(id, nq);
+    qator.noyob = nq.size;
   }
   return topildi;
 }
@@ -226,6 +287,7 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
   }
 
   const lidHisob = new Map<string, MaydonHisoboti>();
+  const lidNoyob = new Map<string, Set<string>>();
   const voronkaHisob: VoronkaHisoboti[] = [];
   const kontaktIdlar: number[] = [];
   const atribusiya = { utm_term: 0, utm_campaign: 0, utm_content: 0, utm_source: 0, fbclid: 0 };
@@ -291,7 +353,7 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
         atribusiya.fbclid += 1;
       }
 
-      let topildi = maydonlarniSana(lidHisob, lidTariflari, maydonlar);
+      let topildi = maydonlarniSana(lidHisob, lidTariflari, maydonlar, lidNoyob);
 
       // Lid nomi: "Заявка с Facebook #1234567890123456" kabi holatlar.
       if (lid.name && MATNDA_LEAD_ID.test(lid.name)) {
@@ -318,6 +380,7 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
 
   // Kontakt maydonlari — integratsiya Lead ID ni u yerga yozgan bo'lishi mumkin.
   const kontaktHisob = new Map<string, MaydonHisoboti>();
+  const kontaktNoyob = new Map<string, Set<string>>();
   if (kontaktIdlar.length) {
     const kontaktTariflari = await maydonTariflari(
       workspaceId,
@@ -330,7 +393,7 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
         `/api/v4/contacts?limit=${KONTAKT_NAMUNA}&${filtr}`
       );
       for (const k of javob._embedded?.contacts ?? []) {
-        maydonlarniSana(kontaktHisob, kontaktTariflari, k.custom_fields_values ?? []);
+        maydonlarniSana(kontaktHisob, kontaktTariflari, k.custom_fields_values ?? [], kontaktNoyob);
       }
     } catch {
       // Kontaktlar o'qilmasa — lid maydonlari bo'yicha xulosa qoladi.
@@ -347,6 +410,9 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
       field_type: tarif.type ?? null,
       toldirilgan: 0,
       metaShaklida: 0,
+      telefonShaklida: 0,
+      noyob: 0,
+      noyobQiymatlar: [],
       ishonch: 0,
       namunalar: [],
     });
@@ -354,6 +420,28 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
 
   const maydonlar = ishonchBilan(lidHisob);
   const kontaktMaydonlari = ishonchBilan(kontaktHisob);
+  const liniyaQiymatlari = new Map<string, Set<string>>([...lidNoyob, ...kontaktNoyob]);
+
+  /**
+   * Liniya nomzodi: qiymatlar telefon shaklida, lekin KAM XIL.
+   * Mijoz raqami maydoni bu shartdan o'tmaydi — unda har lidda boshqa
+   * qiymat bo'ladi va noyob soni namuna hajmiga teng chiqadi.
+   */
+  const liniyaNomzodlari = [...maydonlar, ...kontaktMaydonlari]
+    .filter(
+      (m) =>
+        m.toldirilgan >= LINIYA.engKamLid &&
+        m.noyob > 0 &&
+        m.noyob <= LINIYA.engKopNoyob &&
+        m.telefonShaklida / m.toldirilgan >= LINIYA.engKamTelefon
+    )
+    .map((m) => ({
+      ...m,
+      // Noyob qiymatlarni faqat SHU YERDA ochamiz: nomzod bo'lgani —
+      // qiymatlar takrorlanishi, ya'ni bular biznes liniyalari, mijoz
+      // raqamlari emas. Mijoz raqamlari maydoni bu filtrga tushmaydi.
+      noyobQiymatlar: [...(liniyaQiymatlari.get(m.field_id) ?? [])],
+    }));
 
   return {
     tekshirilganLid,
@@ -361,6 +449,9 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
     nomzodlar: nomzodlarni(maydonlar),
     maydonlar,
     kontaktNomzodlari: nomzodlarni(kontaktMaydonlari),
+    liniyaNomzodlari,
+    liniyaMaydoni: null,
+    reklamaLiniyalari: [],
     nomdaTopildi,
     tegdaTopildi,
     atribusiya,
@@ -388,5 +479,41 @@ export function extractLeadId(
   return null;
 }
 
+/**
+ * Sozlangan maydondan qo'ng'iroq liniyasini oladi (faqat raqam).
+ *
+ * Telefon shakliga mos kelmasa null — noto'g'ri qiymat filtrni
+ * jimgina buzishidan ko'ra "liniya yo'q" degani xavfsizroq.
+ */
+export function extractLine(
+  fields: AmoMaydonQiymati[] | null | undefined,
+  fieldId: string | null
+): string | null {
+  if (!fields || !fieldId) return null;
+  for (const f of fields) {
+    if (f.field_id === undefined || String(f.field_id) !== fieldId) continue;
+    const r = raqamlash(f.values?.[0]?.value);
+    return r.length >= TELEFON_XONA.min && r.length <= TELEFON_XONA.max ? r : null;
+  }
+  return null;
+}
+
+/**
+ * Lid reklama liniyasidan kelganmi.
+ *
+ * ⚠ Ro'yxat BO'SH bo'lsa — true. Ya'ni sozlanmagan mijozda xulq
+ * bugungidek qoladi va hech narsa jimgina yo'qolmaydi. Filtrni
+ * yoqish ataylab qilinadigan qadam.
+ */
+export function reklamaLiniyasimi(
+  liniya: string | null,
+  reklamaLiniyalari: string[] | null | undefined
+): boolean {
+  const royxat = (reklamaLiniyalari ?? []).map(raqamlash).filter(Boolean);
+  if (!royxat.length) return true;
+  if (!liniya) return false;
+  return royxat.includes(raqamlash(liniya));
+}
+
 /** Test va diagnostika uchun ochiq. */
-export const METR = { META_LEAD_ID, MATNDA_LEAD_ID, VORONKADAN, ENG_KAM_ULUSH };
+export const METR = { META_LEAD_ID, MATNDA_LEAD_ID, VORONKADAN, ENG_KAM_ULUSH, LINIYA };

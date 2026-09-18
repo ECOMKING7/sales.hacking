@@ -402,11 +402,21 @@ export async function listFields(req: Request, res: Response): Promise<void> {
   }
   try {
     const tahlil = await discoverLeadFields(req.user.workspaceId);
-    const { rows } = await pool.query<{ amocrm_lead_id_field: string | null }>(
-      `SELECT amocrm_lead_id_field FROM workspaces WHERE id = $1`,
+    const { rows } = await pool.query<{
+      amocrm_lead_id_field: string | null;
+      amocrm_line_field: string | null;
+      amocrm_ad_lines: string[] | null;
+    }>(
+      `SELECT amocrm_lead_id_field, amocrm_line_field, amocrm_ad_lines
+         FROM workspaces WHERE id = $1`,
       [req.user.workspaceId]
     );
-    res.json({ ...tahlil, tanlangan: rows[0]?.amocrm_lead_id_field ?? null });
+    res.json({
+      ...tahlil,
+      tanlangan: rows[0]?.amocrm_lead_id_field ?? null,
+      liniyaMaydoni: rows[0]?.amocrm_line_field ?? null,
+      reklamaLiniyalari: rows[0]?.amocrm_ad_lines ?? [],
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Maydonlarni o\'qib bo\'lmadi';
     const code = message.includes('not connected') ? 400 : 500;
@@ -418,6 +428,18 @@ export async function listFields(req: Request, res: Response): Promise<void> {
 const leadIdFieldSchema = z.object({
   /** amoCRM field_id. null — sozlamani bekor qilish. */
   fieldId: z.union([amoId, z.null()]),
+  /** Qo'ng'iroq liniyasi maydoni. Yuborilmasa mavjud qiymat saqlanadi. */
+  lineField: z.union([amoId, z.null()]).optional(),
+  /**
+   * Reklama liniyalari. Faqat raqam qoldiriladi — CRM'da ular
+   * "+998 78 123-45-67" ko'rinishida bo'lishi mumkin, taqqoslash esa
+   * ikkala tomonda bir xil normalizatsiyadan o'tishi shart.
+   */
+  adLines: z
+    .array(z.string())
+    .max(50)
+    .optional()
+    .transform((v) => (v ? v.map((x) => x.replace(/\D/g, '')).filter(Boolean) : undefined)),
 });
 
 export async function saveLeadIdField(req: Request, res: Response): Promise<void> {
@@ -432,14 +454,29 @@ export async function saveLeadIdField(req: Request, res: Response): Promise<void
   }
   try {
     const result = await pool.query(
-      `UPDATE workspaces SET amocrm_lead_id_field = $1, updated_at = now() WHERE id = $2`,
-      [parsed.data.fieldId, req.user.workspaceId]
+      `UPDATE workspaces
+          SET amocrm_lead_id_field = $1,
+              amocrm_line_field = COALESCE($3, amocrm_line_field),
+              amocrm_ad_lines = COALESCE($4::text[], amocrm_ad_lines),
+              updated_at = now()
+        WHERE id = $2`,
+      [
+        parsed.data.fieldId,
+        req.user.workspaceId,
+        parsed.data.lineField ?? null,
+        parsed.data.adLines ?? null,
+      ]
     );
     if (!result.rowCount) {
       res.status(404).json({ error: 'Workspace not found' });
       return;
     }
-    res.json({ success: true, fieldId: parsed.data.fieldId });
+    res.json({
+      success: true,
+      fieldId: parsed.data.fieldId,
+      lineField: parsed.data.lineField ?? null,
+      adLines: parsed.data.adLines ?? null,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Saqlanmadi' });
   }

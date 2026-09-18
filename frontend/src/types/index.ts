@@ -252,6 +252,12 @@ export interface FieldRow {
   toldirilgan: number;
   /** Shulardan nechtasi Meta Lead ID shaklida. */
   metaShaklida: number;
+  /** Shulardan nechtasi telefon shaklida. */
+  telefonShaklida: number;
+  /** Nechta NOYOB qiymat — liniyani mijoz raqamidan shu ajratadi. */
+  noyob: number;
+  /** Noyob qiymatlar (faqat liniya nomzodida to'ldiriladi). */
+  noyobQiymatlar: string[];
   /** 0–100. */
   ishonch: number;
   namunalar: string[];
@@ -281,6 +287,10 @@ export interface FieldReport {
   maydonlar: FieldRow[];
   /** Kontakt maydonlarida topilgan nomzodlar. */
   kontaktNomzodlari: FieldRow[];
+  /** Qo'ng'iroq liniyasi nomzodlari: telefon shaklida, lekin kam xil. */
+  liniyaNomzodlari: FieldRow[];
+  liniyaMaydoni: string | null;
+  reklamaLiniyalari: string[];
   /** Lid NOMIDA 15–17 xonali son uchragan lidlar soni. */
   nomdaTopildi: number;
   tegdaTopildi: number;

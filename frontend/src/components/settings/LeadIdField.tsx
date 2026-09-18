@@ -32,6 +32,8 @@ function yorliq(f: FieldRow): string {
 export default function LeadIdField() {
   const [data, setData] = useState<FieldReport | null>(null);
   const [tanlov, setTanlov] = useState<string>('');
+  const [liniyaMaydoni, setLiniyaMaydoni] = useState<string>('');
+  const [reklamaLiniyalari, setReklamaLiniyalari] = useState<string[]>([]);
   const [yuklanmoqda, setYuklanmoqda] = useState(false);
   const [saqlanmoqda, setSaqlanmoqda] = useState(false);
   const [xato, setXato] = useState('');
@@ -44,6 +46,8 @@ export default function LeadIdField() {
       const r = await amocrmApi.fields();
       setData(r);
       setTanlov(r.tanlangan ?? '');
+      setLiniyaMaydoni(r.liniyaMaydoni ?? '');
+      setReklamaLiniyalari(r.reklamaLiniyalari ?? []);
     } catch (err) {
       setXato(errMsg(err, 'Maydonlarni o\'qib bo\'lmadi'));
     } finally {
@@ -55,13 +59,17 @@ export default function LeadIdField() {
   // so'rov, ya'ni limitdan yeydi. Faqat tugma bosilganda.
   useEffect(() => {
     setSaqlandi(false);
-  }, [tanlov]);
+  }, [tanlov, liniyaMaydoni, reklamaLiniyalari]);
 
   const saqla = async () => {
     setSaqlanmoqda(true);
     setXato('');
     try {
-      await amocrmApi.saveLeadIdField(tanlov || null);
+      await amocrmApi.saveLeadIdField({
+        fieldId: tanlov || null,
+        lineField: liniyaMaydoni || null,
+        adLines: reklamaLiniyalari,
+      });
       setSaqlandi(true);
     } catch (err) {
       setXato(errMsg(err, 'Saqlanmadi'));
@@ -229,9 +237,85 @@ export default function LeadIdField() {
             )}
           </div>
 
+          {/* Qo'ng'iroq liniyasi. Facebook call reklamasida hech qanday
+              identifikator bermaydi — yagona belgi shu: odam QAYSI
+              raqamga qo'ng'iroq qildi. Reklama raqamidan kelmagan
+              qo'ng'iroq organik, va uni reklama hisobiga yozish CAC ni
+              aslidan yaxshiroq ko'rsatadi. */}
+          <div className="border-t border-line pt-4">
+            <label className={LABEL} htmlFor="line-field">
+              Qo'ng'iroq liniyasi maydoni (call reklamasi uchun)
+            </label>
+            <p className="mb-2 text-xs leading-relaxed text-ink-3">
+              Telefoniya "qayerga qo'ng'iroq qilindi" raqamini yozadigan maydon.
+              Nomzodlar shakl bo'yicha topiladi: qiymat telefonga o'xshaydi, lekin
+              kam xil bo'ladi (mijoz raqami har lidda boshqa, liniya takrorlanadi).
+            </p>
+            <select
+              id="line-field"
+              className={SELECT}
+              value={liniyaMaydoni}
+              onChange={(e) => {
+                setLiniyaMaydoni(e.target.value);
+                setReklamaLiniyalari([]);
+              }}
+            >
+              <option value="">Sozlanmagan</option>
+              {data.liniyaNomzodlari.map((f) => (
+                <option key={f.field_id} value={f.field_id}>
+                  {f.field_name} — {f.noyob} xil raqam, {f.toldirilgan} ta lidda
+                </option>
+              ))}
+            </select>
+
+            {data.liniyaNomzodlari.length === 0 && (
+              <p className="mt-2 text-xs leading-relaxed text-ink-3">
+                Liniya nomzodi topilmadi — telefoniya integratsiyasi "qayerga
+                qo'ng'iroq qilindi" raqamini alohida maydonga yozmayapti. U holda
+                reklama qo'ng'irog'ini organikdan ajratib bo'lmaydi.
+              </p>
+            )}
+
+            {liniyaMaydoni && (
+              <div className="mt-3">
+                <span className={LABEL}>Qaysi raqamlar reklama uchun</span>
+                <div className="flex flex-col gap-1.5">
+                  {(
+                    data.liniyaNomzodlari.find((f) => f.field_id === liniyaMaydoni)
+                      ?.noyobQiymatlar ?? []
+                  ).map((raqam) => (
+                    <label
+                      key={raqam}
+                      className="flex items-center gap-2 text-xs text-ink-2"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-[var(--halo)]"
+                        checked={reklamaLiniyalari.includes(raqam)}
+                        onChange={(e) =>
+                          setReklamaLiniyalari((oldingi) =>
+                            e.target.checked
+                              ? [...oldingi, raqam]
+                              : oldingi.filter((x) => x !== raqam)
+                          )
+                        }
+                      />
+                      <span className="font-mono tabular-nums">{raqam}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-ink-3">
+                  Hech biri belgilanmasa filtr qo'llanmaydi — hamma qo'ng'iroq
+                  reklama deb hisoblanadi (bugungi holat). Bu ataylab: filtrni
+                  yoqish ongli qadam bo'lishi kerak.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-3">
             <Button size="sm" loading={saqlanmoqda} onClick={() => void saqla()}>
-              Maydonni saqlash
+              Sozlamani saqlash
             </Button>
             <Button variant="ghost" size="sm" onClick={() => void yukla()}>
               Qayta tekshirish

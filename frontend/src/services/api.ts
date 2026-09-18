@@ -103,11 +103,15 @@ export const amocrmApi = {
    * UTM/fbclid nechta lidda to'ldirilgan. Faqat o'qish.
    */
   fields: () => api.get<FieldReport>('/api/workspace/amocrm-fields').then((r) => r.data),
-  saveLeadIdField: (fieldId: string | null) =>
+  saveLeadIdField: (payload: {
+    fieldId: string | null;
+    lineField?: string | null;
+    adLines?: string[];
+  }) =>
     api
       .post<{ success: boolean; fieldId: string | null }>(
         '/api/workspace/amocrm-lead-id-field',
-        { fieldId }
+        payload
       )
       .then((r) => r.data),
 };

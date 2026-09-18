@@ -86,6 +86,8 @@ const BOSH_CONFIG: ImportConfig = {
   amocrm_won_pairs: [],
   amocrm_qualified_pairs: [],
   amocrm_lead_pairs: [],
+  amocrm_lead_id_field: null,
+  amocrm_line_field: null,
 };
 
 test('etap: sotuv juftlik bo\'yicha aniqlanadi, etap ID si yolg\'iz yetmaydi', () => {
@@ -451,4 +453,43 @@ test('lead id: chegaralar — 14 xona kam, 18 xona ko\'p', async () => {
   assert.equal(extractLeadId(yasa('1'.repeat(15)), '1'), '1'.repeat(15), '15 xona — to\'g\'ri');
   assert.equal(extractLeadId(yasa('1'.repeat(17)), '1'), '1'.repeat(17), '17 xona — to\'g\'ri');
   assert.equal(extractLeadId(yasa('1'.repeat(18)), '1'), null, '18 xona — qabul qilinmaydi');
+});
+
+/* ── Qo'ng'iroq liniyasi ─────────────────────────────────────────────
+   Reklama qo'ng'irog'ini organikdan ajratadi. Filtr noto'g'ri ishlasa
+   organik sotuvlar reklama hisobiga yoziladi va CAC aslidan YAXSHIROQ
+   ko'rinadi — bu jimgina xato, hech kim ogohlantirmaydi. */
+
+const LINIYA_MAYDONLARI = [
+  { field_id: 55, field_name: 'Liniya', values: [{ value: '+998 78 150-00-00' }] },
+  { field_id: 66, field_name: 'Mijoz raqami', values: [{ value: '998901234567' }] },
+  { field_id: 77, field_name: 'Izoh', values: [{ value: 'ertaga' }] },
+];
+
+test('liniya: maydondan faqat raqam holida olinadi', async () => {
+  const { extractLine } = await import('../amocrmFields');
+  assert.equal(extractLine(LINIYA_MAYDONLARI, '55'), '998781500000');
+});
+
+test('liniya: telefon shakliga mos kelmasa null', async () => {
+  const { extractLine } = await import('../amocrmFields');
+  assert.equal(extractLine(LINIYA_MAYDONLARI, '77'), null);
+  assert.equal(extractLine(LINIYA_MAYDONLARI, null), null);
+});
+
+test('liniya filtri: ro\'yxat bo\'sh bo\'lsa hech narsa yo\'qolmaydi', async () => {
+  const { reklamaLiniyasimi } = await import('../amocrmFields');
+  // Sozlanmagan mijozda xulq bugungidek qolishi SHART — aks holda
+  // filtr yoqilgan kuni daromadning bir qismi jimgina yo'qoladi.
+  assert.equal(reklamaLiniyasimi(null, []), true);
+  assert.equal(reklamaLiniyasimi('998781500000', []), true);
+  assert.equal(reklamaLiniyasimi(null, undefined), true);
+});
+
+test('liniya filtri: sozlangandan keyin faqat reklama liniyasi o\'tadi', async () => {
+  const { reklamaLiniyasimi } = await import('../amocrmFields');
+  const reklama = ['+998 78 150-00-00'];
+  assert.equal(reklamaLiniyasimi('998781500000', reklama), true, 'format farq qilsa ham mos');
+  assert.equal(reklamaLiniyasimi('998712000000', reklama), false, 'boshqa liniya — organik');
+  assert.equal(reklamaLiniyasimi(null, reklama), false, 'liniya yo\'q — reklama emas');
 });
