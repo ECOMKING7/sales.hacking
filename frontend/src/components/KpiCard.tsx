@@ -23,8 +23,24 @@ export default function KpiCard({
   hero = false,
 }: KpiCardProps) {
   return (
-    <Card highlight={hero} interactive={!hero} padding="sm">
-      <p className="font-mono text-label uppercase tracking-[0.1em] text-ink-3">
+    <Card highlight={hero} interactive={!hero} padding="sm" className={hero ? 'relative overflow-hidden' : undefined}>
+      {/* Hero kartaning burchagidagi halo yorug'ligi — uchinchi rang.
+          Faqat BEZAK: raqamga tegmaydi, holat bildirmaydi. Shuning uchun
+          matn ortida emas, burchakda va past shaffoflikda turadi. */}
+      {hero && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full motion-safe:animate-orb-yonish"
+          style={{
+            background:
+              'radial-gradient(circle, rgb(var(--halo) / 0.55) 0%, rgb(var(--halo) / 0) 70%)',
+            filter: 'blur(14px)',
+            opacity: 0.5,
+          }}
+        />
+      )}
+
+      <p className="relative font-mono text-label uppercase tracking-[0.1em] text-ink-3">
         {title}
       </p>
 
@@ -33,7 +49,7 @@ export default function KpiCard({
       ) : (
         <p
           className={cn(
-            'mt-1.5 text-2xl font-bold tabular-nums',
+            'relative mt-1.5 text-2xl font-bold tabular-nums',
             hero ? 'text-accent' : 'text-ink'
           )}
         >
@@ -44,7 +60,7 @@ export default function KpiCard({
       {subtitle && !loading && (
         <p
           className={cn(
-            'mt-1 text-xs font-medium tabular-nums',
+            'relative mt-1 text-xs font-medium tabular-nums',
             trend === undefined ? 'text-ink-3' : trend >= 0 ? 'text-ok' : 'text-bad'
           )}
         >

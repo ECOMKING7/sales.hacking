@@ -17,6 +17,7 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import Orb from './Orb';
 import api, { workspaceApi } from '../services/api';
 import ThemeToggle from './ThemeToggle';
 import { Badge, Button, Input, cn } from './ui';
@@ -325,6 +326,9 @@ export default function Layout() {
             >
               {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
+            {/* Brend belgisi — har sahifada ko'rinadi. Workspace harfi
+                bilan aralashmasin: u chapdagi railda, bu sarlavhada. */}
+            <Orb size={26} className="hidden flex-none sm:inline-grid" />
             <span className="font-semibold text-ink">
               {workspace?.name ?? 'Workspace'}
             </span>
