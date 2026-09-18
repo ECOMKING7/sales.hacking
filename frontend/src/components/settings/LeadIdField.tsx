@@ -69,6 +69,12 @@ export default function LeadIdField() {
         tegdaTopildi: r.tegdaTopildi ?? 0,
         tegNoyob: r.tegNoyob ?? 0,
         tegNamunalar: r.tegNamunalar ?? [],
+        tegMatnlari: r.tegMatnlari ?? [],
+        nomMatnlari: r.nomMatnlari ?? [],
+        idMosligi: r.idMosligi ?? {
+          nomdan: { tekshirildi: 0, kampaniya: 0, adset: 0, ad: 0, nomalum: 0 },
+          tegdan: { tekshirildi: 0, kampaniya: 0, adset: 0, ad: 0, nomalum: 0 },
+        },
         manba: r.manba ?? 'field',
         atribusiya: r.atribusiya ?? {
           utm_term: 0,
@@ -227,6 +233,47 @@ export default function LeadIdField() {
                   Misol: <span className="font-mono">{data.tegNamunalar.join(', ') || '—'}</span>
                 </p>
               )}
+              {/* ID lar Facebook jadvallarimizga mos keldimi — taxmin emas,
+                  fakt. UTM qo'yilmaydigan bozorda atribusiyaning yagona
+                  ishonchli yo'li shu. */}
+              {(['nomdan', 'tegdan'] as const).map((qayerdan) => {
+                const m = data.idMosligi[qayerdan];
+                if (!m.tekshirildi) return null;
+                const mos = m.kampaniya + m.adset + m.ad;
+                return (
+                  <p
+                    key={qayerdan}
+                    className={cn(
+                      'mt-2 text-xs leading-relaxed',
+                      mos ? 'text-ok' : 'text-ink-3'
+                    )}
+                  >
+                    <span className="text-ink-2">
+                      {qayerdan === 'nomdan' ? 'Nomdagi' : 'Tegdagi'} {m.tekshirildi} ta ID
+                      Facebook bilan solishtirildi:
+                    </span>{' '}
+                    {mos === 0
+                      ? 'birortasi ham bizdagi kampaniya/adset/ad ga mos kelmadi'
+                      : `${m.kampaniya} kampaniya, ${m.adset} adset, ${m.ad} ad${
+                          m.nomalum ? `, ${m.nomalum} ta noma'lum` : ''
+                        }`}
+                  </p>
+                );
+              })}
+
+              {data.tegMatnlari.length > 0 && (
+                <p className="mt-2 text-xs leading-relaxed text-ink-3">
+                  <span className="text-ink-2">Teg matnlari:</span>{' '}
+                  <span className="font-mono">{data.tegMatnlari.join(' · ')}</span>
+                </p>
+              )}
+              {data.nomMatnlari.length > 0 && (
+                <p className="mt-1 text-xs leading-relaxed text-ink-3">
+                  <span className="text-ink-2">Lid nomlari:</span>{' '}
+                  <span className="font-mono">{data.nomMatnlari.join(' · ')}</span>
+                </p>
+              )}
+
               <p className="mt-2 text-xs leading-relaxed text-ink-3">
                 Qiymat deyarli har lidda boshqa bo'lsa — bu Meta Lead ID.
                 Takrorlansa — forma yoki reklama ID si (Facebook'da lead ID,

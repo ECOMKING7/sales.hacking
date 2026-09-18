@@ -34,6 +34,7 @@
    FAQAT O'QISH: bu fayldagi hamma so'rov GET (§4.3).
    ═══════════════════════════════════════════════════════════════ */
 
+import { pool } from '../db/pool';
 import { amoGetPath, getPipelines } from './amocrmService';
 import { extractUtm, type AmoFieldValue } from './leadMatcher';
 
@@ -146,6 +147,16 @@ export interface VoronkaHisoboti {
   leadIdTopildi: number;
 }
 
+export interface IdMosligi {
+  /** Tekshirilgan noyob ID soni. */
+  tekshirildi: number;
+  kampaniya: number;
+  adset: number;
+  ad: number;
+  /** Hech biriga mos kelmaganlari — ehtimol forma ID si yoki boshqa narsa. */
+  nomalum: number;
+}
+
 export interface MaydonTahlili {
   /** Namunaga jami nechta lid tushdi. */
   tekshirilganLid: number;
@@ -185,6 +196,22 @@ export interface MaydonTahlili {
   tegdaTopildi: number;
   tegNoyob: number;
   tegNamunalar: string[];
+  /** Teglarning to'liq matni — ichida reklama NOMI bo'lishi mumkin. */
+  tegMatnlari: string[];
+  /** Lid nomlarining to'liq matni — shakli qanday ekanini ko'rish uchun. */
+  nomMatnlari: string[];
+  /**
+   * Topilgan ID lar bizning Facebook jadvallarimizga mos keldimi.
+   *
+   * MANA SHU — hal qiluvchi tekshiruv. 15–17 xonali son "reklama ID si
+   * bo'lsa kerak" degan TAXMIN edi. Bizda Facebook'dan tortilgan
+   * kampaniya, adset va ad ID lari bor — solishtirsak taxmin faktga
+   * aylanadi. UTM yo'q mamlakatda atribusiyaning yagona yo'li shu.
+   */
+  idMosligi: {
+    nomdan: IdMosligi;
+    tegdan: IdMosligi;
+  };
   /** Jami bo'yicha atribusiya kalitlari (voronkalar yig'indisi). */
   atribusiya: {
     utm_term: number;
@@ -315,6 +342,10 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
   let tegdaTopildi = 0;
   const nomQiymatlar = new Set<string>();
   const tegQiymatlar = new Set<string>();
+  // To'liq matnlar: ID dan tashqari reklama NOMI ham shu yerda
+  // bo'lishi mumkin ("fb | Divan video 3 | 12345...").
+  const tegMatnlar = new Set<string>();
+  const nomMatnlar = new Set<string>();
 
   // Voronkalar topilmasa — filtrsiz bitta namuna.
   const sorovlar =
@@ -386,6 +417,7 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
         // o'zini o'lchayotgandi. Diagnostika o'z chegarasini o'lchab
         // qo'ysa, u diagnostika emas.
         nomQiymatlar.add(nomdagi[0]);
+        if (lid.name && nomMatnlar.size < 5) nomMatnlar.add(lid.name);
         topildi = true;
       }
       // Teglar: ba'zi integratsiyalar manbani tegga yozadi.
@@ -394,6 +426,7 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
         if (tegdagi) {
           tegdaTopildi += 1;
           tegQiymatlar.add(tegdagi[0]);
+          if (t.name && tegMatnlar.size < 8) tegMatnlar.add(t.name);
           topildi = true;
           break;
         }
@@ -485,11 +518,62 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
     nomdaTopildi,
     nomNoyob: nomQiymatlar.size,
     nomNamunalar: [...nomQiymatlar].slice(0, 3),
+    nomMatnlari: [...nomMatnlar],
     tegdaTopildi,
     tegNoyob: tegQiymatlar.size,
     tegNamunalar: [...tegQiymatlar].slice(0, 3),
+    tegMatnlari: [...tegMatnlar],
+    idMosligi: {
+      nomdan: await idlarniSolishtir(workspaceId, [...nomQiymatlar]),
+      tegdan: await idlarniSolishtir(workspaceId, [...tegQiymatlar]),
+    },
     atribusiya,
   };
+}
+
+/**
+ * Topilgan ID larni bizdagi Facebook jadvallariga solishtiradi.
+ *
+ * NEGA: "15–17 xonali son — bu reklama ID si bo'lsa kerak" degan gap
+ * taxmin. Bizda Facebook'dan tortilgan haqiqiy ID lar turibdi, ya'ni
+ * taxmin qilish SHART EMAS — solishtiramiz va aniq bilamiz.
+ *
+ * UTM qo'yilmaydigan bozorda bu atribusiyaning yagona ishonchli yo'li:
+ * CRM lidida reklama ID si bo'lsa, u to'g'ridan-to'g'ri `ads` jadvaliga
+ * ulanadi va "qaysi reklama" ustuni to'ladi.
+ */
+async function idlarniSolishtir(workspaceId: string, idlar: string[]): Promise<IdMosligi> {
+  const bosh: IdMosligi = { tekshirildi: 0, kampaniya: 0, adset: 0, ad: 0, nomalum: 0 };
+  if (!idlar.length) return bosh;
+
+  // Ko'p bo'lsa ham hammasi tekshiriladi — bu bitta so'rov.
+  try {
+    const { rows } = await pool.query<{ manba: string; topildi: string }>(
+      `SELECT 'kampaniya' AS manba, fb_campaign_id AS topildi
+         FROM campaigns WHERE workspace_id = $1 AND fb_campaign_id = ANY($2::text[])
+       UNION ALL
+       SELECT 'adset', fb_adset_id
+         FROM adsets WHERE workspace_id = $1 AND fb_adset_id = ANY($2::text[])
+       UNION ALL
+       SELECT 'ad', fb_ad_id
+         FROM ads WHERE workspace_id = $1 AND fb_ad_id = ANY($2::text[])`,
+      [workspaceId, idlar]
+    );
+
+    const topilgan = new Set<string>();
+    for (const r of rows) {
+      topilgan.add(r.topildi);
+      if (r.manba === 'kampaniya') bosh.kampaniya += 1;
+      else if (r.manba === 'adset') bosh.adset += 1;
+      else bosh.ad += 1;
+    }
+    bosh.tekshirildi = idlar.length;
+    bosh.nomalum = idlar.length - topilgan.size;
+    return bosh;
+  } catch {
+    // Facebook hali sinxronlanmagan bo'lsa jadvallar bo'sh — xato emas.
+    return { ...bosh, tekshirildi: idlar.length, nomalum: idlar.length };
+  }
 }
 
 /**

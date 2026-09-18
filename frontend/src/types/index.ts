@@ -280,6 +280,15 @@ export interface FieldPipelineRow {
   leadIdTopildi: number;
 }
 
+/** Topilgan ID lar Facebook'ning qaysi obyektiga mos keldi. */
+export interface IdMatch {
+  tekshirildi: number;
+  kampaniya: number;
+  adset: number;
+  ad: number;
+  nomalum: number;
+}
+
 export interface FieldReport {
   tekshirilganLid: number;
   voronkalar: FieldPipelineRow[];
@@ -299,6 +308,11 @@ export interface FieldReport {
   tegdaTopildi: number;
   tegNoyob: number;
   tegNamunalar: string[];
+  /** Teglarning to'liq matni — ichida reklama nomi bo'lishi mumkin. */
+  tegMatnlari: string[];
+  nomMatnlari: string[];
+  /** Topilgan ID lar bizdagi Facebook jadvallariga mos keldimi. */
+  idMosligi: { nomdan: IdMatch; tegdan: IdMatch };
   /** Lead ID qayerdan o'qiladi: maxsus maydon, lid nomi yoki teg. */
   manba: 'field' | 'name' | 'tag';
   atribusiya: {
