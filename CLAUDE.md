@@ -24,7 +24,11 @@ Infra (Postgres :5432, Redis :6379) via `docker-compose up -d` from repo root.
 - `npm run build` — `tsc && vite build`
 - `npm run typecheck` — `tsc --noEmit`
 
-There is **no test runner and no linter** configured. `typecheck` is the only automated check — run it in both packages after changes.
+**Tests**: `npm test` in `backend/` runs Node's built-in test runner through `ts-node` (`src/**/*.test.ts`) — no test framework was added on purpose. The suite covers only the **money-critical pure functions**: phone E.164 normalisation, amoCRM stage→status mapping, the currency guard, the CBU date parse, ad-name normalisation and the four attribution models. Nothing in it touches the database, so it runs anywhere in ~2s.
+
+Two real defects came out of writing it: `normalizePhoneE164('12345')` used to return `'99812345'` — garbage silently became a plausible number that hashed to nothing — and the single-digit country-code case (7 = RU/KZ, 1 = US/CA) is a documented limitation, not a fixed behaviour. Keep that pattern: when a test finds a limit that can't be fixed correctly yet, assert the current behaviour and name it a limitation.
+
+`.github/workflows/ci.yml` runs typecheck + test on the backend and typecheck + build on the frontend for every push and PR. There is still **no linter and no e2e**.
 
 ### Local dev gotchas
 

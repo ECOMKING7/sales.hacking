@@ -119,7 +119,7 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
 }
 
 /** `fbc` — Meta kutgan format: fb.1.<klik vaqti ms>.<fbclid> */
-function buildFbc(fbclid: string | null, clickedAt: Date | string | null): string | null {
+export function buildFbc(fbclid: string | null, clickedAt: Date | string | null): string | null {
   if (!fbclid) return null;
   const ms = clickedAt ? new Date(clickedAt).getTime() : Date.now();
   return `fb.1.${Number.isFinite(ms) ? ms : Date.now()}.${fbclid}`;

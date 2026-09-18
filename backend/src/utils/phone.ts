@@ -15,6 +15,18 @@
 const E164_MAX = 15;
 /** Eng qisqa real xalqaro raqam (mamlakat kodi + abonent) ~8 ta raqam. */
 const E164_MIN = 8;
+/**
+ * Mamlakat kodisiz (milliy) qismning eng qisqa uzunligi.
+ *
+ * NEGA KERAK — TEST TOPGAN KAMCHILIK: "12345" kabi axlat qiymat
+ * milliy raqam deb qabul qilinardi, oldiga 998 qo'shilardi va
+ * "99812345" — ko'rinishidan yaroqli raqam — chiqardi. U hash
+ * qilinib Meta'ga ketardi va hech kimga mos kelmasdi.
+ *
+ * Endi milliy qism 7 ta raqamdan qisqa bo'lsa — null. Hech bir real
+ * mobil raqamlash rejasida 7 tadan qisqa abonent raqami yo'q.
+ */
+const MILLIY_MIN = 7;
 
 /**
  * Raqamni E.164 ga keltiradi. Keltirib bo'lmasa `null` qaytaradi —
@@ -34,6 +46,13 @@ const E164_MIN = 8;
  * ⚠ Bu tekshirilishi kerak: qoidalar O'zbekiston (998 + 9 xonali) va
  * shunga o'xshash raqamlash rejalariga mo'ljallangan. Boshqa bozorga
  * chiqilganda `scripts/check-phones.ts` bilan taqsimotni ko'ring.
+ *
+ * ⚠ MA'LUM CHEKLOV — BIR XONALI MAMLAKAT KODI (7: RU/KZ, 1: US/CA).
+ * "7012345678" (qozoq mobil raqami, milliy shakl) mamlakat kodi bilan
+ * boshlangani uchun "allaqachon xalqaro" deb qabul qilinadi va
+ * "77012345678" ga keltirilmaydi. Bu bozorga chiqishdan oldin
+ * raqamlash rejasi uzunligi bo'yicha qoida qo'shish kerak.
+ * Xalqaro shaklda ("+7 701 ...") to'g'ri ishlaydi.
  */
 export function normalizePhoneE164(
   raw: string | null | undefined,
@@ -54,6 +73,8 @@ export function normalizePhoneE164(
   if (!isInternational && !digits.startsWith(cc)) {
     // Trunk prefiksi: "0 90 123 45 67" -> "90 123 45 67"
     if (digits.startsWith('0')) digits = digits.slice(1);
+    // Juda qisqa milliy qism — bu raqam emas. Taxmin qilmaymiz.
+    if (digits.length < MILLIY_MIN) return null;
     if (digits.length <= 10) digits = cc + digits;
   }
 

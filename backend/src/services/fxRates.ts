@@ -52,8 +52,11 @@ function norm(code: string | null | undefined): string | null {
   return /^[A-Z]{3}$/.test(s) ? s : null;
 }
 
-/** CBU "17.09.2026" -> "2026-09-17". Boshqa shakl kelsa null. */
-function parseCbuDate(v: string | undefined): string | null {
+/**
+ * CBU "17.09.2026" -> "2026-09-17". Boshqa shakl kelsa null.
+ * Eksport qilingan: sana tahlili testlanadigan sof funksiya.
+ */
+export function parseCbuDate(v: string | undefined): string | null {
   const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(v ?? '').trim());
   if (!m) return null;
   return `${m[3]}-${m[2]}-${m[1]}`;

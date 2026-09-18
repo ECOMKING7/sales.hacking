@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "fx:sync": "ts-node src/scripts/fx-sync.ts",
     "attribution:rebuild": "ts-node src/scripts/rebuild-attribution.ts",
-    "amo:import": "ts-node src/scripts/amo-import.ts"
+    "amo:import": "ts-node src/scripts/amo-import.ts",
+    "test": "node --require ts-node/register --test src/**/*.test.ts"
   },
   "keywords": [],
   "author": "",
