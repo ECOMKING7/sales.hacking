@@ -65,16 +65,20 @@ Whichever succeeded is recorded in `leads.match_method` (`utm` / `fbclid` / `con
 
 When no touchpoint exists but UTM matches, the engine **creates** a touchpoint with `attribution_weight = 1.0` rather than attributing off-book. Every contribution lives in `touchpoints.attribution_weight`, which is the single input the recompute reads.
 
-### What counts as "won" — pipeline+stage pairs, not one stage
+### What counts as "won" — pipeline+stage pairs, and nothing else
 
-`workspaces.amocrm_won_pairs` and `amocrm_qualified_pairs` hold `'<pipelineId>:<statusId>'` strings; `handleLeadStatus` matches the incoming event's pair against them. The older single `amocrm_pipeline_id` + `amocrm_won_stage_id` remains as the report's default pipeline filter and as a **fallback used only when `amocrm_won_pairs` is empty**.
+`workspaces.amocrm_won_pairs`, `amocrm_qualified_pairs` and `amocrm_lead_pairs` hold `'<pipelineId>:<statusId>'` strings. Both the webhook (`handleLeadStatus`) and the importer (`holatAniqla`) match the incoming pair against them, with identical logic — if you change one, change the other.
 
 Two facts force the pair:
 
 1. **A customer's funnel can span pipelines.** Real data from the first customer: 232.5M UZS of revenue closes in a *sales* pipeline while the configured pipeline (*qualification*) held 5.8M. Pinning to one pipeline reported 2.4% of revenue — and a silently understated ROAS is worse than no number, because the operator acts on it.
 2. **amoCRM's `142` (won) and `143` (lost) exist in every pipeline.** So dropping the pipeline filter and matching on stage `142` alone is equally wrong: a "review collected" stage also carries id `142`.
 
-Do not reintroduce a single-pipeline won condition. When adding a report filter, remember it must not silently exclude pipelines that `amocrm_won_pairs` includes.
+**The legacy single-stage fallback is gone** (migration `028`). `amocrm_won_stage_id` and `amocrm_qualified_stage_ids` were kept for a while as a fallback "when the pairs are empty", and that fallback was the dangerous part: it never raised an error, it silently answered differently. The migration copies the old values into pairs and the code no longer reads them — `amocrm_pipeline_id` survives only as the report's default pipeline, with no bearing on what counts as a sale.
+
+With no pairs configured, nothing is a sale. That is deliberate: the import refuses to start and says so, instead of running to completion and reporting zero revenue for a reason nobody can see. That exact failure happened once — 1,542 leads imported, 1 sale, because a stage named "handed to sales" was marked as the won stage.
+
+**A qualified stage list must include every stage at or after qualification.** The amoCRM lead list carries only the *current* stage, not stage history, so a lead that passed the qualifying stage and moved on no longer sits there. Marking only the qualifying stage undercounts qualified leads.
 
 ### ROAS is blocked when currencies differ — never estimated
 

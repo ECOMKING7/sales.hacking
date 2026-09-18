@@ -65,14 +65,15 @@ interface AmoContactEvent {
 
 interface WorkspaceCrmConfig {
   id: string;
-  amocrm_won_stage_id: string | null;
+  /**
+   * ESKI maydonlar — 028 dan keyin QARORGA TA'SIR QILMAYDI.
+   * Faqat hisobotning standart voronkasi uchun o'qiladi.
+   */
   amocrm_pipeline_id: string | null;
   /** §3.1: bog'lanish kaliti kodda emas, konfiguratsiyada. */
   attribution_key: string;
   /** §3.1: telefon mamlakat kodi ham konfiguratsiyadan (E.164 uchun). */
   phone_country_code: string;
-  /** §3.3 etaplar.sifatli — bitta voronka ichida (eski shakl, fallback). */
-  amocrm_qualified_stage_ids: string[];
   /**
    * §3.3 etaplar — (voronka:etap) juftliklari, '10742882:142' ko'rinishida.
    *
@@ -97,10 +98,9 @@ function pairKey(pipelineId: string | null, statusId: string | null): string | n
 
 async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrmConfig | null> {
   const { rows } = await pool.query<WorkspaceCrmConfig>(
-    `SELECT id, amocrm_won_stage_id, amocrm_pipeline_id,
+    `SELECT id, amocrm_pipeline_id,
             COALESCE(attribution_key, 'utm_term') AS attribution_key,
             COALESCE(phone_country_code, '998') AS phone_country_code,
-            COALESCE(amocrm_qualified_stage_ids, '{}') AS amocrm_qualified_stage_ids,
             COALESCE(amocrm_won_pairs, '{}')           AS amocrm_won_pairs,
             COALESCE(amocrm_qualified_pairs, '{}')     AS amocrm_qualified_pairs,
             COALESCE(amocrm_lead_pairs, '{}')          AS amocrm_lead_pairs,
@@ -255,15 +255,11 @@ async function handleLeadStatus(
 
   // Juftliklar sozlanmagan bo'lsa — eski bitta-voronkali mantiqqa tushamiz,
   // shunda mavjud akkauntlar migratsiyadan keyin ham ishlashda davom etadi.
-  const wonByPair = key !== null && config.amocrm_won_pairs.includes(key);
-  const wonByLegacy =
-    config.amocrm_won_pairs.length === 0 &&
-    Boolean(config.amocrm_won_stage_id) &&
-    statusId === config.amocrm_won_stage_id &&
-    (!config.amocrm_pipeline_id || pipelineId === config.amocrm_pipeline_id);
-
+  // Zaxira yo'l 028 da olib tashlandi: sotuv ta'rifi FAQAT juftlikda.
+  // Eski maydonlar bo'yicha "taxminan" javob berish xato bermasdi —
+  // jimgina boshqa raqam berardi va sabab ko'rinmasdi.
   let newStatus: 'new' | 'won' | 'lost' | 'in_progress' = 'in_progress';
-  if (wonByPair || wonByLegacy) {
+  if (key !== null && config.amocrm_won_pairs.includes(key)) {
     newStatus = 'won';
   } else if (statusId === DEFAULT_LOST_STATUS_ID) {
     newStatus = 'lost';
@@ -281,11 +277,7 @@ async function handleLeadStatus(
   // §3.3 etaplar.sifatli — lid shu etaplardan biriga YETGAN payt yoziladi.
   // Faqat birinchi marta: lid orqaga qaytsa ham "sifatli bo'lgan" fakti
   // yo'qolmasligi kerak, aks holda konversiya raqamlari o'zgaruvchan bo'ladi.
-  const reachedQualified =
-    (key !== null && config.amocrm_qualified_pairs.includes(key)) ||
-    (config.amocrm_qualified_pairs.length === 0 &&
-      statusId !== null &&
-      config.amocrm_qualified_stage_ids.includes(statusId));
+  const reachedQualified = key !== null && config.amocrm_qualified_pairs.includes(key);
   // Yutilgan lid ta'rifi bo'yicha sifatli bosqichdan o'tgan.
   const markQualified = reachedQualified || newStatus === 'won';
 

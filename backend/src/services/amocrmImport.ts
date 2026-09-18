@@ -82,13 +82,19 @@ interface AmoRoyxat<T> {
 export interface ImportConfig {
   attribution_key: string;
   phone_country_code: string;
+  /**
+   * Etap ta'riflari — FAQAT juftlik shaklida ('voronka:etap').
+   *
+   * Eski maydonlar (amocrm_won_stage_id, amocrm_qualified_stage_ids)
+   * 028 migratsiyasida juftliklarga ko'chirildi va bu yerdan olib
+   * tashlandi. Zaxira yo'l xato bermasdi — JIMGINA BOSHQA javob
+   * berardi, va aynan shu Furninglass'da daromadning 97.6% ini
+   * ko'rinmas qilgan edi.
+   */
   amocrm_won_pairs: string[];
   amocrm_qualified_pairs: string[];
   /** §3.3 etaplar.yangi — voronkaning birinchi bosqichi. */
   amocrm_lead_pairs: string[];
-  amocrm_won_stage_id: string | null;
-  amocrm_pipeline_id: string | null;
-  amocrm_qualified_stage_ids: string[];
 }
 
 export interface ImportNatija {
@@ -107,10 +113,7 @@ export async function loadImportConfig(workspaceId: string): Promise<ImportConfi
             COALESCE(phone_country_code, '998')          AS phone_country_code,
             COALESCE(amocrm_won_pairs, '{}')             AS amocrm_won_pairs,
             COALESCE(amocrm_qualified_pairs, '{}')       AS amocrm_qualified_pairs,
-            COALESCE(amocrm_lead_pairs, '{}')            AS amocrm_lead_pairs,
-            amocrm_won_stage_id,
-            amocrm_pipeline_id,
-            COALESCE(amocrm_qualified_stage_ids, '{}')   AS amocrm_qualified_stage_ids
+            COALESCE(amocrm_lead_pairs, '{}')            AS amocrm_lead_pairs
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
@@ -135,25 +138,14 @@ export function holatAniqla(
 ): { status: 'new' | 'won' | 'lost' | 'in_progress'; sifatli: boolean } {
   const key = juftlik(pipelineId, statusId);
 
-  const wonByPair = key !== null && config.amocrm_won_pairs.includes(key);
-  const wonByLegacy =
-    config.amocrm_won_pairs.length === 0 &&
-    Boolean(config.amocrm_won_stage_id) &&
-    statusId === config.amocrm_won_stage_id &&
-    (!config.amocrm_pipeline_id || pipelineId === config.amocrm_pipeline_id);
-
   let status: 'new' | 'won' | 'lost' | 'in_progress' = 'in_progress';
-  if (wonByPair || wonByLegacy) status = 'won';
+  if (key !== null && config.amocrm_won_pairs.includes(key)) status = 'won';
   else if (statusId === YUTQAZILDI) status = 'lost';
   // Birinchi bosqich — hali ishlov berilmagan lid. Belgilanmagan
   // bo'lsa xatti-harakat o'zgarmaydi ('in_progress' qoladi).
   else if (key !== null && config.amocrm_lead_pairs.includes(key)) status = 'new';
 
-  const sifatliEtap =
-    (key !== null && config.amocrm_qualified_pairs.includes(key)) ||
-    (config.amocrm_qualified_pairs.length === 0 &&
-      statusId !== null &&
-      config.amocrm_qualified_stage_ids.includes(statusId));
+  const sifatliEtap = key !== null && config.amocrm_qualified_pairs.includes(key);
 
   return { status, sifatli: sifatliEtap || status === 'won' };
 }
@@ -230,7 +222,7 @@ export async function importChunk(
 ): Promise<BolakNatija> {
   const config = await loadImportConfig(workspaceId);
 
-  if (config.amocrm_won_pairs.length === 0 && !config.amocrm_won_stage_id) {
+  if (config.amocrm_won_pairs.length === 0) {
     // Sotuv ta'rifi yo'q bo'lsa import ma'nosiz: hamma lid 'in_progress'
     // bo'lib qoladi va daromad hech qachon hisoblanmaydi.
     throw Object.assign(

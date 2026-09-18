@@ -86,9 +86,6 @@ const BOSH_CONFIG: ImportConfig = {
   amocrm_won_pairs: [],
   amocrm_qualified_pairs: [],
   amocrm_lead_pairs: [],
-  amocrm_won_stage_id: null,
-  amocrm_pipeline_id: null,
-  amocrm_qualified_stage_ids: [],
 };
 
 test('etap: sotuv juftlik bo\'yicha aniqlanadi, etap ID si yolg\'iz yetmaydi', () => {
@@ -125,14 +122,13 @@ test('etap: lid etapi belgilangan bo\'lsa status "new"', () => {
   assert.equal(holatAniqla('777', '1', config).status, 'new');
 });
 
-test('etap: juftlik yo\'q bo\'lsa eski bitta-voronkali mantiq ishlaydi', () => {
-  const config: ImportConfig = {
-    ...BOSH_CONFIG,
-    amocrm_won_stage_id: '142',
-    amocrm_pipeline_id: '777',
-  };
-  assert.equal(holatAniqla('777', '142', config).status, 'won');
-  assert.equal(holatAniqla('888', '142', config).status, 'in_progress');
+test('etap: juftlik bo\'sh bo\'lsa HECH NARSA sotuv emas', () => {
+  // 028 dan keyin zaxira yo'l yo'q. Ilgari eski maydonlar bo'yicha
+  // "taxminan" javob berilardi va u jimgina boshqa raqam chiqarardi.
+  // Endi sozlanmagan bo'lsa sotuv topilmaydi — import boshlanmaydi
+  // va foydalanuvchi buni darhol ko'radi.
+  assert.equal(holatAniqla('777', '142', BOSH_CONFIG).status, 'in_progress');
+  assert.equal(holatAniqla('777', '143', BOSH_CONFIG).status, 'lost');
 });
 
 /* ═══════════════ 3. Valyuta ═══════════════
