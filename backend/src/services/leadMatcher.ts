@@ -17,6 +17,19 @@
 
 import { pool } from '../db/pool';
 
+/**
+ * So'rovni kim bajaradi: umumiy pool yoki OCHIQ TRANZAKSIYA klienti.
+ *
+ * NEGA KERAK: serverless'da pool `max: 1` bilan ishlaydi (Supabase
+ * ulanish limiti). Tranzaksiya ichida `pool.query` chaqirilsa, u bo'sh
+ * ulanish kutadi — lekin yagona ulanish o'sha tranzaksiyaning o'zida.
+ * Natija: 10 soniyalik kutish va "connection timeout" xatosi.
+ *
+ * Aynan shu import paytida sodir bo'ldi: 14 ta yutilgan lidning
+ * hammasi shu yerda yiqildi va atribusiyasiz qoldi.
+ */
+type Bajaruvchi = Pick<typeof pool, 'query'>;
+
 export type MatchMethod = 'utm' | 'fbclid' | 'contact';
 
 export interface MatchResult {
@@ -81,12 +94,13 @@ interface AdRow {
  */
 async function matchByName(
   workspaceId: string,
-  value: string | null
+  value: string | null,
+  db: Bajaruvchi = pool
 ): Promise<MatchResult> {
   const needle = normalizeName(value);
   if (!needle) return EMPTY;
 
-  const { rows } = await pool.query<AdRow>(
+  const { rows } = await db.query<AdRow>(
     `SELECT id, adset_id, campaign_id, name
        FROM ads
       WHERE workspace_id = $1 AND lower(btrim(name)) = $2
@@ -119,9 +133,13 @@ async function matchByName(
  * `fbclid` bo'yicha touchpoint zanjiridan reklamani topadi.
  * Oxirgi (eng yangi) touchpoint olinadi — last-click modeliga mos.
  */
-async function matchByFbclid(workspaceId: string, fbclid: string | null): Promise<MatchResult> {
+async function matchByFbclid(
+  workspaceId: string,
+  fbclid: string | null,
+  db: Bajaruvchi = pool
+): Promise<MatchResult> {
   if (!fbclid) return EMPTY;
-  const { rows } = await pool.query<AdRow>(
+  const { rows } = await db.query<AdRow>(
     `SELECT a.id, a.adset_id, a.campaign_id, a.name
        FROM touchpoints t
        JOIN ads a ON a.id = t.ad_id
@@ -146,10 +164,11 @@ async function matchByFbclid(workspaceId: string, fbclid: string | null): Promis
 async function matchByContact(
   workspaceId: string,
   phoneHash: string | null,
-  emailHash: string | null
+  emailHash: string | null,
+  db: Bajaruvchi = pool
 ): Promise<MatchResult> {
   if (!phoneHash && !emailHash) return EMPTY;
-  const { rows } = await pool.query<AdRow>(
+  const { rows } = await db.query<AdRow>(
     `SELECT a.id, a.adset_id, a.campaign_id, a.name
        FROM touchpoints t
        JOIN ads a ON a.id = t.ad_id
@@ -191,7 +210,13 @@ export interface LeadSignals {
 export async function matchLeadToAd(
   workspaceId: string,
   signals: LeadSignals,
-  attributionKey = 'utm_term'
+  attributionKey = 'utm_term',
+  /**
+   * Ochiq tranzaksiya ichidan chaqirilsa — o'sha tranzaksiyaning
+   * klienti berilishi SHART. Aks holda serverless'da (pool max: 1)
+   * so'rov o'zini o'zi kutib qoladi va timeout bilan yiqiladi.
+   */
+  db: Bajaruvchi = pool
 ): Promise<MatchResult> {
   const keyValue =
     attributionKey === 'utm_content'
@@ -200,14 +225,14 @@ export async function matchLeadToAd(
         ? signals.utmCampaign
         : signals.utmTerm;
 
-  const byUtm = await matchByName(workspaceId, keyValue ?? null);
+  const byUtm = await matchByName(workspaceId, keyValue ?? null, db);
   // Takroriy nom topilsa ham to'xtaymiz: ogohlantirish yo'qolmasin.
   if (byUtm.adId || byUtm.ambiguous) return byUtm;
 
-  const byFbclid = await matchByFbclid(workspaceId, signals.fbclid ?? null);
+  const byFbclid = await matchByFbclid(workspaceId, signals.fbclid ?? null, db);
   if (byFbclid.adId) return byFbclid;
 
-  return matchByContact(workspaceId, signals.phoneHash ?? null, signals.emailHash ?? null);
+  return matchByContact(workspaceId, signals.phoneHash ?? null, signals.emailHash ?? null, db);
 }
 
 /* ---------- amoCRM maxsus maydonlaridan UTM ajratish ---------- */

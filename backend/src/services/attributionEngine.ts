@@ -264,14 +264,35 @@ export async function processLeadAttribution(
     // "bu lid shu reklamadan keldi" — bu aynan touchpoint ma'nosi. Shundan
     // keyin butun oqim bitta mexanizm bilan ishlaydi va reverse to'g'ri yuradi.
     if (tps.length === 0) {
-      const m = await matchLeadToAd(workspaceId, {
-        utmTerm: lead.utm_term,
-        utmContent: lead.utm_content,
-        utmCampaign: lead.utm_campaign,
-        fbclid: lead.fbclid,
-        phoneHash: lead.phone_hash,
-        emailHash: lead.email_hash,
-      });
+      // §3.1: bog'lanish kaliti kodda qotirilmaydi — konfiguratsiyadan.
+      // Shu tranzaksiyaning klienti bilan o'qiladi (yuqoridagi sabab).
+      const cfg = await client.query<{ attribution_key: string }>(
+        `SELECT COALESCE(attribution_key, 'utm_term') AS attribution_key
+           FROM workspaces WHERE id = $1`,
+        [workspaceId]
+      );
+      const attributionKey = cfg.rows[0]?.attribution_key ?? 'utm_term';
+
+      // ⚠ `client` UZATILISHI SHART. Bu chaqiruv OCHIQ TRANZAKSIYA
+      // ichida turibdi; serverless'da pool `max: 1`, ya'ni yagona
+      // ulanish shu tranzaksiyada. `pool.query` bo'lsa u bo'sh ulanish
+      // kutadi va 10 soniyadan keyin timeout beradi.
+      //
+      // Bu real xato edi: importda 14 ta yutilgan lidning hammasi shu
+      // yerda yiqildi va atribusiyasiz qoldi.
+      const m = await matchLeadToAd(
+        workspaceId,
+        {
+          utmTerm: lead.utm_term,
+          utmContent: lead.utm_content,
+          utmCampaign: lead.utm_campaign,
+          fbclid: lead.fbclid,
+          phoneHash: lead.phone_hash,
+          emailHash: lead.email_hash,
+        },
+        attributionKey,
+        client
+      );
 
       if (m.note) console.warn(`attribution [${leadId}]: ${m.note}`);
 
