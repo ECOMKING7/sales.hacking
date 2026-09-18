@@ -301,3 +301,36 @@ test('shifrlash: buzuq qiymat aniq xato beradi', async () => {
   const enc = await import('../../utils/encryption');
   assert.throws(() => enc.decrypt('ikki-qismsiz-matn'), /Invalid encrypted payload/);
 });
+
+/* ═══════════════ 8. amoCRM so'rov limiti ═══════════════
+   HODISA: 15.09 da mijozning akkaunti API limitidan oshgani uchun
+   bloklandi. Akkauntga to'rtta integratsiya ulangan, biz beshinchisi. */
+
+test('limit: Retry-After sarlavhasi hurmat qilinadi', async () => {
+  const { kutishVaqti } = await import('../amoRateLimit');
+  assert.equal(kutishVaqti('3'), 3000);
+  assert.equal(kutishVaqti(7), 7000);
+});
+
+test('limit: Retry-After yo\'q yoki buzuq bo\'lsa — standart kutish', async () => {
+  const { kutishVaqti } = await import('../amoRateLimit');
+  assert.equal(kutishVaqti(undefined), 5000);
+  assert.equal(kutishVaqti('nimadir'), 5000);
+  assert.equal(kutishVaqti(-5), 5000);
+});
+
+test('limit: juda uzun Retry-After 30 soniyagacha qisqartiriladi', async () => {
+  const { kutishVaqti } = await import('../amoRateLimit');
+  // Serverless funksiya 60s da o'ladi — 600 soniya kutib bo'lmaydi.
+  assert.equal(kutishVaqti('600'), 30_000);
+});
+
+test('limit: so\'rovlar orasida eng kam oraliq saqlanadi', async () => {
+  const { oraliqniKut } = await import('../amoRateLimit');
+  const domain = 'test-oraliq.amocrm.ru';
+  await oraliqniKut(domain); // birinchisi darhol o'tadi
+  const boshlandi = Date.now();
+  await oraliqniKut(domain); // ikkinchisi kutishi kerak
+  const otgan = Date.now() - boshlandi;
+  assert.ok(otgan >= 200, `oraliq saqlanmadi: ${otgan}ms`);
+});

@@ -3,6 +3,13 @@ import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { encrypt, decrypt } from '../utils/encryption';
 import { normalizePhoneE164 } from '../utils/phone';
+import {
+  oraliqniKut,
+  sovishHolati,
+  sovishniBelgila,
+  sovishniTozala,
+  kutishVaqti,
+} from './amoRateLimit';
 
 const AUTH_BASE = 'https://www.amocrm.ru/oauth';
 
@@ -244,6 +251,22 @@ async function amoGet<T = unknown>(workspaceId: string, path: string): Promise<T
   if (!ws.amocrm_domain || !ws.amocrm_access_token) {
     throw new Error('AmoCRM is not connected');
   }
+
+  // 1) Akkaunt sovishdami. 429 dan keyin BAZAGA yoziladi, ya'ni
+  //    boshqa funksiya nusxasi ham to'xtaydi.
+  const qoldi = await sovishHolati(workspaceId);
+  if (qoldi > 0) {
+    throw Object.assign(
+      new Error(
+        `amoCRM so'rov limiti: ${Math.ceil(qoldi / 60)} daqiqadan keyin qayta urinib ko'ring`
+      ),
+      { status: 429 }
+    );
+  }
+
+  // 2) Ketma-ket so'rovlar orasidagi oraliq.
+  await oraliqniKut(ws.amocrm_domain);
+
   const url = `https://${ws.amocrm_domain}${path}`;
   let token = decrypt(ws.amocrm_access_token);
 
@@ -260,14 +283,47 @@ async function amoGet<T = unknown>(workspaceId: string, path: string): Promise<T
 
   try {
     const res = await axios.get<T>(url, { headers: { Authorization: `Bearer ${token}` } });
+    // Muvaffaqiyatli so'rov — eski sovish belgisi qolmasin.
+    void sovishniTozala(workspaceId);
     return res.data;
   } catch (e) {
     const err = e as AxiosError;
+
     if (err.response?.status === 401) {
       token = await refreshAccessToken(workspaceId);
       const res = await axios.get<T>(url, { headers: { Authorization: `Bearer ${token}` } });
       return res.data;
     }
+
+    /**
+     * 429 — limit. Qayta urinish limitni UZAYTIRADI, shuning uchun
+     * BIR MARTA kutamiz; ikkinchisida akkauntni sovishga qo'yamiz va
+     * to'xtaymiz. 15.09 dagi blok aynan to'xtovsiz urinishdan kelib
+     * chiqqan bo'lishi mumkin.
+     */
+    if (err.response?.status === 429) {
+      const kutish = kutishVaqti(err.response.headers?.['retry-after']);
+      console.warn(`amocrm 429: ${kutish}ms kutamiz (${path})`);
+      await new Promise((r) => setTimeout(r, kutish));
+
+      try {
+        await oraliqniKut(ws.amocrm_domain as string);
+        const res = await axios.get<T>(url, { headers: { Authorization: `Bearer ${token}` } });
+        void sovishniTozala(workspaceId);
+        return res.data;
+      } catch (e2) {
+        const err2 = e2 as AxiosError;
+        if (err2.response?.status === 429) {
+          await sovishniBelgila(workspaceId);
+          throw Object.assign(
+            new Error('amoCRM so\'rov limiti: akkaunt vaqtincha to\'xtatildi'),
+            { status: 429 }
+          );
+        }
+        throw err2;
+      }
+    }
+
     throw err;
   }
 }
