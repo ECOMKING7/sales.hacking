@@ -8,6 +8,7 @@ import {
   getPipelines,
   saveCredentials,
 } from '../services/amocrmService';
+import { discoverLeadFields } from '../services/amocrmFields';
 
 function frontendUrl(): string {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -382,5 +383,64 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('amocrm savePipeline error:', err);
     res.status(500).json({ error: 'Failed to save pipeline' });
+  }
+}
+
+// ---- GET /api/workspace/amocrm-fields (protected) ----
+/**
+ * amoCRM maydonlarini tahlil qiladi: qaysi biri Meta Lead ID ni
+ * saqlayotgan bo'lishi mumkin va atribusiya kalitlari (UTM, fbclid)
+ * nechta lidda to'ldirilgan.
+ *
+ * FAQAT O'QISH. Hech narsa tanlamaydi va saqlamaydi (§3.5) —
+ * nomzodlarni ko'rsatadi, qarorni odam qabul qiladi.
+ */
+export async function listFields(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const tahlil = await discoverLeadFields(req.user.workspaceId);
+    const { rows } = await pool.query<{ amocrm_lead_id_field: string | null }>(
+      `SELECT amocrm_lead_id_field FROM workspaces WHERE id = $1`,
+      [req.user.workspaceId]
+    );
+    res.json({ ...tahlil, tanlangan: rows[0]?.amocrm_lead_id_field ?? null });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Maydonlarni o\'qib bo\'lmadi';
+    const code = message.includes('not connected') ? 400 : 500;
+    res.status(code).json({ error: message });
+  }
+}
+
+// ---- POST /api/workspace/amocrm-lead-id-field (protected) ----
+const leadIdFieldSchema = z.object({
+  /** amoCRM field_id. null — sozlamani bekor qilish. */
+  fieldId: z.union([amoId, z.null()]),
+});
+
+export async function saveLeadIdField(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const parsed = leadIdFieldSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE workspaces SET amocrm_lead_id_field = $1, updated_at = now() WHERE id = $2`,
+      [parsed.data.fieldId, req.user.workspaceId]
+    );
+    if (!result.rowCount) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return;
+    }
+    res.json({ success: true, fieldId: parsed.data.fieldId });
+  } catch (err) {
+    res.status(500).json({ error: 'Saqlanmadi' });
   }
 }

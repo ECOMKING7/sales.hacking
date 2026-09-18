@@ -16,6 +16,7 @@ import type {
   Usage,
   Member,
   CurrencyState,
+  FieldReport,
 } from '../types';
 
 const api = axios.create({
@@ -97,6 +98,18 @@ export const amocrmApi = {
     qualifiedPairs?: string[];
     leadPairs?: string[];
   }) => api.post('/api/workspace/amocrm-pipeline', payload).then((r) => r.data),
+  /**
+   * Maydon tahlili: qaysi amoCRM maydoni Meta Lead ID ni saqlaydi va
+   * UTM/fbclid nechta lidda to'ldirilgan. Faqat o'qish.
+   */
+  fields: () => api.get<FieldReport>('/api/workspace/amocrm-fields').then((r) => r.data),
+  saveLeadIdField: (fieldId: string | null) =>
+    api
+      .post<{ success: boolean; fieldId: string | null }>(
+        '/api/workspace/amocrm-lead-id-field',
+        { fieldId }
+      )
+      .then((r) => r.data),
 };
 
 // ---- Meta Conversions API ----

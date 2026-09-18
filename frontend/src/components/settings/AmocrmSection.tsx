@@ -5,6 +5,7 @@ import { amocrmApi, syncApi } from '../../services/api';
 import type { AmocrmStatus, Pipeline } from '../../types';
 import { Button, Card, CardHeader, EmptyState, Input, SkeletonText, cn } from '../ui';
 import { CardFooterRow, ConnectionBadge, ErrorRow, LABEL, errMsg } from './shared';
+import LeadIdField from './LeadIdField';
 
 const CONNECT_STEPS = [
   "amoCRM'ga kiring → amoМаркет bo'limi",
@@ -547,6 +548,8 @@ export default function AmocrmSection() {
             )}
           </div>
           )}
+
+          <LeadIdField />
 
           <CardFooterRow>
             <Button

@@ -237,7 +237,7 @@ export async function matchLeadToAd(
 
 /* ---------- amoCRM maxsus maydonlaridan UTM ajratish ---------- */
 
-interface AmoFieldValue {
+export interface AmoFieldValue {
   field_id?: number;
   field_name?: string;
   field_code?: string;

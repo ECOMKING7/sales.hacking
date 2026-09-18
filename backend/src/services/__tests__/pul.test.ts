@@ -407,3 +407,48 @@ test('xato qaydi: DSN yo\'q bo\'lsa ham otmaydi', async () => {
   xatoQayd(new Error('test xatosi'), { joy: 'test', workspaceId: null });
   await xatolarniYubor(10);
 });
+
+/* ── Meta Lead ID ni maydondan ajratish ──────────────────────────────
+   Bu qiymat CAPI ga moslik kaliti sifatida ketadi. Noto'g'ri qiymat
+   yuborilsa Meta hodisani BOSHQA odamga bog'lashi mumkin — ya'ni
+   yolg'on konversiya. Shuning uchun shakl qat'iy tekshiriladi. */
+
+const MAYDONLAR = [
+  { field_id: 111, field_name: 'Telefon', values: [{ value: '998901234567' }] },
+  { field_id: 222, field_name: 'Facebook Lead ID', values: [{ value: '1234567890123456' }] },
+  { field_id: 333, field_name: 'Izoh', values: [{ value: 'qayta qo\'ng\'iroq' }] },
+];
+
+test('lead id: sozlangan maydondan olinadi', async () => {
+  const { extractLeadId } = await import('../amocrmFields');
+  assert.equal(extractLeadId(MAYDONLAR, '222'), '1234567890123456');
+});
+
+test('lead id: maydon sozlanmagan bo\'lsa null', async () => {
+  const { extractLeadId } = await import('../amocrmFields');
+  assert.equal(extractLeadId(MAYDONLAR, null), null);
+});
+
+test('lead id: noto\'g\'ri maydon tanlansa qiymat qaytmaydi', async () => {
+  const { extractLeadId } = await import('../amocrmFields');
+  // 111 — telefon (12 xona). Shaklga mos emas, demak null.
+  // Bu eng muhim test: odam ro'yxatdan xato maydonni tanlasa,
+  // Meta'ga telefon raqami lead_id sifatida KETMASLIGI kerak.
+  assert.equal(extractLeadId(MAYDONLAR, '111'), null);
+  assert.equal(extractLeadId(MAYDONLAR, '333'), null);
+});
+
+test('lead id: maydon umuman yo\'q bo\'lsa null', async () => {
+  const { extractLeadId } = await import('../amocrmFields');
+  assert.equal(extractLeadId(MAYDONLAR, '999'), null);
+  assert.equal(extractLeadId(null, '222'), null);
+});
+
+test('lead id: chegaralar — 14 xona kam, 18 xona ko\'p', async () => {
+  const { extractLeadId } = await import('../amocrmFields');
+  const yasa = (v: string) => [{ field_id: 1, field_name: 'x', values: [{ value: v }] }];
+  assert.equal(extractLeadId(yasa('1'.repeat(14)), '1'), null, '14 xona — qabul qilinmaydi');
+  assert.equal(extractLeadId(yasa('1'.repeat(15)), '1'), '1'.repeat(15), '15 xona — to\'g\'ri');
+  assert.equal(extractLeadId(yasa('1'.repeat(17)), '1'), '1'.repeat(17), '17 xona — to\'g\'ri');
+  assert.equal(extractLeadId(yasa('1'.repeat(18)), '1'), null, '18 xona — qabul qilinmaydi');
+});

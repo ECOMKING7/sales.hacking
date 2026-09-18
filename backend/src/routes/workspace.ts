@@ -15,6 +15,8 @@ import {
   status as amocrmStatus,
   listPipelines as amocrmListPipelines,
   savePipeline as amocrmSavePipeline,
+  listFields as amocrmListFields,
+  saveLeadIdField as amocrmSaveLeadIdField,
 } from '../controllers/amocrmController';
 import {
   status as metaCapiStatus,
@@ -36,6 +38,9 @@ router.get('/fb-status', verifyToken, fbStatus);
 router.get('/amocrm-status', verifyToken, amocrmStatus);
 router.get('/amocrm-pipelines', verifyToken, amocrmListPipelines);
 router.post('/amocrm-pipeline', verifyToken, amocrmSavePipeline);
+// Maydon tahlili: Meta Lead ID qaysi maydonda (faqat o'qish) + tanlovni saqlash
+router.get('/amocrm-fields', verifyToken, amocrmListFields);
+router.post('/amocrm-lead-id-field', verifyToken, amocrmSaveLeadIdField);
 
 // Meta Conversions API (token bu yerdan o'tmaydi — faqat .env da, §4.1)
 router.get('/meta-capi', verifyToken, metaCapiStatus);

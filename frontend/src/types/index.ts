@@ -236,3 +236,37 @@ export interface LeadDetailData {
   clicks: JourneyEvent[];
   purchases: JourneyEvent[];
 }
+
+/**
+ * amoCRM maydon tahlili — qaysi maydon Meta Lead ID ni saqlaydi.
+ *
+ * Backend nomga emas, QIYMAT SHAKLIGA qarab topadi (15–17 xonali son),
+ * shuning uchun maydon qanday atalganidan qat'i nazar ishlaydi.
+ */
+export interface FieldRow {
+  field_id: string;
+  field_name: string;
+  field_code: string | null;
+  field_type: string | null;
+  /** Namunadagi nechta lidda maydon to'ldirilgan. */
+  toldirilgan: number;
+  /** Shulardan nechtasi Meta Lead ID shaklida. */
+  metaShaklida: number;
+  /** 0–100. */
+  ishonch: number;
+  namunalar: string[];
+}
+
+export interface FieldReport {
+  tekshirilganLid: number;
+  nomzodlar: FieldRow[];
+  maydonlar: FieldRow[];
+  atribusiya: {
+    utm_term: number;
+    utm_campaign: number;
+    utm_content: number;
+    utm_source: number;
+    fbclid: number;
+  };
+  tanlangan: string | null;
+}
