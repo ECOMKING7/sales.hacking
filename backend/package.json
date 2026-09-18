@@ -15,7 +15,8 @@
     "fx:sync": "ts-node src/scripts/fx-sync.ts",
     "attribution:rebuild": "ts-node src/scripts/rebuild-attribution.ts",
     "amo:import": "ts-node src/scripts/amo-import.ts",
-    "test": "node --require ts-node/register --test src/**/*.test.ts"
+    "test": "node --require ts-node/register --test src/**/*.test.ts",
+    "sentry:test": "ts-node src/scripts/sentry-test.ts"
   },
   "keywords": [],
   "author": "",
