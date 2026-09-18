@@ -28,6 +28,19 @@
   --edge-soft: 169 207 255;
   --tint: 220 235 254;
 
+  /* ── halo — uchinchi rang (binafsha) ──
+     FAQAT BEZAK: orb, glow, urg'u. Holat ranglari (ok/warn/bad) o'rniga
+     ishlatilmaydi — aks holda "bu yaxshi natijami yoki shunchaki
+     bezakmi" degan savol tug'iladi.
+     halo      #7C5CFF — oq fonda 4.35:1. Bezak va katta matn (24px+)
+                         uchun yetarli, MAYDA MATN UCHUN EMAS.
+     halo-ink  #6338E0 — oq fonda 6.62:1. Matn kerak bo'lsa shu.
+     halo-soft / halo-tint — glow va fon. */
+  --halo: 124 92 255;
+  --halo-ink: 99 56 224;
+  --halo-soft: 157 134 255;
+  --halo-tint: 237 232 255;
+
   /* ── ma'no ranglari — havorang bu yerga kirmaydi ── */
   --ok: 15 157 88;
   --warn: 194 116 10;
@@ -60,6 +73,12 @@
     --edge-soft: 78 134 204;
     --tint: 37 67 107;
 
+    /* Qorong'ida binafsha yorug'lashadi: #9D86FF qora fonda 6.90:1. */
+    --halo: 157 134 255;
+    --halo-ink: 179 161 255;
+    --halo-soft: 124 92 255;
+    --halo-tint: 47 38 92;
+
     --ok: 23 192 98;
     --warn: 245 165 36;
     --bad: 244 88 110;
@@ -89,6 +108,12 @@
   --edge: 127 182 255;
   --edge-soft: 78 134 204;
   --tint: 37 67 107;
+
+  /* Qorong'ida binafsha yorug'lashadi: #9D86FF qora fonda 6.90:1. */
+  --halo: 157 134 255;
+  --halo-ink: 179 161 255;
+  --halo-soft: 124 92 255;
+  --halo-tint: 47 38 92;
 
   --ok: 23 192 98;
   --warn: 245 165 36;

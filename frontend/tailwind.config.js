@@ -34,6 +34,13 @@ export default {
           soft: token('edge-soft'),
         },
         tint: token('tint'),
+        // Uchinchi rang — bezak. ok/warn/bad bilan aralashtirilmaydi.
+        halo: {
+          DEFAULT: token('halo'),
+          ink: token('halo-ink'),
+          soft: token('halo-soft'),
+          tint: token('halo-tint'),
+        },
         ok: token('ok'),
         warn: token('warn'),
         bad: token('bad'),
@@ -113,12 +120,30 @@ export default {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        // ── Orb: uchta tezlik, ataylab har xil ──
+        // Hammasi bir ritmda pulslasa ekran miltillaydi.
+        'orb-nafas': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.035)' },
+        },
+        'orb-yonish': {
+          '0%, 100%': { opacity: '0.12' },
+          '50%': { opacity: '0.92' },
+        },
+        'orb-tebranish': {
+          '0%, 100%': { opacity: '0.78' },
+          '50%': { opacity: '1' },
+        },
       },
       animation: {
         // Faqat "hozir bir narsa sodir bo'lyapti" holati uchun.
         breathe: 'breathe 2.6s ease-in-out infinite',
         blip: 'blip 1.7s ease-in-out infinite',
         shimmer: 'shimmer 1.6s infinite',
+        // Orb — brend belgisi. Sekin: diqqatni tortmaydi, e'tiborni ushlaydi.
+        'orb-nafas': 'orb-nafas 7s ease-in-out infinite',
+        'orb-yonish': 'orb-yonish 3.4s ease-in-out infinite',
+        'orb-tebranish': 'orb-tebranish 9s ease-in-out infinite',
       },
     },
   },
