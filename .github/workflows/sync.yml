@@ -1,0 +1,24 @@
+name: sinxron
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sinxron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Facebook sinxroni
+        env:
+          API: https://sales-hacking-api.vercel.app
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          kod=$(curl -sS -o javob.json -w '%{http_code}' \
+            -X POST "$API/api/sync/cron" \
+            -H "X-Cron-Secret: $SECRET" \
+            --max-time 280)
+          echo "HTTP $kod"
+          head -c 2000 javob.json
+          echo
+          test "$kod" = "200"
