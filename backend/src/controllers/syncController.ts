@@ -107,21 +107,40 @@ export async function status(req: Request, res: Response): Promise<void> {
  * CRON_SECRET o'rnatilmagan bo'lsa endpoint 503 qaytaradi — ochiq qolmaydi.
  */
 export async function cronSync(req: Request, res: Response): Promise<void> {
-  const secret = process.env.CRON_SECRET;
+  /**
+   * ⚠ TRIM MAJBURIY. Sir ikki joyda qo'lda joylashtiriladi (bizda —
+   * Vercel, tetikda — GitHub). Terminaldan nusxalaganda oxiriga
+   * ko'rinmas bo'sh joy yoki qator tashlash tushishi juda oson, va
+   * u ikki tomonda bir xil bo'lmaydi.
+   *
+   * Natija: qiymatlar KO'ZGA BIR XIL ko'rinadi, lekin solishtiruv
+   * yiqiladi. Sababini topish uchun bir soat ketadi — bu aynan bizda
+   * sodir bo'ldi, to'rt marta 401 oldik.
+   *
+   * Xavfsizlikka zarari yo'q: bo'sh joy sirning kuchiga hissa
+   * qo'shmaydi, chunki u tasodifiy emas.
+   */
+  const secret = (process.env.CRON_SECRET ?? '').trim();
   if (!secret) {
     res.status(503).json({ error: 'CRON_SECRET sozlanmagan — endpoint o\'chirilgan' });
     return;
   }
 
-  const provided =
+  const provided = (
     req.header('x-cron-secret') ||
     (typeof req.query.secret === 'string' ? req.query.secret : '') ||
-    '';
+    ''
+  ).trim();
 
   // Vaqt bo'yicha doimiy solishtirish — uzunlik farqi ham sirni ochmasin.
   const a = Buffer.from(provided.padEnd(secret.length).slice(0, secret.length));
   const b = Buffer.from(secret);
   if (provided.length !== secret.length || !crypto.timingSafeEqual(a, b)) {
+    // Diagnostika: QIYMAT emas, faqat UZUNLIK. Uzunliklar teng bo'lsa —
+    // qiymatlar haqiqatan boshqa; teng bo'lmasa — noto'g'ri nusxalangan.
+    console.warn(
+      `cron: sir mos kelmadi (kutilgan uzunlik ${secret.length}, kelgan ${provided.length})`
+    );
     res.status(401).json({ error: 'Invalid cron secret' });
     return;
   }
