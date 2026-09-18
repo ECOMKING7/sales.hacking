@@ -11,12 +11,15 @@ import PurchasesPage from './pages/PurchasesPage';
 import OnboardingPage from './pages/OnboardingPage';
 import UpgradePage from './pages/UpgradePage';
 import PlaceholderPage from './pages/PlaceholderPage';
+import { ToastHost } from './components/ui';
 
 function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   return (
-    <Routes>
+    <>
+      <ToastHost />
+      <Routes>
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
@@ -54,7 +57,8 @@ function App() {
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, Megaphone } from 'lucide-react';
 import { facebookApi } from '../../services/api';
 import type { AdAccount, FbStatus } from '../../types';
-import { Button, Card, CardHeader, EmptyState, SkeletonText, cn } from '../ui';
+import { Button, Card, CardHeader, EmptyState, SkeletonText, cn, toast } from '../ui';
 import { CardFooterRow, ConnectionBadge, ErrorRow, LABEL, SELECT, StatRow, errMsg } from './shared';
 
 // ---------- Facebook ----------
@@ -54,6 +54,7 @@ export default function FacebookSection() {
     try {
       await facebookApi.selectAdAccount(selected);
       await load();
+      toast.ok('Reklama akkaunti saqlandi');
     } catch (err) {
       setError(errMsg(err, 'Failed to select ad account'));
     } finally {

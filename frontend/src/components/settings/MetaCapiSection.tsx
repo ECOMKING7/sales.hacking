@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Send } from 'lucide-react';
 import { metaCapiApi } from '../../services/api';
 import type { MetaCapiStatus } from '../../types';
-import { Badge, Button, Card, CardHeader, Input, SkeletonText, cn } from '../ui';
+import { Badge, Button, Card, CardHeader, Input, SkeletonText, cn, toast } from '../ui';
 import { CardFooterRow, ErrorRow, LABEL, StatRow, errMsg } from './shared';
 
 export default function MetaCapiSection() {
@@ -40,7 +40,11 @@ export default function MetaCapiSection() {
     void load();
   }, [load]);
 
-  const persist = async (patch: Parameters<typeof metaCapiApi.save>[0]) => {
+  const persist = async (
+    patch: Parameters<typeof metaCapiApi.save>[0],
+    /** Bajarilgach chiqadigan matn. Har tugma o'z natijasini aytadi. */
+    xabar = 'Saqlandi'
+  ) => {
     setBusy(true);
     setError('');
     setWarning('');
@@ -48,6 +52,7 @@ export default function MetaCapiSection() {
       const res = await metaCapiApi.save(patch);
       if (res.warning) setWarning(res.warning);
       await load();
+      toast.ok(xabar);
     } catch (err) {
       setError(errMsg(err, 'Saqlanmadi'));
     } finally {
@@ -237,7 +242,12 @@ export default function MetaCapiSection() {
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => void persist({ enabled: !status?.enabled })}
+                onClick={() =>
+                  void persist(
+                    { enabled: !status?.enabled },
+                    status?.enabled ? "CAPI o'chirildi" : 'CAPI yoqildi'
+                  )
+                }
                 disabled={busy || (!status?.enabled && !datasetId.trim())}
               >
                 {status?.enabled ? 'O‘chirish' : 'Yoqish'}

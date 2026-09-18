@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Database, DownloadCloud, ExternalLink, KeyRound } from 'lucide-react';
 import { amocrmApi, syncApi } from '../../services/api';
 import type { AmocrmStatus, Pipeline } from '../../types';
-import { Button, Card, CardHeader, EmptyState, Input, SkeletonText, cn } from '../ui';
+import { Button, Card, CardHeader, EmptyState, Input, SkeletonText, cn, toast } from '../ui';
 import { CardFooterRow, ConnectionBadge, ErrorRow, LABEL, errMsg } from './shared';
 import LeadIdField from './LeadIdField';
 
@@ -41,6 +41,7 @@ function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
     try {
       await navigator.clipboard.writeText(redirectUri);
       setCopied(true);
+      toast.ok('Nusxalandi');
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* clipboard bloklangan bo'lishi mumkin — matn baribir ko'rinib turadi */
@@ -61,6 +62,7 @@ function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
       setCode('');
       setClientSecret('');
       onConnected();
+      toast.ok('amoCRM ulandi');
     } catch (err) {
       setError(errMsg(err, 'Ulanmadi'));
     } finally {
@@ -238,6 +240,7 @@ export default function AmocrmSection() {
       setPipelineId(pId);
       setWonStageId(sId);
       await load();
+      toast.ok('Etaplar saqlandi');
     } catch (err) {
       setError(errMsg(err, 'Saqlanmadi'));
     } finally {

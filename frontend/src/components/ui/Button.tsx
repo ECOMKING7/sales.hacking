@@ -17,17 +17,44 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
+/**
+ * Shisha uslubi.
+ *
+ * Uchta qatlam bir-birining ustida:
+ *   1. yarim shaffof fon rangi   → bg-accent/90
+ *   2. orqa fonni xiralashtirish → backdrop-blur-xl
+ *   3. yuqoridan pastga yorug'lik → background-image gradient
+ *
+ * Uchinchisi aynan `background-image`, `::before` emas: psevdo-element
+ * matnning ustiga tushib qolmasligi uchun z-index bilan ovora bo'lish
+ * kerak bo'lardi. Fon rangi va fon rasmi esa bir xil elementda
+ * bemalol yonma-yon yashaydi.
+ *
+ * Yorug'lik faqat YUQORI yarmida — pastgacha cho'zilsa tugma
+ * yassilashib, plastik ko'rinadi.
+ */
+const SHISHA =
+  'bg-[linear-gradient(180deg,rgb(255_255_255/0.30),rgb(255_255_255/0.06)_44%,rgb(255_255_255/0)_62%)] backdrop-blur-xl';
+
 const VARIANTS: Record<ButtonVariant, string> = {
   // Ekranda bitta asosiy tugma. U yonadi.
-  primary:
-    'bg-accent text-accent-ink border-transparent shadow-glow-sm hover:shadow-glow-md',
+  primary: cn(
+    SHISHA,
+    'bg-accent/90 text-accent-ink border-white/30',
+    'shadow-glow-sm hover:bg-accent/95 hover:shadow-glow-md'
+  ),
   // Integratsiyalar shu yerda — brend rangi tugmaga emas, ikonkaga ketadi.
-  secondary:
-    'bg-surface text-accent border-edge hover:shadow-glow-xs',
+  secondary: cn(
+    SHISHA,
+    'bg-surface/55 text-accent border-edge/70',
+    'hover:bg-surface/75 hover:shadow-glow-xs'
+  ),
   ghost:
     'bg-transparent text-ink-2 border-transparent hover:bg-edge/12 hover:text-accent',
-  danger:
-    'bg-transparent text-bad border-bad/45 hover:bg-bad/8',
+  danger: cn(
+    SHISHA,
+    'bg-bad/10 text-bad border-bad/40 hover:bg-bad/16'
+  ),
 };
 
 const SIZES: Record<ButtonSize, string> = {
@@ -61,8 +88,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={isDisabled}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex items-center justify-center rounded-sm border-[1.5px] font-semibold',
-        'transition-[box-shadow,background-color,border-color] duration-200',
+        'inline-flex items-center justify-center rounded-md border-[1.5px] font-semibold',
+        'transition-[box-shadow,background-color,border-color,transform] duration-200',
+        // Bosilganda ozgina cho'kadi — harakat sezilishi uchun yetarli,
+        // sakramasligi uchun kichik.
+        'motion-safe:active:scale-[0.98]',
         'disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none',
         VARIANTS[variant],
         SIZES[size],

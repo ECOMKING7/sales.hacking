@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Search } from 'lucide-react';
 import { amocrmApi } from '../../services/api';
 import type { FieldReport, FieldRow } from '../../types';
-import { Button, SkeletonText, cn } from '../ui';
+import { Button, SkeletonText, cn, toast } from '../ui';
 import { ErrorRow, LABEL, SELECT, errMsg } from './shared';
 
 function foiz(qism: number, jami: number): string {
@@ -106,6 +106,7 @@ export default function LeadIdField() {
         adLines: reklamaLiniyalari,
       });
       setSaqlandi(true);
+      toast.ok('Sozlama saqlandi');
     } catch (err) {
       setXato(errMsg(err, 'Saqlanmadi'));
     } finally {

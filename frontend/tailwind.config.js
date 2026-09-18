@@ -120,6 +120,12 @@ export default {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        // Bildirishnoma pastdan ko'tariladi — ekranning pastki qismi
+        // barmoq va sichqoncha eng yaqin turadigan joy.
+        'toast-kirish': {
+          '0%': { opacity: '0', transform: 'translateY(10px) scale(0.97)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
         // ── Orb: uchta tezlik, ataylab har xil ──
         // Hammasi bir ritmda pulslasa ekran miltillaydi.
         'orb-nafas': {
@@ -136,6 +142,7 @@ export default {
         },
       },
       animation: {
+        'toast-kirish': 'toast-kirish 220ms cubic-bezier(0.22, 1, 0.36, 1)',
         // Faqat "hozir bir narsa sodir bo'lyapti" holati uchun.
         breathe: 'breathe 2.6s ease-in-out infinite',
         blip: 'blip 1.7s ease-in-out infinite',

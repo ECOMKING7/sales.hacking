@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Code2, Copy } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { Button, Card, CardHeader } from '../ui';
+import { Button, Card, CardHeader, toast } from '../ui';
 
 export default function PixelSection() {
   const workspace = useAuthStore((s) => s.workspace);
@@ -15,6 +15,7 @@ export default function PixelSection() {
     try {
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
+      toast.ok('Nusxalandi');
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* ignore */
