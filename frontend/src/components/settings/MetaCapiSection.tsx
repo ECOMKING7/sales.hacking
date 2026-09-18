@@ -127,9 +127,27 @@ export default function MetaCapiSection() {
           <div className="mt-5">
             <span className={LABEL}>Meta hodisa nomlari</span>
             <p className="mt-1 mb-2.5 text-xs leading-relaxed text-ink-3">
-              Ro'yxatdagi <b>standart</b> nomlar Ads Manager'da darhol ishlaydi va
-              optimizatsiya maqsadi qilib tanlanadi. O'z nomingizni yozsangiz — u
-              custom bo'ladi va Events Manager'da <b>Custom Conversion</b> yasash kerak.
+              Bosqich uchta va ular <b>hamma mijozda bir xil</b>: lid tushdi,
+              sifatli lid, sotuv. Qaysi CRM etapi qaysi bosqichga kirishini
+              2-qadamda o'zingiz belgilaysiz — bu yerdagi nomlar esa faqat
+              Meta'ga qanday atalib yuborilishini bildiradi.
+            </p>
+            <p className="mb-2.5 text-xs leading-relaxed text-ink-3">
+              O'zgartirish <b>bitta holatda</b> kerak: saytingizdagi piksel ham
+              <span className="font-mono"> Purchase</span> yuborayotgan bo'lsa,
+              ikkala oqim Ads Manager'da bitta ustunda qo'shilib ketadi va
+              sotuvlar ikki barobar ko'rinadi. O'shanda CRM oqimiga boshqa nom
+              bering.
+            </p>
+            <p className="mb-2.5 text-xs leading-relaxed text-ink-3">
+              <span className="font-mono">Lead</span> va{' '}
+              <span className="font-mono">Purchase</span> — standart nomlar, Ads
+              Manager'da darhol optimizatsiya maqsadi qilib tanlanadi.{' '}
+              <span className="font-mono">QualifiedLead</span> — custom: Facebook'da
+              «sifatli lid» degan standart hodisa yo'q, shuning uchun unga
+              optimallashish uchun Events Manager'da <b>Custom Conversion</b>{' '}
+              yaratish kerak. Standart nom tanlab ma'noni buzgandan ko'ra, to'g'ri
+              nom qo'yib bitta qo'shimcha qadam qilgan ma'qul.
             </p>
 
             <div className="grid gap-3 sm:grid-cols-3">

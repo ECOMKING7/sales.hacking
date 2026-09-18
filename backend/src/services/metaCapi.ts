@@ -30,10 +30,15 @@ import { GRAPH_URL } from '../config/graph';
 const MAX_EVENT_AGE_SEC = 7 * 24 * 60 * 60;
 
 /**
- * Voronka bosqichi. Meta'ga ketadigan ASL NOM bundan emas,
- * konfiguratsiyadan olinadi (§3.1) — chunki standart hodisa
- * (Lead, Schedule, Purchase) Ads Manager'da darhol ishlaydi,
- * custom nom esa avval Custom Conversion talab qiladi.
+ * Mahsulotning voronka bosqichi. UCHTASI HAMMA MIJOZDA BIR XIL —
+ * mijoz faqat qaysi CRM etapi qaysi bosqichga kirishini belgilaydi
+ * (amocrm_lead_pairs / _qualified_pairs / _won_pairs).
+ *
+ * Meta'ga ketadigan nom konfiguratsiyadan (§3.1), lekin sukut
+ * mahsulotniki: Lead / QualifiedLead / Purchase. Nomni o'zgartirish
+ * faqat bitta holatda kerak — mijozning sayt pikseli allaqachon
+ * `Purchase` yuborayotgan bo'lsa, ikkala oqim bir ustunda qo'shilib
+ * ketmasligi uchun CRM oqimiga boshqa nom beriladi.
  */
 export type CapiStage = 'lead' | 'qualified' | 'purchase';
 
@@ -106,7 +111,7 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     `SELECT meta_dataset_id, meta_capi_enabled, secret_key,
             COALESCE(currency, 'UZS')              AS currency,
             COALESCE(capi_event_lead, 'Lead')      AS capi_event_lead,
-            COALESCE(capi_event_qualified, 'Schedule') AS capi_event_qualified,
+            COALESCE(capi_event_qualified, 'QualifiedLead') AS capi_event_qualified,
             COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase,
             COALESCE(capi_action_source, 'system_generated') AS capi_action_source,
             COALESCE(capi_lead_event_source, 'amoCRM')       AS capi_lead_event_source
@@ -130,7 +135,7 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     currency: ws.currency ?? 'UZS',
     eventNames: {
       lead: ws.capi_event_lead ?? 'Lead',
-      qualified: ws.capi_event_qualified ?? 'Schedule',
+      qualified: ws.capi_event_qualified ?? 'QualifiedLead',
       purchase: ws.capi_event_purchase ?? 'Purchase',
     },
     actionSource: ws.capi_action_source ?? 'system_generated',
