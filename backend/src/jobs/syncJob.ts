@@ -1,6 +1,7 @@
 import Queue from 'bull';
 import cron from 'node-cron';
 import { pool } from '../db/pool';
+import { ensureFreshFxRates } from '../services/fxRates';
 import { syncWorkspace, DateRange } from '../services/facebookAdsService';
 
 const QUEUE_NAME = 'fb-sync';
@@ -104,6 +105,20 @@ export async function enqueueSync(
  * Schedule an automatic sync for every workspace every 15 minutes.
  */
 export function startSyncCron(): void {
+  /**
+   * Valyuta kursi — kuniga bir marta, 01:10 UTC (Toshkentda 06:10).
+   * CBU yangi kursni tunda e'lon qiladi. Server ko'tarilganda ham bir
+   * marta tekshiriladi, aks holda uzoq to'xtab qolgan muhitda kurs
+   * ertangi cron'gacha eski qolardi.
+   *
+   * ensureFreshFxRates o'zi tekshiradi: kurs yangi bo'lsa CBU ga
+   * bormaydi, xato bo'lsa jim o'tadi.
+   */
+  void ensureFreshFxRates();
+  cron.schedule('10 1 * * *', () => {
+    void ensureFreshFxRates();
+  });
+
   cron.schedule('*/15 * * * *', async () => {
     try {
       const { rows } = await pool.query<{ id: string }>(

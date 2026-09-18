@@ -25,7 +25,8 @@ import { Request, Response } from 'express';
 import { pool } from '../db/pool';
 import {
   loadCurrencyGuard,
-  guardRoasAll,
+  applyRoasAll,
+  spendInCrmCurrency,
   currencyMeta,
 } from '../utils/currencyGuard';
 
@@ -177,14 +178,19 @@ export async function funnel(req: Request, res: Response): Promise<void> {
       level,
       stuckDays,
       currency: currencyMeta(guard),
-      data: guardRoasAll(rows, guard),
+      data: applyRoasAll(rows, guard),
       totals: {
         ...t,
         cpl: per(t.spend, t.leads),
         cql: per(t.spend, t.qualified),
         cac: per(t.spend, t.won),
         aov: per(t.revenue, t.won),
-        roas: guard.mismatch ? null : t.spend > 0 ? t.revenue / t.spend : null,
+        // Xarajat CRM valyutasiga o'girilgandan keyin bo'linadi;
+        // kurs yo'q bo'lsa spendInCrmCurrency null qaytaradi.
+        roas: (() => {
+          const spend = spendInCrmCurrency(t.spend, guard);
+          return spend !== null && spend > 0 ? t.revenue / spend : null;
+        })(),
         qualRate: t.leads > 0 ? (t.qualified / t.leads) * 100 : null,
         closeRate: t.qualified > 0 ? (t.won / t.qualified) * 100 : null,
         gapPct: t.fbResults > 0 ? ((t.fbResults - t.leads) / t.fbResults) * 100 : null,

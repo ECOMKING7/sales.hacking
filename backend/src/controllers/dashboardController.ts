@@ -3,8 +3,9 @@ import { pool } from '../db/pool';
 import { cacheGet, cacheSet, overviewCacheKey } from '../utils/cache';
 import {
   loadCurrencyGuard,
-  guardRoas,
-  guardRoasAll,
+  applyRoas,
+  applyRoasAll,
+  spendInCrmCurrency,
   currencyMeta,
 } from '../utils/currencyGuard';
 
@@ -84,11 +85,11 @@ async function entityPayload(
 ) {
   const guard = await loadCurrencyGuard(workspaceId);
   return {
-    data: guardRoasAll(rows, guard),
+    data: applyRoasAll(rows, guard),
     page,
     limit,
     total: num(totals.rowCount),
-    totals: guardRoas(totals, guard),
+    totals: applyRoas(totals, guard),
     currency: currencyMeta(guard),
   };
 }
@@ -231,9 +232,14 @@ export async function overview(req: Request, res: Response): Promise<void> {
       amountSpent,
       revenue,
       currency: currencyMeta(guard),
-      // Valyutalar teng bo'lmasa ROAS = null. 0 emas: 0 "reklama pul
-      // keltirmadi" degani, null esa "hisoblab bo'lmaydi" degani.
-      roas: guard.mismatch ? null : amountSpent > 0 ? revenue / amountSpent : 0,
+      // Xarajat CRM valyutasiga o'girilib bo'linadi. Kurs yo'q bo'lsa
+      // null — 0 emas: 0 "reklama pul keltirmadi", null "hisoblab
+      // bo'lmaydi" degani.
+      roas: (() => {
+        const spend = spendInCrmCurrency(amountSpent, guard);
+        if (spend === null) return null;
+        return spend > 0 ? revenue / spend : 0;
+      })(),
       cac: wonCount > 0 ? amountSpent / wonCount : 0,
       conversionRate: totalLeads > 0 ? (wonCount / totalLeads) * 100 : 0,
       dealTime: num(wonR.rows[0].deal_time),
@@ -534,7 +540,7 @@ async function topEntities(
     // juftligida, shuning uchun ROAS bo'yicha saralash to'g'ri qoladi —
     // faqat RAQAMNI ko'rsatib bo'lmaydi.
     const guard = await loadCurrencyGuard(workspaceId);
-    res.json({ data: guardRoasAll(rows.rows, guard), currency: currencyMeta(guard) });
+    res.json({ data: applyRoasAll(rows.rows, guard), currency: currencyMeta(guard) });
   } catch (err) {
     console.error(`top ${table} error:`, (err as Error).message);
     res.status(500).json({ error: 'Failed to load top entities' });

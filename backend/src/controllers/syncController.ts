@@ -5,6 +5,7 @@ import { pool, poolStats } from '../db/pool';
 import { enqueueSync } from '../jobs/syncJob';
 import { DateRange } from '../services/facebookAdsService';
 import { fbUsage } from '../services/fbRateLimit';
+import { ensureFreshFxRates } from '../services/fxRates';
 
 const triggerSchema = z
   .object({
@@ -125,6 +126,10 @@ export async function cronSync(req: Request, res: Response): Promise<void> {
 
   const startedAt = Date.now();
   const results: Array<{ workspaceId: string; ok: boolean; error?: string }> = [];
+
+  // Serverless'da ichki cron yo'q, shuning uchun kurs ham shu tetikdan
+  // yangilanadi. Kurs yangi bo'lsa tashqi so'rov yuborilmaydi.
+  await ensureFreshFxRates();
 
   try {
     const { rows } = await pool.query<{ id: string }>(

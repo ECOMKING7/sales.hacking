@@ -157,7 +157,14 @@ export interface EntityTotals {
 export interface CurrencyState {
   fb: string | null;
   crm: string | null;
+  /** Valyutalar teng emas. */
   mismatch: boolean;
+  /** Kurs topilib, ROAS o'girib hisoblandimi. */
+  converted: boolean;
+  /** 1 fb = rate crm. */
+  rate: number | null;
+  rateDate: string | null;
+  rateSource: string | null;
   reason: string | null;
 }
 

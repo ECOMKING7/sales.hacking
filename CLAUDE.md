@@ -85,7 +85,13 @@ Two rules here:
 
 `fb_currency` is filled by `workspaceController.selectAdAccount` (from the FB account list) and backfilled by `syncWorkspace` **only when NULL** — the ad-account rate limit is tight (error code 17) and the currency does not change. A NULL `fb_currency` does *not* block: it means "not known yet", and the 15-minute sync resolves it. When the ad account changes, the old currency is cleared rather than kept.
 
-A daily FX-rate layer is the planned next step; it will replace the block with a conversion, not remove it.
+**The FX layer (migration `023`, `services/fxRates.ts`)** turns that block into a conversion wherever a rate exists. `fx_rates` stores one row per `(base, quote, rate_date)` as *1 base = rate quote*; the source, **cbu.uz** (the central bank, no API key), quotes every currency in UZS, so `quote` is always `UZS` and any other pair is a cross rate — `USD→EUR = (USD→UZS)/(EUR→UZS)`. That is what keeps the layer generic: nothing assumes the customer's CRM is in so'm. Nominals are normalised on write (100 JPY → 1 JPY), so the stored nominal is always 1.
+
+Lookup takes the **nearest rate at or before** the requested date, never after — CBU publishes nothing on weekends and holidays, and applying tomorrow's rate to yesterday's report is retroactively rewriting data. If no rate is found, `getFxRate` returns null and the guard falls back to blocking. It never estimates.
+
+Freshness: `ensureFreshFxRates()` is a no-op when the newest row is from today or yesterday, so it is safe to call from several places — it runs on boot, on a daily `10 1 * * *` cron (06:10 Tashkent, after CBU publishes), and inside `POST /api/sync/cron` for the serverless path where node-cron does not exist. `npm run fx:sync` does it by hand.
+
+Two caveats worth keeping in mind: this is the **official** rate, not the bank's selling rate (typically 1–3% apart, which makes the reported ROAS slightly optimistic), and the converted figure is surfaced with its rate, source and date through `currency.rate*` so the operator can see what the number rests on.
 
 ### One owner per column
 

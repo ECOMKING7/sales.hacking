@@ -7,9 +7,9 @@ import {
   Play,
   Image as ImageIcon,
   X,
-  AlertTriangle,
 } from 'lucide-react';
 import Checkbox from './Checkbox';
+import CurrencyNote from '../CurrencyNote';
 import { dashboardApi } from '../../services/api';
 import type { EntityRow, EntityTotals } from '../../types';
 import {
@@ -172,7 +172,12 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
  * O'rtacha ustunlar (cpc, ctr, cost per result) QO'SHILMAYDI — jamidan qayta
  * hisoblanadi, aks holda raqam noto'g'ri chiqadi.
  */
-function totalsFromRows(rows: EntityRow[], roasBlocked = false): EntityTotals {
+function totalsFromRows(
+  rows: EntityRow[],
+  roasBlocked = false,
+  /** 1 reklama-valyutasi = fxRate CRM valyutasi. null bo'lsa o'girish yo'q. */
+  fxRate: number | null = null
+): EntityTotals {
   const sum = (pick: (r: EntityRow) => unknown) =>
     rows.reduce((acc, r) => acc + n(pick(r) as string | number | null), 0);
 
@@ -204,9 +209,13 @@ function totalsFromRows(rows: EntityRow[], roasBlocked = false): EntityTotals {
     costPerLead: per(spend, leads),
     costPerPurchase: per(spend, purchases),
     costPerResult: per(spend, results),
-    // Mijoz tomonidagi qayta hisob server qo'riqchisini chetlab o'tmasin:
-    // valyutalar mos bo'lmasa bu yerda ham ROAS chiqarilmaydi.
-    roas: roasBlocked ? null : spend > 0 ? revenue / spend : null,
+    // Mijoz tomonidagi qayta hisob server qoidasini chetlab o'tmasin:
+    // kurs yo'q bo'lsa ROAS chiqmaydi, kurs bo'lsa xarajat o'giriladi.
+    roas: (() => {
+      if (roasBlocked) return null;
+      const s = fxRate === null ? spend : spend * fxRate;
+      return s > 0 ? revenue / s : null;
+    })(),
     resultType: types.size === 1 ? [...types][0]! : null,
   };
 }
@@ -354,9 +363,12 @@ export default function EntityTable({
   const filtered = Boolean(search) || filter !== 'all';
   const serverTotals = query.data?.totals;
   const currency = query.data?.currency;
-  const roasBlocked = Boolean(currency?.mismatch);
+  // Faqat kurs topilmagan holatda ROAS to'siladi. Kurs bo'lsa backend
+  // uni o'girib hisoblab yuboradi va bu yerda ham qayta hisoblanadi.
+  const roasBlocked = Boolean(currency?.mismatch && !currency.converted);
+  const fxRate = currency?.converted ? currency.rate : null;
   const totals: EntityTotals | null = filtered
-    ? totalsFromRows(rows, roasBlocked)
+    ? totalsFromRows(rows, roasBlocked, fxRate)
     : serverTotals ?? null;
   const showTotals = totals !== null && rows.length > 0;
 
@@ -423,18 +435,9 @@ export default function EntityTable({
         </div>
       )}
 
-      {/* Valyuta ogohlantirishi — jadval ustida, chunki bu raqamlarga
-          ishonish masalasi: ROAS ustuni "—" bo'lib turibdi va sababi
-          shu yerda yozilgan. */}
-      {roasBlocked && currency?.reason && (
-        <div className="flex items-start gap-2 border-b border-warn/40 bg-warn/5 px-4 py-2.5 text-sm">
-          <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 flex-none text-warn" />
-          <div className="text-ink-2">
-            <span className="font-medium text-ink">{currency.reason}</span> Boshqa ustunlar
-            (xarajat, lid, CAC) to'g'ri — faqat ROAS ikki valyutani bo'ladi.
-          </div>
-        </div>
-      )}
+      {/* Valyuta qatori — jadval ustida: ROAS ustuni qaysi asosda
+          chiqqani (yoki nega bo'shligi) raqamlardan oldin ko'rinsin. */}
+      <CurrencyNote state={currency} className="mx-4 mb-2 rounded-md" />
 
       <TableWrap className="rounded-none border-0">
         <Table>
