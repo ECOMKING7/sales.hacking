@@ -165,9 +165,44 @@ export default function LeadIdField() {
             «Avtomatik» — lidni integratsiya yaratgan (odam emas). Lid formasi yoki
             telefoniya ulangan voronkada bu ko'rsatkich yuqori bo'ladi. «Lead ID» —
             maydon, lid nomi yoki kontakt maydonida Meta Lead ID shakli topilgan
-            lidlar ulushi. Jami {data.tekshirilganLid} ta lid tekshirildi; nomda{' '}
-            {data.nomdaTopildi} ta, tegda {data.tegdaTopildi} ta topildi.
+            lidlar ulushi. Jami {data.tekshirilganLid} ta lid tekshirildi.
           </p>
+
+          {/* ⚠ 15–17 xonali son Meta Lead ID bo'lishi SHART EMAS: forma ID si,
+              kampaniya ID si va ad ID si ham aynan shu uzunlikda. Farq —
+              takrorlanishida. Buni ko'rsatmasdan tanlash noto'g'ri
+              identifikatorni Meta'ga yuborish demak. */}
+          {(data.nomdaTopildi > 0 || data.tegdaTopildi > 0) && (
+            <div className="rounded-md border-[1.5px] border-line bg-surface-2 px-3 py-2.5">
+              <p className="mb-1.5 text-xs font-semibold text-ink-2">
+                Maydon emas, matn ichida topildi — tekshirish kerak
+              </p>
+              {data.nomdaTopildi > 0 && (
+                <p className="text-xs leading-relaxed text-ink-3">
+                  <span className="text-ink-2">Lid nomida:</span> {data.nomdaTopildi} ta
+                  lidda, shundan <span className="font-medium">{data.nomNoyob} ta noyob</span>.
+                  Misol: <span className="font-mono">{data.nomNamunalar.join(', ') || '—'}</span>
+                </p>
+              )}
+              {data.tegdaTopildi > 0 && (
+                <p className="mt-1 text-xs leading-relaxed text-ink-3">
+                  <span className="text-ink-2">Tegda:</span> {data.tegdaTopildi} ta lidda,
+                  shundan <span className="font-medium">{data.tegNoyob} ta noyob</span>.
+                  Misol: <span className="font-mono">{data.tegNamunalar.join(', ') || '—'}</span>
+                </p>
+              )}
+              <p
+                className={cn(
+                  'mt-2 text-xs leading-relaxed',
+                  data.nomNoyob > data.nomdaTopildi * 0.9 ? 'text-ok' : 'text-bad'
+                )}
+              >
+                {data.nomNoyob > data.nomdaTopildi * 0.9
+                  ? 'Deyarli har lidda boshqa qiymat — bu Meta Lead ID ga o\'xshaydi.'
+                  : 'Qiymatlar TAKRORLANMOQDA — bu Lead ID emas, ehtimol forma yoki reklama ID si. Facebook\'da 15–17 xonali bo\'ladigan narsalar: lead ID, forma ID, kampaniya ID, ad ID, ad account ID. Faqat lead ID har lidda boshqa bo\'ladi.'}
+              </p>
+            </div>
+          )}
 
           {data.atribusiya.utm_term === 0 && data.atribusiya.fbclid === 0 && (
             <p className="text-xs leading-relaxed text-bad">

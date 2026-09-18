@@ -293,7 +293,12 @@ export interface FieldReport {
   reklamaLiniyalari: string[];
   /** Lid NOMIDA 15–17 xonali son uchragan lidlar soni. */
   nomdaTopildi: number;
+  /** Noyob qiymatlar soni — Lead ID mi yoki forma/ad ID si, shundan bilinadi. */
+  nomNoyob: number;
+  nomNamunalar: string[];
   tegdaTopildi: number;
+  tegNoyob: number;
+  tegNamunalar: string[];
   atribusiya: {
     utm_term: number;
     utm_campaign: number;

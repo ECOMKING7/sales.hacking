@@ -167,8 +167,24 @@ export interface MaydonTahlili {
   reklamaLiniyalari: string[];
   /** Lid NOMIDA 15–17 xonali son uchragan lidlar soni. */
   nomdaTopildi: number;
+  /**
+   * Nomdagi qiymatlarning NOYOB soni.
+   *
+   * ⚠ BU ENG MUHIM TEKSHIRUV. 15–17 xonali son Meta Lead ID bo'lishi
+   * SHART EMAS: Facebook'da forma ID si, kampaniya ID si, ad ID si va
+   * ad account ID si ham aynan shu uzunlikda. Farq bitta:
+   *   Lead ID   — HAR lidda boshqa  → noyob ≈ topilgan
+   *   Forma/ad  — TAKRORLANADI      → noyob << topilgan
+   * Bu farqni ko'rsatmasdan turib maydonni tanlash — noto'g'ri
+   * identifikatorni Meta'ga yuborish demak.
+   */
+  nomNoyob: number;
+  /** Ko'z bilan tekshirish uchun uchta misol. */
+  nomNamunalar: string[];
   /** Teglar ichida uchragan lidlar soni. */
   tegdaTopildi: number;
+  tegNoyob: number;
+  tegNamunalar: string[];
   /** Jami bo'yicha atribusiya kalitlari (voronkalar yig'indisi). */
   atribusiya: {
     utm_term: number;
@@ -294,6 +310,8 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
   let tekshirilganLid = 0;
   let nomdaTopildi = 0;
   let tegdaTopildi = 0;
+  const nomQiymatlar = new Set<string>();
+  const tegQiymatlar = new Set<string>();
 
   // Voronkalar topilmasa — filtrsiz bitta namuna.
   const sorovlar =
@@ -356,14 +374,20 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
       let topildi = maydonlarniSana(lidHisob, lidTariflari, maydonlar, lidNoyob);
 
       // Lid nomi: "Заявка с Facebook #1234567890123456" kabi holatlar.
-      if (lid.name && MATNDA_LEAD_ID.test(lid.name)) {
+      const nomdagi = lid.name ? MATNDA_LEAD_ID.exec(lid.name) : null;
+      if (nomdagi) {
         nomdaTopildi += 1;
+        // Noyob qiymatlar ro'yxati cheklangan: Lead ID bo'lsa u
+        // namuna hajmiga teng bo'lib ketardi.
+        if (nomQiymatlar.size <= VORONKADAN) nomQiymatlar.add(nomdagi[0]);
         topildi = true;
       }
       // Teglar: ba'zi integratsiyalar manbani tegga yozadi.
       for (const t of lid._embedded?.tags ?? []) {
-        if (t.name && MATNDA_LEAD_ID.test(t.name)) {
+        const tegdagi = t.name ? MATNDA_LEAD_ID.exec(t.name) : null;
+        if (tegdagi) {
           tegdaTopildi += 1;
+          if (tegQiymatlar.size <= VORONKADAN) tegQiymatlar.add(tegdagi[0]);
           topildi = true;
           break;
         }
@@ -453,7 +477,11 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
     liniyaMaydoni: null,
     reklamaLiniyalari: [],
     nomdaTopildi,
+    nomNoyob: nomQiymatlar.size,
+    nomNamunalar: [...nomQiymatlar].slice(0, 3),
     tegdaTopildi,
+    tegNoyob: tegQiymatlar.size,
+    tegNamunalar: [...tegQiymatlar].slice(0, 3),
     atribusiya,
   };
 }
