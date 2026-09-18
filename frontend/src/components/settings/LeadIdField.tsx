@@ -101,41 +101,83 @@ export default function LeadIdField() {
 
       {data && (
         <div className="flex flex-col gap-4">
-          {/* Atribusiya diagnostikasi — "nega hech narsa bog'lanmayapti"
-              savoliga raqam bilan javob. */}
-          <div className="rounded-md border-[1.5px] border-line bg-surface-2 px-3 py-2.5">
-            <p className="mb-1.5 text-xs font-semibold text-ink-2">
-              Oxirgi {data.tekshirilganLid} ta lidda atribusiya kalitlari
-            </p>
-            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums text-ink-3">
-              <span>
-                utm_term:{' '}
-                <span className={cn('font-medium', data.atribusiya.utm_term ? 'text-ok' : 'text-bad')}>
-                  {foiz(data.atribusiya.utm_term, data.tekshirilganLid)}
-                </span>
-              </span>
-              <span>
-                utm_campaign:{' '}
-                <span className="font-medium text-ink-2">
-                  {foiz(data.atribusiya.utm_campaign, data.tekshirilganLid)}
-                </span>
-              </span>
-              <span>
-                fbclid:{' '}
-                <span className={cn('font-medium', data.atribusiya.fbclid ? 'text-ok' : 'text-bad')}>
-                  {foiz(data.atribusiya.fbclid, data.tekshirilganLid)}
-                </span>
-              </span>
-            </div>
-            {data.atribusiya.utm_term === 0 && data.atribusiya.fbclid === 0 && (
-              <p className="mt-2 text-xs leading-relaxed text-bad">
-                Hech bir lidda UTM ham, fbclid ham yo'q. Ya'ni reklama havolalariga
-                UTM qo'yilmagan — bu holatda reklama kesimidagi atribusiya ishlamaydi.
-                Meta Lead ID bu muammoni CAPI tomonida chetlab o'tadi, lekin
-                dashboard'dagi «qaysi reklama» ustuni baribir bo'sh qoladi.
-              </p>
-            )}
+          {/* Voronka kesimi. O'rtachalash xulosani buzadi: hajmi katta
+              voronka namunani to'ldirib, boshqasini ko'rinmas qiladi. */}
+          <div className="overflow-x-auto rounded-md border-[1.5px] border-line bg-surface-2">
+            <table className="w-full min-w-[440px] text-xs tabular-nums">
+              <thead>
+                <tr className="border-b border-line text-ink-3">
+                  <th className="px-3 py-2 text-left font-semibold">Voronka</th>
+                  <th className="px-3 py-2 text-right font-semibold">Namuna</th>
+                  <th className="px-3 py-2 text-right font-semibold">Avtomatik</th>
+                  <th className="px-3 py-2 text-right font-semibold">UTM</th>
+                  <th className="px-3 py-2 text-right font-semibold">fbclid</th>
+                  <th className="px-3 py-2 text-right font-semibold">Lead ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.voronkalar.map((v) => (
+                  <tr key={v.id} className="border-b border-line last:border-b-0">
+                    <td className="px-3 py-2 text-ink-2">{v.nom}</td>
+                    <td className="px-3 py-2 text-right text-ink-3">{v.jami}</td>
+                    <td className="px-3 py-2 text-right text-ink-3">
+                      {foiz(v.avtomatik, v.jami)}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-3 py-2 text-right font-medium',
+                        v.utm_term ? 'text-ok' : 'text-bad'
+                      )}
+                    >
+                      {foiz(v.utm_term, v.jami)}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-3 py-2 text-right font-medium',
+                        v.fbclid ? 'text-ok' : 'text-bad'
+                      )}
+                    >
+                      {foiz(v.fbclid, v.jami)}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-3 py-2 text-right font-medium',
+                        v.leadIdTopildi ? 'text-ok' : 'text-bad'
+                      )}
+                    >
+                      {foiz(v.leadIdTopildi, v.jami)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+
+          <p className="text-xs leading-relaxed text-ink-3">
+            «Avtomatik» — lidni integratsiya yaratgan (odam emas). Lid formasi yoki
+            telefoniya ulangan voronkada bu ko'rsatkich yuqori bo'ladi. «Lead ID» —
+            maydon, lid nomi yoki kontakt maydonida Meta Lead ID shakli topilgan
+            lidlar ulushi. Jami {data.tekshirilganLid} ta lid tekshirildi; nomda{' '}
+            {data.nomdaTopildi} ta, tegda {data.tegdaTopildi} ta topildi.
+          </p>
+
+          {data.atribusiya.utm_term === 0 && data.atribusiya.fbclid === 0 && (
+            <p className="text-xs leading-relaxed text-bad">
+              Hech bir voronkada UTM ham, fbclid ham yo'q. Ya'ni reklama havolalariga
+              UTM qo'yilmagan — bu holatda reklama kesimidagi atribusiya ishlamaydi.
+              Meta Lead ID bu muammoni CAPI tomonida chetlab o'tadi, lekin
+              dashboard'dagi «qaysi reklama» ustuni baribir bo'sh qoladi.
+            </p>
+          )}
+
+          {data.kontaktNomzodlari.length > 0 && (
+            <p className="text-xs leading-relaxed text-ok">
+              Kontakt maydonlarida ham nomzod bor:{' '}
+              {data.kontaktNomzodlari.map((f) => f.field_name).join(', ')}. Hozircha
+              faqat LID maydoni sozlanadi — kerak bo'lsa kontakt maydonini ham
+              o'qiydigan qilamiz.
+            </p>
+          )}
 
           <div>
             <label className={LABEL} htmlFor="lead-id-field">
@@ -168,10 +210,13 @@ export default function LeadIdField() {
 
             {data.nomzodlar.length === 0 && (
               <p className="mt-2 text-xs leading-relaxed text-ink-3">
-                Nomzod topilmadi — oxirgi {data.tekshirilganLid} ta lidning hech
-                birida 15–17 xonali son saqlaydigan maydon yo'q. Ehtimol lidlar
-                lid reklamasi orqali kelmaydi (masalan qo'ng'iroq yoki qo'lda
-                kiritish). Bunday holatda moslik telefon va email orqali ketadi.
+                Nomzod topilmadi — tekshirilgan {data.tekshirilganLid} ta lidning
+                hech birida 15–17 xonali son saqlaydigan maydon yo'q. Agar lidlar
+                lid formasi orqali kelayotgan bo'lsa, integratsiya Meta Lead ID ni
+                umuman uzatmayapti — buni amoCRM–Facebook integratsiyasi
+                sozlamalaridan tekshirish kerak. Qo'ng'iroq voronkasida esa u
+                bo'lmaydi: telefoniya faqat raqamni biladi. Bunday holatda moslik
+                telefon va email orqali ketadi.
               </p>
             )}
 

@@ -257,10 +257,33 @@ export interface FieldRow {
   namunalar: string[];
 }
 
+/**
+ * Voronka kesimi. Namuna HAR VORONKADAN alohida olinadi — birinchi
+ * versiyada "oxirgi 250 lid" olingandi va hajmi katta voronka namunani
+ * to'ldirib, boshqasi umuman ko'rinmay qolgandi.
+ */
+export interface FieldPipelineRow {
+  id: string;
+  nom: string;
+  jami: number;
+  /** created_by = 0 — integratsiya yaratgan, odam emas. */
+  avtomatik: number;
+  utm_term: number;
+  utm_campaign: number;
+  fbclid: number;
+  leadIdTopildi: number;
+}
+
 export interface FieldReport {
   tekshirilganLid: number;
+  voronkalar: FieldPipelineRow[];
   nomzodlar: FieldRow[];
   maydonlar: FieldRow[];
+  /** Kontakt maydonlarida topilgan nomzodlar. */
+  kontaktNomzodlari: FieldRow[];
+  /** Lid NOMIDA 15–17 xonali son uchragan lidlar soni. */
+  nomdaTopildi: number;
+  tegdaTopildi: number;
   atribusiya: {
     utm_term: number;
     utm_campaign: number;
