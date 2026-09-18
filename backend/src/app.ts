@@ -86,8 +86,20 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+/**
+ * Sog'liq tekshiruvi.
+ *
+ * `sentry` maydoni — xato hisoboti shu deploy'da YOQILGANMI degan savolga
+ * javob. Faqat ha/yo'q; DSN ning o'zi hech qachon qaytarilmaydi. Busiz
+ * "production'da Sentry ishlayaptimi" savolini tekshirishning yagona yo'li
+ * — haqiqiy xato kutib o'tirish edi.
+ */
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    sentry: Boolean(process.env.SENTRY_DSN),
+  });
 });
 
 app.use('/api/auth', authRoutes);
