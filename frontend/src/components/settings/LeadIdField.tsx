@@ -44,7 +44,38 @@ export default function LeadIdField() {
     setXato('');
     try {
       const r = await amocrmApi.fields();
-      setData(r);
+      /**
+       * FRONTEND VA BACKEND ALOHIDA DEPLOY BO'LADI (ikkita Vercel
+       * loyihasi). Frontend tezroq chiqib ketsa, u backend hali
+       * yubormayotgan maydonni o'qiydi va `undefined.join()` butun
+       * sahifani oq qilib qo'yadi — aynan shu bo'ldi.
+       *
+       * Shuning uchun javob BIR JOYDA normallashtiriladi: har yangi
+       * maydonga xavfsiz sukut. Komponent ichida `?.` tarqatib yurish
+       * emas — u bitta joyda unutiladi va xato takrorlanadi.
+       */
+      setData({
+        ...r,
+        voronkalar: r.voronkalar ?? [],
+        nomzodlar: r.nomzodlar ?? [],
+        maydonlar: r.maydonlar ?? [],
+        kontaktNomzodlari: r.kontaktNomzodlari ?? [],
+        liniyaNomzodlari: r.liniyaNomzodlari ?? [],
+        reklamaLiniyalari: r.reklamaLiniyalari ?? [],
+        nomdaTopildi: r.nomdaTopildi ?? 0,
+        nomNoyob: r.nomNoyob ?? 0,
+        nomNamunalar: r.nomNamunalar ?? [],
+        tegdaTopildi: r.tegdaTopildi ?? 0,
+        tegNoyob: r.tegNoyob ?? 0,
+        tegNamunalar: r.tegNamunalar ?? [],
+        atribusiya: r.atribusiya ?? {
+          utm_term: 0,
+          utm_campaign: 0,
+          utm_content: 0,
+          utm_source: 0,
+          fbclid: 0,
+        },
+      });
       setTanlov(r.tanlangan ?? '');
       setLiniyaMaydoni(r.liniyaMaydoni ?? '');
       setReklamaLiniyalari(r.reklamaLiniyalari ?? []);
@@ -266,7 +297,7 @@ export default function LeadIdField() {
             {tanlov && (
               <p className="mt-2 font-mono text-xs text-ink-3">
                 Namuna:{' '}
-                {data.maydonlar.find((f) => f.field_id === tanlov)?.namunalar.join(', ') ||
+                {data.maydonlar.find((f) => f.field_id === tanlov)?.namunalar?.join(', ') ||
                   'qiymat topilmadi'}
               </p>
             )}
