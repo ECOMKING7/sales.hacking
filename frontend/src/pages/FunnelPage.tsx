@@ -26,6 +26,7 @@ import {
 } from '../utils/format';
 import { Button, Skeleton, TableWrap, Table, Th, Td, Tr, TableEmpty, cn } from '../components/ui';
 import CurrencyNote from '../components/CurrencyNote';
+import PeriodLabel, { type PeriodWindow } from '../components/PeriodLabel';
 import type { CurrencyState } from '../types';
 
 type Level = 'campaigns' | 'adsets' | 'ads';
@@ -79,6 +80,8 @@ interface FunnelResponse {
   totals: FunnelTotals;
   /** Valyuta holati: kurs bo'lsa ROAS o'girib hisoblanadi, bo'lmasa null. */
   currency?: CurrencyState;
+  /** Raqamlar qamragan davr — jadvalda sana filtri yo'q. */
+  window?: PeriodWindow;
 }
 
 const LEVELS: { key: Level; label: string }[] = [
@@ -270,6 +273,9 @@ export default function FunnelPage() {
           <p className="mt-0.5 text-sm text-ink-2">
             Reklama → lid → sifatli lid → sotuv → pul. Facebook va CRM bitta qatorda.
           </p>
+          <div className="mt-1">
+            <PeriodLabel window={query.data?.window} />
+          </div>
         </div>
         <div className="flex gap-1.5">
           {LEVELS.map((l) => (

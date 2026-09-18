@@ -93,6 +93,18 @@ Freshness: `ensureFreshFxRates()` is a no-op when the newest row is from today o
 
 Two caveats worth keeping in mind: this is the **official** rate, not the bank's selling rate (typically 1–3% apart, which makes the reported ROAS slightly optimistic), and the converted figure is surfaced with its rate, source and date through `currency.rate*` so the operator can see what the number rests on.
 
+### The reporting window is lifetime, and everything shares it
+
+The sync runs with `date_preset=maximum` (`DEFAULT_RANGE` in `facebookAdsService.ts`), so `campaigns/adsets/ads.spend`, `results` and the rest cover the account's whole history — capped by Facebook at **37 months** (error 3018 beyond that).
+
+This is forced by the schema, not a preference: entity metrics are a **single non-bucketed column** holding whatever the last sync wrote, while leads and revenue are read from `leads` over all time. Any preset narrower than the lead history makes CPL, CAC and ROAS divide two different windows — the same class of silent error as the currency bug, measured in time instead of money. So every sync path must use the same preset; a 15-minute cron on `last_30d` plus a manual `maximum` would leave one column with two meanings.
+
+The real window is not guessed: `recordInsightWindow` reads Facebook's own `date_start`/`date_stop` (one account-level row) into `workspaces.fb_window_start/end`, and the funnel and overview endpoints return it as `window` so the UI can print "Butun davr: 11.03.2024 → 17.09.2026". For an account older than 37 months, that start date is the API's cap, and showing it is the honest thing.
+
+Cost is flat: without `time_increment` Facebook returns **one row per entity** regardless of window length, so `maximum` costs the same number of calls as `last_30d` — only more rows.
+
+The dashboard's date picker therefore drives **only** `revenueGrowth` (selected range vs the preceding equal range); every other figure is lifetime, and the toolbar says so. The proper fix is a daily-bucket table (`ad_insights_daily`, `time_increment=1`), which would make arbitrary date ranges correct — not done yet.
+
 ### One owner per column
 
 `revenue`, `purchases_count` and `roas` on campaigns/adsets/ads belong to the **attribution engine** (CRM truth). `fb_revenue` and `fb_purchases` belong to the **Facebook sync** (what the pixel reported). The sync must never touch the first set, and the engine never touches the second.

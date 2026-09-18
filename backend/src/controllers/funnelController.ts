@@ -93,6 +93,14 @@ export async function funnel(req: Request, res: Response): Promise<void> {
     // revenue/spend so'mni dollarga bo'ladi — ROAS chiqarilmaydi.
     const guard = await loadCurrencyGuard(workspaceId);
 
+    // Qaysi davr qamralgani. Bu jadvalda lid ham, xarajat ham sanaga
+    // bog'liq emas — ikkalasi butun davr. Foydalanuvchi shuni bilishi
+    // kerak, aks holda "bu oyning raqami" deb o'ylaydi.
+    const win = await pool.query<{ fb_window_start: string | null; fb_window_end: string | null }>(
+      `SELECT fb_window_start::text, fb_window_end::text FROM workspaces WHERE id = $1`,
+      [workspaceId]
+    );
+
     const { rows } = await pool.query(
       `
       WITH lidlar AS (
@@ -178,6 +186,10 @@ export async function funnel(req: Request, res: Response): Promise<void> {
       level,
       stuckDays,
       currency: currencyMeta(guard),
+      window: {
+        start: win.rows[0]?.fb_window_start ?? null,
+        end: win.rows[0]?.fb_window_end ?? null,
+      },
       data: applyRoasAll(rows, guard),
       totals: {
         ...t,

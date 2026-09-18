@@ -184,48 +184,69 @@ export async function overview(req: Request, res: Response): Promise<void> {
          FROM campaigns WHERE workspace_id = $1`,
       [workspaceId]
     );
+    /**
+     * Daromad va lidlar SANA BO'YICHA FILTRLANMAYDI.
+     *
+     * Sababi: `campaigns.spend` vaqt bo'yicha bo'linmagan — u oxirgi
+     * sync yozgan qiymat, ya'ni butun davr (date_preset=maximum).
+     * Daromadni 30 kun bilan cheklab, xarajatni butun davr qoldirsak,
+     * ROAS va CAC ikki xil oynani bo'ladi. Aynan shu xato valyutada
+     * ~12 600 barobar shishish bergan edi; vaqt o'lchovida ham xuddi
+     * shunday jim yolg'on chiqadi.
+     *
+     * Oyna chegarasi javobdagi `window` da aytiladi.
+     */
     const wonQ = pool.query(
       `SELECT COUNT(*) AS won, COALESCE(SUM(revenue),0) AS revenue, AVG(deal_time_days) AS deal_time
          FROM leads
-        WHERE workspace_id = $1 AND status = 'won' AND won_at >= $2 AND won_at < $3`,
-      [workspaceId, range.from, range.to]
+        WHERE workspace_id = $1 AND status = 'won'`,
+      [workspaceId]
     );
     const totalLeadsQ = pool.query(
-      `SELECT COUNT(*) AS total
-         FROM leads
-        WHERE workspace_id = $1
-          AND COALESCE(crm_created_at, created_at) >= $2
-          AND COALESCE(crm_created_at, created_at) < $3`,
-      [workspaceId, range.from, range.to]
+      `SELECT COUNT(*) AS total FROM leads WHERE workspace_id = $1`,
+      [workspaceId]
     );
-    const prevQ = pool.query(
-      `SELECT COALESCE(SUM(revenue),0) AS revenue
-         FROM leads
-        WHERE workspace_id = $1 AND status = 'won' AND won_at >= $2 AND won_at < $3`,
-      [workspaceId, prev.from, prev.to]
+    /**
+     * O'sish — yagona sanaga bog'liq ko'rsatkich: oxirgi 30 kun oldingi
+     * 30 kunga nisbatan. U yuqoridagi "butun davr" raqamlari bilan
+     * solishtirilmaydi va UI'da alohida yorliq bilan chiqadi.
+     */
+    const growthQ = pool.query(
+      `SELECT
+         COALESCE(SUM(revenue) FILTER (WHERE won_at >= $2 AND won_at < $3),0) AS hozir,
+         COALESCE(SUM(revenue) FILTER (WHERE won_at >= $4 AND won_at < $2),0) AS oldin
+       FROM leads
+       WHERE workspace_id = $1 AND status = 'won'`,
+      [workspaceId, range.from, range.to, prev.from]
     );
     const sourceQ = pool.query(
       `SELECT
          COALESCE(SUM(revenue) FILTER (WHERE first_click_ad_id IS NOT NULL),0) AS meta,
          COALESCE(SUM(revenue) FILTER (WHERE first_click_ad_id IS NULL),0)     AS direct
        FROM leads
-       WHERE workspace_id = $1 AND status = 'won' AND won_at >= $2 AND won_at < $3`,
-      [workspaceId, range.from, range.to]
+       WHERE workspace_id = $1 AND status = 'won'`,
+      [workspaceId]
+    );
+    const windowQ = pool.query<{ fb_window_start: string | null; fb_window_end: string | null }>(
+      `SELECT fb_window_start::text, fb_window_end::text FROM workspaces WHERE id = $1`,
+      [workspaceId]
     );
 
-    const [spendR, wonR, totalR, prevR, sourceR] = await Promise.all([
+    const [spendR, wonR, totalR, growthR, sourceR, windowR] = await Promise.all([
       spendQ,
       wonQ,
       totalLeadsQ,
-      prevQ,
+      growthQ,
       sourceQ,
+      windowQ,
     ]);
 
     const amountSpent = num(spendR.rows[0].spend);
     const revenue = num(wonR.rows[0].revenue);
     const wonCount = num(wonR.rows[0].won);
     const totalLeads = num(totalR.rows[0].total);
-    const prevRevenue = num(prevR.rows[0].revenue);
+    const nowRevenue = num(growthR.rows[0].hozir);
+    const prevRevenue = num(growthR.rows[0].oldin);
     const guard = await loadCurrencyGuard(workspaceId);
 
     const payload = {
@@ -244,10 +265,12 @@ export async function overview(req: Request, res: Response): Promise<void> {
       conversionRate: totalLeads > 0 ? (wonCount / totalLeads) * 100 : 0,
       dealTime: num(wonR.rows[0].deal_time),
       arpl: totalLeads > 0 ? revenue / totalLeads : 0,
+      // Oxirgi 30 kun ↔ oldingi 30 kun. "revenue" (butun davr) bilan
+      // bog'liq emas — bu trend ko'rsatkichi.
       revenueGrowth:
         prevRevenue > 0
-          ? ((revenue - prevRevenue) / prevRevenue) * 100
-          : revenue > 0
+          ? ((nowRevenue - prevRevenue) / prevRevenue) * 100
+          : nowRevenue > 0
             ? 100
             : 0,
       revenueBySource: {
@@ -257,6 +280,12 @@ export async function overview(req: Request, res: Response): Promise<void> {
         fbOrganic: 0,
       },
       range,
+      // Raqamlar qaysi davrni qamraydi. Facebook aytgan sana — taxmin
+      // emas. `start` yo'q bo'lsa hali sync bo'lmagan.
+      window: {
+        start: windowR.rows[0]?.fb_window_start ?? null,
+        end: windowR.rows[0]?.fb_window_end ?? null,
+      },
     };
 
     await cacheSet(key, payload, 300); // 5 minutes

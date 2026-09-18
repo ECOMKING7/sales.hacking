@@ -2,7 +2,7 @@ import Queue from 'bull';
 import cron from 'node-cron';
 import { pool } from '../db/pool';
 import { ensureFreshFxRates } from '../services/fxRates';
-import { syncWorkspace, DateRange } from '../services/facebookAdsService';
+import { DEFAULT_RANGE, syncWorkspace, DateRange } from '../services/facebookAdsService';
 
 const QUEUE_NAME = 'fb-sync';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -56,7 +56,9 @@ function getQueue(): Queue.Queue<SyncJobData> {
  */
 export async function runSync(workspaceId: string, range?: DateRange) {
   try {
-    const result = await syncWorkspace(workspaceId, range ?? { datePreset: 'last_30d' });
+    // Standart oyna bitta joyda turadi (DEFAULT_RANGE): cron ham,
+    // qo'lda ishga tushirish ham bir xil davrni yozadi.
+    const result = await syncWorkspace(workspaceId, range ?? DEFAULT_RANGE);
     await pool.query(
       `INSERT INTO sync_logs (workspace_id, status, message)
        VALUES ($1, 'success', $2)`,

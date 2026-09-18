@@ -10,6 +10,31 @@ const MAX_RETRIES = 3;
 const INSIGHT_FIELDS =
   'campaign_id,adset_id,ad_id,spend,impressions,clicks,actions,action_values';
 
+/**
+ * Sync'ning standart oynasi: AKKAUNT BOSHIDAN.
+ *
+ * NEGA `maximum`, `last_30d` emas:
+ * Jadvaldagi `spend`, `results` ustunlari vaqt bo'yicha bo'linmagan —
+ * ular oxirgi sync nimani yozgan bo'lsa o'sha. Lid va daromad esa
+ * `leads` jadvalidan butun tarix bo'yicha o'qiladi. Ikkisi har xil
+ * oynada bo'lsa ROAS, CPL va CAC yolg'on chiqadi — bu biz valyutada
+ * tuzatgan xatoning aynan o'zi, faqat vaqt o'lchovida.
+ *
+ * Shuning uchun HAMMA sync bir xil preset bilan ishlaydi. Cron'da
+ * `last_30d`, qo'lda `maximum` qilib bo'lmaydi: ustun bitta, ma'no
+ * ikkita bo'lib qoladi.
+ *
+ * ⚠ Facebook 37 oydan eskisini bermaydi (xato 3018). Akkaunt undan
+ * oldin ochilgan bo'lsa "butun davr" aslida oxirgi 37 oy — shuning
+ * uchun haqiqiy chegara `fb_window_start` da saqlanadi va ekranda
+ * ko'rsatiladi.
+ *
+ * Chaqiruvlar soni oshmaydi: `time_increment` ishlatilmagani uchun
+ * javobda har reklamaga BITTA qator keladi, oyna qancha uzun
+ * bo'lishidan qat'i nazar.
+ */
+export const DEFAULT_RANGE: DateRange = { datePreset: 'maximum' };
+
 // Facebook bitta hodisani bir necha action_type ostida qaytaradi: `lead`,
 // `leadgen.other` va `onsite_conversion.lead_grouped` — ko'pincha AYNI o'sha
 // lidlar. Ularni QO'SHIB bo'lmaydi.
@@ -745,13 +770,55 @@ async function backfillAccountCurrency(
 }
 
 /**
+ * Ma'lumot qaysi davrni qamragani — Facebook'ning o'zidan.
+ *
+ * Akkaunt darajasida bitta qator: `date_start` / `date_stop`. Bu
+ * "akkaunt qachon ochilgan" emas, "API qancha ma'lumot berdi" —
+ * 37 oylik cheklov shu yerda ko'rinadi.
+ *
+ * Xato bo'lsa jim o'tadi: sana yorlig'i yo'qligi hisobotni buzmasin.
+ */
+async function recordInsightWindow(
+  workspaceId: string,
+  actId: string,
+  token: string,
+  range: DateRange
+): Promise<void> {
+  try {
+    const res = await axios.get<{ data?: Array<{ date_start?: string; date_stop?: string }> }>(
+      `${GRAPH}/${actId}/insights`,
+      {
+        params: {
+          level: 'account',
+          fields: 'date_start,date_stop',
+          ...dateParams(range),
+          access_token: token,
+        },
+        timeout: 20_000,
+      }
+    );
+    const row = res.data?.data?.[0];
+    if (!row?.date_start || !row?.date_stop) return;
+
+    await pool.query(
+      `UPDATE workspaces
+          SET fb_window_start = $1::date, fb_window_end = $2::date
+        WHERE id = $3`,
+      [row.date_start, row.date_stop, workspaceId]
+    );
+  } catch (err) {
+    console.error('fb window not recorded:', (err as Error).message);
+  }
+}
+
+/**
  * Full sync for one workspace: campaigns → adsets → ads.
  * Token is read from the workspace owner's user row so that one Facebook
  * login covers all workspaces belonging to the same user.
  */
 export async function syncWorkspace(
   workspaceId: string,
-  range: DateRange = { datePreset: 'last_30d' }
+  range: DateRange = DEFAULT_RANGE
 ): Promise<{ campaigns: number; adsets: number; ads: number }> {
   const wsRes = await pool.query<WorkspaceTokenRow>(
     `SELECT w.fb_ad_account_id,
@@ -780,6 +847,10 @@ export async function syncWorkspace(
   if (!ws.fb_currency) {
     await backfillAccountCurrency(workspaceId, actId, token);
   }
+
+  // Oyna har sync'da yangilanadi: `maximum` ning oxirgi kuni har kuni
+  // siljiydi va ekranda eski sana turib qolmasligi kerak.
+  await recordInsightWindow(workspaceId, actId, token, range);
 
   // Account-level bulk sync: campaigns → adsets → ads (≈6 Graph calls total).
   //

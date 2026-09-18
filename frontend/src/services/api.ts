@@ -129,6 +129,8 @@ export interface DashboardOverview {
   arpl: number;
   revenueGrowth: number;
   revenueBySource: { metaAds: number; direct: number; igOrganic: number; fbOrganic: number };
+  /** Raqamlar qamragan davr (FB insights date_start/date_stop). */
+  window?: { start: string | null; end: string | null };
 }
 
 export type TopMetric = 'roas' | 'revenue' | 'sales';

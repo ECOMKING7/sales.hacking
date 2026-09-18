@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, X } from 'lucide-react';
 import { dashboardApi, facebookApi, amocrmApi } from '../services/api';
 import KpiCard from '../components/KpiCard';
+import PeriodLabel from '../components/PeriodLabel';
 import SourceDonut from '../components/dashboard/SourceDonut';
 import EntityTable, { View, QuickFilter } from '../components/dashboard/EntityTable';
 import TopPerformers from '../components/dashboard/TopPerformers';
@@ -126,7 +127,9 @@ export default function DashboardPage() {
     {
       title: 'Revenue Growth',
       value: formatPercent(d?.revenueGrowth),
-      subtitle: `${n(d?.revenueGrowth) >= 0 ? '+' : ''}${formatPercent(d?.revenueGrowth)} vs prev`,
+      // Yagona sanaga bog'liq katak: tanlangan oraliq ↔ undan oldingi
+      // teng oraliq. Qolgan kataklar butun davr.
+      subtitle: `tanlangan oraliq vs oldingi`,
       trend: n(d?.revenueGrowth),
     },
   ];
@@ -232,7 +235,12 @@ export default function DashboardPage() {
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-2 text-xl font-bold text-ink">Dashboard</h1>
+        <div className="mr-2">
+          <h1 className="text-xl font-bold text-ink">Dashboard</h1>
+          {/* Raqamlar butun davrni qamraydi — sana yozilmasa
+              foydalanuvchi buni "shu oy" deb o'qiydi. */}
+          <PeriodLabel window={d?.window} />
+        </div>
         <AdAccountSelector />
 
         {/* Yorliqlar + tanlov chiplari (Ads Manager naqshi).
@@ -282,6 +290,21 @@ export default function DashboardPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* ⚠ Sana tanlagichi hozircha FAQAT "Revenue Growth" ga ta'sir
+              qiladi. Xarajat, natija va daromad butun davr bo'yicha
+              keladi, chunki `campaigns.spend` vaqt bo'yicha bo'linmagan
+              (bitta ustun, oxirgi sync qiymati).
+
+              Tanlagich olib tashlanmadi: o'sish ko'rsatkichi unga
+              tayanadi. Lekin hech narsani filtrlamayotgan boshqaruv —
+              jim yolg'on, shuning uchun yorliq ochiq yozib qo'yilgan.
+              To'liq yechim: kunlik buketlar (ad_insights_daily). */}
+          <span
+            className="hidden text-xs text-ink-3 sm:inline"
+            title="Xarajat va daromad butun davr bo'yicha. Sana oralig'i faqat o'sish ko'rsatkichiga ta'sir qiladi."
+          >
+            sana → faqat o'sish
+          </span>
           <DateRangePicker
             value={range}
             preset={preset}
