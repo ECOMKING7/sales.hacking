@@ -18,12 +18,21 @@
    bir xil (event_id, event_name) ni bitta deb hisoblaydi; biz qo'shimcha
    ravishda `capi_events` jadvalida ham takrorni to'sib turamiz.
 
-   XAVFSIZLIK (§4.1): token hech qachon kodda, bazada yoki log'da bo'lmaydi.
-   Faqat .env / Vercel secret: META_CAPI_TOKEN__<KEY> yoki META_CAPI_TOKEN.
+   XAVFSIZLIK (§4.1): token kodda YO'Q va log'da YO'Q. Bazada esa faqat
+   AES-256 bilan SHIFRLANGAN holda yotadi — xuddi Facebook va amoCRM
+   tokenlari kabi. Javobda hech qachon qaytarilmaydi; UI faqat "bor/yo'q"
+   holatini ko'radi.
+
+   NEGA BAZADA: bu SaaS. Token .env da bo'lsa, yangi mijoz qo'shish uchun
+   Vercel'ga kirib o'zgaruvchi qo'shish va qayta deploy qilish kerak
+   bo'lardi — ya'ni mijoz o'zi ulana olmaydi (§3.1 testidan o'tmaydi).
+   .env yo'li zaxira sifatida qoldi: loyiha egasining o'z akkauntlari
+   uchun qulay.
    ═══════════════════════════════════════════════════════════════ */
 
 import axios, { AxiosError } from 'axios';
 import { pool } from '../db/pool';
+import { decrypt } from '../utils/encryption';
 import { GRAPH_URL } from '../config/graph';
 
 /** Meta `event_time` ni 7 kundan eskisini qabul qilmaydi. */
@@ -80,10 +89,27 @@ interface CapiConfig {
 }
 
 /**
- * .env kaliti: META_CAPI_TOKEN__<KEY>, bu yerda <KEY> katta harfda va
- * harf/raqamdan boshqa hamma narsa "_" (§3.3 kalit qoidasi).
+ * Token qayerdan olinadi — tartib muhim:
+ *   1. BAZA (shifrlangan) — mijoz o'zi kiritgan. Asosiy yo'l.
+ *   2. META_CAPI_TOKEN__<KEY> — loyiha egasining o'z akkaunti uchun.
+ *   3. META_CAPI_TOKEN — umumiy zaxira.
+ *
+ * Baza birinchi turadi: mijoz o'zi ulaganidan keyin .env dagi eski
+ * qiymat uni bosib ketmasligi kerak.
+ *
+ * Shifr ochilmasa null — bu XATO EMAS deb o'tkazib yuborilmaydi, log'da
+ * ko'rinadi. Aks holda "CAPI yoqilgan, lekin hech narsa ketmayapti"
+ * degan jim holat paydo bo'lardi.
  */
-function tokenFor(secretKey: string | null): string | null {
+function tokenFor(secretKey: string | null, shifrlangan: string | null): string | null {
+  if (shifrlangan) {
+    try {
+      const ochiq = decrypt(shifrlangan);
+      if (ochiq) return ochiq;
+    } catch (err) {
+      console.error('CAPI tokenini ochib bo\'lmadi (ENCRYPTION_KEY o\'zgarganmi?):', (err as Error).message);
+    }
+  }
   if (secretKey) {
     const suffix = secretKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
     const scoped = process.env[`META_CAPI_TOKEN__${suffix}`];
@@ -107,6 +133,7 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     capi_event_purchase: string | null;
     capi_action_source: string | null;
     capi_lead_event_source: string | null;
+    meta_capi_token: string | null;
   }>(
     `SELECT meta_dataset_id, meta_capi_enabled, secret_key,
             COALESCE(currency, 'UZS')              AS currency,
@@ -114,7 +141,8 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
             COALESCE(capi_event_qualified, 'QualifiedLead') AS capi_event_qualified,
             COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase,
             COALESCE(capi_action_source, 'system_generated') AS capi_action_source,
-            COALESCE(capi_lead_event_source, 'amoCRM')       AS capi_lead_event_source
+            COALESCE(capi_lead_event_source, 'amoCRM')       AS capi_lead_event_source,
+            meta_capi_token
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
@@ -122,9 +150,9 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
   const ws = rows[0];
   if (!ws || !ws.meta_capi_enabled || !ws.meta_dataset_id) return null;
 
-  const token = tokenFor(ws.secret_key);
+  const token = tokenFor(ws.secret_key, ws.meta_capi_token);
   if (!token) {
-    console.warn(`CAPI: ${workspaceId} uchun token topilmadi (META_CAPI_TOKEN__…) — o'tkazib yuborildi`);
+    console.warn(`CAPI: ${workspaceId} uchun token topilmadi — o'tkazib yuborildi`);
     return null;
   }
 

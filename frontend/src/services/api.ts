@@ -126,6 +126,8 @@ export const metaCapiApi = {
     currency?: string;
     phoneCountryCode?: string;
     secretKey?: string | null;
+    /** Meta CAPI tokeni. Shifrlanib saqlanadi, qaytarilmaydi. '' — o'chirish. */
+    token?: string;
     eventLead?: string;
     eventQualified?: string;
     eventPurchase?: string;

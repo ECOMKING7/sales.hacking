@@ -12,6 +12,9 @@ export default function MetaCapiSection() {
   const [currency, setCurrency] = useState('');
   const [evLead, setEvLead] = useState('');
   const [evQual, setEvQual] = useState('');
+  // Token faqat KIRITISH uchun. Server uni hech qachon qaytarmaydi,
+  // shuning uchun bu maydon har doim bo'sh boshlanadi.
+  const [token, setToken] = useState('');
   const [evPurchase, setEvPurchase] = useState('');
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
@@ -51,6 +54,8 @@ export default function MetaCapiSection() {
     try {
       const res = await metaCapiApi.save(patch);
       if (res.warning) setWarning(res.warning);
+      // Token maydoni saqlangach tozalanadi — ekranda qolib ketmasin.
+      if (patch.token) setToken('');
       await load();
       toast.ok(xabar);
     } catch (err) {
@@ -195,9 +200,39 @@ export default function MetaCapiSection() {
             </datalist>
           </div>
 
+          <div className="mt-5">
+            <label htmlFor="capi-token" className={LABEL}>
+              Access token
+            </label>
+            <p className="mb-2 text-xs leading-relaxed text-ink-3">
+              Events Manager → dataset → Settings → Conversions API →{' '}
+              <b>Generate access token</b>. Token AES-256 bilan shifrlanib
+              saqlanadi, ekranda qaytib ko'rsatilmaydi va log'ga tushmaydi —
+              xuddi Facebook va amoCRM tokenlari kabi.
+            </p>
+            <input
+              id="capi-token"
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={status?.tokenConfigured ? '•••••• (o\'rnatilgan)' : 'EAAG...'}
+              className={cn(
+                'h-10 w-full rounded-sm border-[1.5px] border-line-2 bg-surface px-3.5',
+                'font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-3',
+                'transition-[box-shadow,border-color] duration-200',
+                'focus:border-edge focus:shadow-glow-md focus:outline-none'
+              )}
+            />
+            <p className="mt-1.5 text-xs text-ink-3">
+              Bo'sh qoldirsangiz mavjud token o'zgarmaydi.
+            </p>
+          </div>
+
           <dl className="mt-5">
             <StatRow
-              label="Token (.env)"
+              label="Token"
               value={
                 status?.tokenConfigured ? (
                   <span className="text-ok">o'rnatilgan</span>
@@ -232,6 +267,7 @@ export default function MetaCapiSection() {
                     currency: currency.trim() || undefined,
                     eventLead: evLead.trim() || undefined,
                     eventQualified: evQual.trim() || undefined,
+                    token: token.trim() || undefined,
                     eventPurchase: evPurchase.trim() || undefined,
                   })
                 }

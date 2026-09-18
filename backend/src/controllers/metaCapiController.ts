@@ -1,14 +1,23 @@
 /**
  * Meta Conversions API sozlamalari.
  *
- * ⚠ §4.1: TOKEN bu yerdan O'TMAYDI. Foydalanuvchi faqat Dataset ID ni
- * kiritadi (u ochiq ma'lumot). Token .env / Vercel secret da yashaydi:
- *   META_CAPI_TOKEN__<SECRET_KEY>  yoki  META_CAPI_TOKEN
- * Server tokenni faqat o'qiydi, hech qachon qaytarmaydi.
+ * TOKEN: mijoz uni shu formadan kiritadi va u AES-256 bilan SHIFRLANIB
+ * bazaga yoziladi — xuddi Facebook va amoCRM tokenlari kabi. Javobda
+ * hech qachon qaytarilmaydi, log'ga tushmaydi; UI faqat "bor/yo'q"
+ * holatini ko'radi.
+ *
+ * NEGA .env EMAS: bu SaaS. Token .env da bo'lsa, har yangi mijoz uchun
+ * Vercel'ga o'zgaruvchi qo'shib qayta deploy qilish kerak bo'lardi —
+ * ya'ni mijoz o'zi ulana olmaydi. §3.1 testi: "yangi mijoz qo'shish
+ * uchun deploy'ga tegish kerakmi?" Javob "ha" bo'lsa, arxitektura
+ * noto'g'ri.
+ *
+ * .env yo'li zaxira bo'lib qoldi (loyiha egasining o'z akkauntlari uchun).
  */
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { pool } from '../db/pool';
+import { encrypt } from '../utils/encryption';
 
 interface CapiStatusRow {
   meta_dataset_id: string | null;
@@ -19,6 +28,7 @@ interface CapiStatusRow {
   capi_event_lead: string;
   capi_event_qualified: string;
   capi_event_purchase: string;
+  meta_capi_token: string | null;
 }
 
 /**
@@ -43,7 +53,9 @@ const eventNameSchema = z
   .trim()
   .regex(/^[A-Za-z][A-Za-z0-9_]{1,39}$/, 'Hodisa nomi harf bilan boshlanib, faqat harf/raqam/_ dan iborat bo\'lsin');
 
-function tokenPresent(secretKey: string | null): boolean {
+/** Faqat BOR/YO'Q. Tokenning o'zi hech qachon javobga qo'shilmaydi. */
+function tokenPresent(secretKey: string | null, bazadagi: string | null): boolean {
+  if (bazadagi) return true;
   if (secretKey) {
     const suffix = secretKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
     if (process.env[`META_CAPI_TOKEN__${suffix}`]) return true;
@@ -64,7 +76,8 @@ export async function status(req: Request, res: Response): Promise<void> {
               COALESCE(phone_country_code, '998') AS phone_country_code,
               COALESCE(capi_event_lead, 'Lead')          AS capi_event_lead,
               COALESCE(capi_event_qualified, 'Schedule') AS capi_event_qualified,
-              COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase
+              COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase,
+              meta_capi_token
          FROM workspaces WHERE id = $1`,
       [req.user.workspaceId]
     );
@@ -91,7 +104,7 @@ export async function status(req: Request, res: Response): Promise<void> {
       currency: ws?.currency ?? 'UZS',
       phoneCountryCode: ws?.phone_country_code ?? '998',
       /** Token .env da bormi — qiymati emas, faqat bor/yo'q. */
-      tokenConfigured: tokenPresent(ws?.secret_key ?? null),
+      tokenConfigured: tokenPresent(ws?.secret_key ?? null, ws?.meta_capi_token ?? null),
       secretKey: ws?.secret_key ?? null,
       /** Bosqichlar uchun Meta hodisa nomlari (§3.1 — kodda emas). */
       eventNames: {
@@ -133,7 +146,12 @@ const saveSchema = z.object({
     .trim()
     .regex(/^\d{1,4}$/, 'Mamlakat kodi 1–4 raqam (masalan 998)')
     .optional(),
-  /** .env kaliti qo'shimchasi: META_CAPI_TOKEN__<SECRET_KEY> */
+  /**
+   * Meta CAPI access token. Shifrlanib saqlanadi va qaytarilmaydi.
+   * Bo'sh satr — tokenni O'CHIRISH (mijoz ulanishni uzmoqchi bo'lsa).
+   */
+  token: z.string().trim().max(1000).optional(),
+  /** .env kaliti qo'shimchasi: META_CAPI_TOKEN__<SECRET_KEY> (zaxira yo'l) */
   secretKey: z
     .string()
     .trim()
@@ -160,7 +178,7 @@ export async function save(req: Request, res: Response): Promise<void> {
   const d = parsed.data;
 
   try {
-    const { rows } = await pool.query<{ secret_key: string | null }>(
+    const { rows } = await pool.query<{ secret_key: string | null; meta_capi_token: string | null }>(
       `UPDATE workspaces
           SET meta_dataset_id     = COALESCE($1, meta_dataset_id),
               meta_capi_enabled   = COALESCE($2, meta_capi_enabled),
@@ -170,9 +188,15 @@ export async function save(req: Request, res: Response): Promise<void> {
               capi_event_lead      = COALESCE($6, capi_event_lead),
               capi_event_qualified = COALESCE($7, capi_event_qualified),
               capi_event_purchase  = COALESCE($8, capi_event_purchase),
+              -- $10: NULL — tegilmaydi; '' — o'chiriladi; aks holda yangi shifr.
+              meta_capi_token     = CASE
+                                      WHEN $10::text IS NULL THEN meta_capi_token
+                                      WHEN $10::text = ''    THEN NULL
+                                      ELSE $10::text
+                                    END,
               updated_at          = now()
         WHERE id = $9
-        RETURNING secret_key`,
+        RETURNING secret_key, meta_capi_token`,
       [
         d.datasetId ?? null,
         d.enabled ?? null,
@@ -183,6 +207,7 @@ export async function save(req: Request, res: Response): Promise<void> {
         d.eventQualified ?? null,
         d.eventPurchase ?? null,
         req.user.workspaceId,
+        d.token === undefined ? null : d.token === '' ? '' : encrypt(d.token),
       ]
     );
 
@@ -193,8 +218,8 @@ export async function save(req: Request, res: Response): Promise<void> {
 
     // Yoqishga urinilsa-yu token bo'lmasa — ochiq aytamiz, jim qolmaymiz.
     const warning =
-      d.enabled && !tokenPresent(rows[0].secret_key)
-        ? 'CAPI yoqildi, lekin .env da token topilmadi — hodisalar yuborilmaydi'
+      d.enabled && !tokenPresent(rows[0].secret_key, rows[0].meta_capi_token)
+        ? 'CAPI yoqildi, lekin token kiritilmagan — hodisalar yuborilmaydi'
         : null;
 
     res.json({ success: true, warning });
