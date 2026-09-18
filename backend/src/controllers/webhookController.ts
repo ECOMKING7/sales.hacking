@@ -83,6 +83,8 @@ interface WorkspaceCrmConfig {
    */
   amocrm_won_pairs: string[];
   amocrm_qualified_pairs: string[];
+  /** §3.3 etaplar.yangi — birinchi bosqich. */
+  amocrm_lead_pairs: string[];
   /** Har mijozga alohida webhook siri; bo'lmasa .env dagi umumiysi. */
   amocrm_webhook_secret: string | null;
 }
@@ -101,6 +103,7 @@ async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrm
             COALESCE(amocrm_qualified_stage_ids, '{}') AS amocrm_qualified_stage_ids,
             COALESCE(amocrm_won_pairs, '{}')           AS amocrm_won_pairs,
             COALESCE(amocrm_qualified_pairs, '{}')     AS amocrm_qualified_pairs,
+            COALESCE(amocrm_lead_pairs, '{}')          AS amocrm_lead_pairs,
             amocrm_webhook_secret
        FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
@@ -259,11 +262,15 @@ async function handleLeadStatus(
     statusId === config.amocrm_won_stage_id &&
     (!config.amocrm_pipeline_id || pipelineId === config.amocrm_pipeline_id);
 
-  let newStatus: 'won' | 'lost' | 'in_progress' = 'in_progress';
+  let newStatus: 'new' | 'won' | 'lost' | 'in_progress' = 'in_progress';
   if (wonByPair || wonByLegacy) {
     newStatus = 'won';
   } else if (statusId === DEFAULT_LOST_STATUS_ID) {
     newStatus = 'lost';
+  } else if (key !== null && config.amocrm_lead_pairs.includes(key)) {
+    // Birinchi bosqich: lid hali ishlov berilmagan. "Qotgan lid"
+    // hisobi shu holatga tayanadi.
+    newStatus = 'new';
   }
 
   // For a won deal, pull the authoritative deal value from the API.

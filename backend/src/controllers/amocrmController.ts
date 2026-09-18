@@ -201,6 +201,7 @@ export async function status(req: Request, res: Response): Promise<void> {
       amocrm_qualified_stage_ids: string[] | null;
       amocrm_won_pairs: string[] | null;
       amocrm_qualified_pairs: string[] | null;
+      amocrm_lead_pairs: string[] | null;
       amocrm_client_id: string | null;
       amocrm_client_secret: string | null;
       amocrm_webhook_secret: string | null;
@@ -208,7 +209,7 @@ export async function status(req: Request, res: Response): Promise<void> {
     }>(
       `SELECT amocrm_domain, amocrm_access_token, amocrm_pipeline_id,
               amocrm_won_stage_id, amocrm_qualified_stage_ids,
-              amocrm_won_pairs, amocrm_qualified_pairs,
+              amocrm_won_pairs, amocrm_qualified_pairs, amocrm_lead_pairs,
               amocrm_client_id, amocrm_client_secret,
               amocrm_webhook_secret, amocrm_token_expires_at
          FROM workspaces WHERE id = $1`,
@@ -234,6 +235,7 @@ export async function status(req: Request, res: Response): Promise<void> {
       /** '<voronka>:<etap>' juftliklari — sotuv va sifatli lid ta'rifi. */
       wonPairs: ws?.amocrm_won_pairs ?? [],
       qualifiedPairs: ws?.amocrm_qualified_pairs ?? [],
+      leadPairs: ws?.amocrm_lead_pairs ?? [],
       /** Client ID maxfiy emas — OAuth'da ochiq yuboriladi. */
       clientId: ws?.amocrm_client_id ?? null,
       /** Secret hech qachon qaytarilmaydi — faqat bor/yo'q (§4.1). */
@@ -313,6 +315,8 @@ const pipelineSchema = z.object({
    */
   wonPairs: pairList,
   qualifiedPairs: pairList,
+  /** §3.3 etaplar.yangi — voronkaning birinchi (lid) bosqichi. */
+  leadPairs: pairList,
 });
 
 export async function savePipeline(req: Request, res: Response): Promise<void> {
@@ -337,6 +341,7 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
           : null; // umuman yuborilmagan — mavjud qiymat saqlanadi
 
     const qualifiedPairs = parsed.data.qualifiedPairs ?? null;
+    const leadPairs = parsed.data.leadPairs ?? null;
 
     const result = await pool.query(
       `UPDATE workspaces
@@ -348,6 +353,8 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
                COALESCE($4::text[], amocrm_won_pairs),
              amocrm_qualified_pairs =
                COALESCE($5::text[], amocrm_qualified_pairs),
+             amocrm_lead_pairs =
+               COALESCE($7::text[], amocrm_lead_pairs),
              updated_at = now()
        WHERE id = $6`,
       [
@@ -357,6 +364,7 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
         wonPairs,
         qualifiedPairs,
         req.user.workspaceId,
+        leadPairs,
       ]
     );
     if (!result.rowCount) {
@@ -369,6 +377,7 @@ export async function savePipeline(req: Request, res: Response): Promise<void> {
       wonStageId: parsed.data.wonStageId,
       wonPairs: wonPairs,
       qualifiedPairs: qualifiedPairs,
+      leadPairs,
     });
   } catch (err) {
     console.error('amocrm savePipeline error:', err);

@@ -48,6 +48,8 @@ export interface AmocrmStatus {
    */
   wonPairs: string[];
   qualifiedPairs: string[];
+  /** Voronkaning birinchi (lid) etaplari. */
+  leadPairs: string[];
   /** Client ID maxfiy emas, shuning uchun qaytariladi. */
   clientId: string | null;
   /** Secret hech qachon qaytarilmaydi — faqat o'rnatilgani ma'lum. */

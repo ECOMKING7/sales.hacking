@@ -406,10 +406,13 @@ function AmocrmManualConnect({ onConnected }: { onConnected: () => void }) {
 function AmocrmSection() {
   const [status, setStatus] = useState<AmocrmStatus | null>(null);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [pipelineId, setPipelineId] = useState('');
-  const [wonStageId, setWonStageId] = useState('');
+  // Eski maydonlar: hisobotning standart voronkasi. Endi UI'da
+  // so'ralmaydi — birinchi "Sotuv" juftligidan olinadi.
+  const [, setPipelineId] = useState('');
+  const [, setWonStageId] = useState('');
   const [wonPairs, setWonPairs] = useState<string[]>([]);
   const [qualPairs, setQualPairs] = useState<string[]>([]);
+  const [leadPairs, setLeadPairs] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -424,6 +427,7 @@ function AmocrmSection() {
       setWonStageId(s.wonStageId ?? '');
       setWonPairs(s.wonPairs ?? []);
       setQualPairs(s.qualifiedPairs ?? []);
+      setLeadPairs(s.leadPairs ?? []);
       if (s.connected) {
         try {
           const { pipelines } = await amocrmApi.pipelines();
@@ -453,16 +457,28 @@ function AmocrmSection() {
   };
 
   const save = async () => {
-    if (!pipelineId || !wonStageId) return;
+    // Sotuv etapi belgilanmagan bo'lsa saqlash ma'nosiz: daromad 0 bo'lib
+    // qoladi va buni hech narsa bildirmaydi.
+    if (wonPairs.length === 0) {
+      setError("Kamida bitta 'Sotuv' etapini belgilang.");
+      return;
+    }
+    // Eski maydonlar (asosiy voronka + won stage) endi qo'lda
+    // tanlanmaydi — birinchi sotuv juftligidan olinadi. Ikki joyda
+    // bir xil narsani so'rash foydalanuvchini adashtirardi.
+    const [pId, sId] = wonPairs[0].split(':');
     setBusy(true);
     setError('');
     try {
       await amocrmApi.savePipeline({
-        pipelineId,
-        wonStageId,
+        pipelineId: pId,
+        wonStageId: sId,
         wonPairs,
         qualifiedPairs: qualPairs,
+        leadPairs,
       });
+      setPipelineId(pId);
+      setWonStageId(sId);
       await load();
     } catch (err) {
       setError(errMsg(err, 'Saqlanmadi'));
@@ -470,8 +486,6 @@ function AmocrmSection() {
       setBusy(false);
     }
   };
-
-  const stages = pipelines.find((p) => String(p.id) === pipelineId)?.statuses ?? [];
 
   /**
    * amoCRM tarixini import qilish.
@@ -553,54 +567,64 @@ function AmocrmSection() {
    * voronkasida, 5.8 mln esa `Kvalifikatsiya` da yopilgan — faqat
    * bittasini kuzatsak daromadning 2.4% i ko'rinadi.
    */
+  /**
+   * Etaplar jadvali — uchta rol, uchta ustun.
+   *
+   * Nega uchtasi birga: bir etap bir vaqtda "lid" ham, "sifatli" ham
+   * bo'lolmaydi, lekin mijozning voronkasi qanday qurilganini faqat
+   * uning o'zi biladi. Biz taxmin qilmaymiz (§3.5), tanlashni beramiz.
+   *
+   * Juftlik shaklida saqlanadi ('voronka:etap'), chunki amoCRM'da
+   * etap ID lari voronkalar bo'ylab takrorlanadi — 142 va 143 har
+   * voronkada bor.
+   */
   const stagePicker = (
-    <div className="mt-5 flex flex-col gap-4">
-      <div>
-        <span className={LABEL}>Sotuv va sifatli lid etaplari</span>
-        <p className="mt-1 text-xs leading-relaxed text-ink-3">
-          Har voronkadan belgilang. <b>Sotuv</b> — daromad hisoblanadigan etap.{' '}
-          <b>Sifatli</b> — lid bo'sh raqam emasligi ma'lum bo'lgan etap.
-          amoCRM'da <code>142</code> va <code>143</code> har voronkada takrorlanadi,
-          shuning uchun voronka ham birga tanlanadi.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-4">
       {pipelines.length === 0 ? (
-        <p className="text-xs text-ink-3">Voronkalar yuklanmadi — amoCRM tokeni tekshirilsin.</p>
+        <p className="text-xs text-ink-3">
+          Voronkalar yuklanmadi — amoCRM tokeni tekshirilsin yoki bir oz kutib
+          sahifani yangilang (amoCRM so'rov chastotasini cheklaydi).
+        </p>
       ) : (
         pipelines.map((p) => (
           <div key={p.id} className="rounded-sm border-[1.5px] border-line bg-surface-2 p-3">
             <p className="mb-2 text-xs font-semibold text-ink">{p.name}</p>
 
-            <div className="mb-1.5 grid grid-cols-[1fr_56px_56px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+            <div className="mb-1.5 grid grid-cols-[1fr_52px_56px_52px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
               <span>Etap</span>
-              <span className="text-center">Sotuv</span>
+              <span className="text-center">Lid</span>
               <span className="text-center">Sifatli</span>
+              <span className="text-center">Sotuv</span>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              {p.statuses.map((s) => {
-                const pair = `${p.id}:${s.id}`;
-                const isWon = wonPairs.includes(pair);
-                const isQual = qualPairs.includes(pair);
+              {p.statuses.map((st) => {
+                const pair = `${p.id}:${st.id}`;
                 return (
                   <div
-                    key={s.id}
-                    className="grid grid-cols-[1fr_56px_56px] items-center gap-2"
+                    key={st.id}
+                    className="grid grid-cols-[1fr_52px_56px_52px] items-center gap-2"
                   >
-                    <span className="min-w-0 truncate text-sm text-ink">{s.name}</span>
+                    <span className="min-w-0 truncate text-sm text-ink">{st.name}</span>
                     <span className="flex justify-center">
                       <Checkbox
-                        checked={isWon}
-                        onChange={(on) => togglePair(setWonPairs, pair, on)}
-                        label={`${p.name} / ${s.name} — sotuv`}
+                        checked={leadPairs.includes(pair)}
+                        onChange={(on) => togglePair(setLeadPairs, pair, on)}
+                        label={`${p.name} / ${st.name} — lid`}
                       />
                     </span>
                     <span className="flex justify-center">
                       <Checkbox
-                        checked={isQual}
+                        checked={qualPairs.includes(pair)}
                         onChange={(on) => togglePair(setQualPairs, pair, on)}
-                        label={`${p.name} / ${s.name} — sifatli`}
+                        label={`${p.name} / ${st.name} — sifatli`}
+                      />
+                    </span>
+                    <span className="flex justify-center">
+                      <Checkbox
+                        checked={wonPairs.includes(pair)}
+                        onChange={(on) => togglePair(setWonPairs, pair, on)}
+                        label={`${p.name} / ${st.name} — sotuv`}
                       />
                     </span>
                   </div>
@@ -611,9 +635,9 @@ function AmocrmSection() {
         ))
       )}
 
-      {wonPairs.length === 0 && (
+      {wonPairs.length === 0 && pipelines.length > 0 && (
         <p className="text-sm text-bad">
-          Hech bir etap "sotuv" deb belgilanmagan — daromad 0 bo'lib qoladi.
+          Hech bir etap "Sotuv" deb belgilanmagan — daromad 0 bo'lib qoladi.
         </p>
       )}
     </div>
@@ -638,46 +662,43 @@ function AmocrmSection() {
         <SkeletonText lines={3} />
       ) : status?.connected ? (
         <div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="amo-pipeline" className={LABEL}>
-                Asosiy voronka <span className="font-normal text-ink-3">(hisobot filtri)</span>
-              </label>
-              <select
-                id="amo-pipeline"
-                value={pipelineId}
-                onChange={(e) => {
-                  setPipelineId(e.target.value);
-                  setWonStageId('');
-                }}
-                className={SELECT}
-              >
-                <option value="">— choose —</option>
-                {pipelines.map((p) => (
-                  <option key={p.id} value={String(p.id)}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="amo-won-stage" className={LABEL}>
-                Won stage
-              </label>
-              <select
-                id="amo-won-stage"
-                value={wonStageId}
-                onChange={(e) => setWonStageId(e.target.value)}
-                className={SELECT}
-              >
-                <option value="">— choose —</option>
-                {stages.map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Qadamlar. Etaplar belgilanmaguncha 2-qadam ochiq turadi:
+              ulangan, lekin sozlanmagan integratsiya jim ishlamaydi —
+              lidlar tushadi, daromad 0 bo'lib qolaveradi. */}
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-sm bg-ok/10 px-2 py-1 font-semibold text-ok">
+              <Check className="h-3.5 w-3.5" /> 1. Ulandi
+            </span>
+            <span className="text-ink-3">→</span>
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-sm px-2 py-1 font-semibold',
+                wonPairs.length > 0 ? 'bg-ok/10 text-ok' : 'bg-tint text-accent'
+              )}
+            >
+              {wonPairs.length > 0 && <Check className="h-3.5 w-3.5" />}
+              2. Etaplar
+            </span>
+            <span className="text-ink-3">→</span>
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-sm px-2 py-1 font-semibold',
+                wonPairs.length > 0 ? 'bg-tint text-accent' : 'text-ink-3'
+              )}
+            >
+              3. Ma'lumot
+            </span>
+          </div>
+
+          <div className="mb-3">
+            <span className={LABEL}>2-qadam · Har etap nimani anglatadi</span>
+            <p className="mt-1 text-xs leading-relaxed text-ink-3">
+              <b>Lid</b> — voronkaning birinchi bosqichi, hali ishlov berilmagan.{' '}
+              <b>Sifatli</b> — lid bo'sh raqam emasligi ma'lum bo'lgan etap.{' '}
+              <b>Sotuv</b> — daromad hisoblanadigan etap. Bittadan ortiq voronkadan
+              belgilash mumkin: pul bir voronkada, kvalifikatsiya boshqasida yopilishi
+              mumkin.
+            </p>
           </div>
 
           {stagePicker}
@@ -714,11 +735,13 @@ function AmocrmSection() {
             </div>
           )}
 
-          {/* Tarixiy import. Webhook faqat ulangandan KEYINGI hodisalarni
-              ko'radi — usiz dashboard birinchi sotuvgacha bo'sh turadi. */}
+          {/* 3-qadam: ma'lumotni olib kelish. Etaplar belgilanmaguncha
+              ko'rsatilmaydi — aks holda import ishlaydi, lekin hamma lid
+              "in_progress" bo'lib tushadi va sabab ko'rinmaydi. */}
+          {wonPairs.length > 0 && (
           <div className="mt-5 rounded-md border-[1.5px] border-line bg-surface-2 p-3">
             <div className="mb-1.5 flex items-center justify-between gap-3">
-              <span className={LABEL}>Tarixni import qilish</span>
+              <span className={LABEL}>3-qadam · Tarixni import qilish</span>
               {impBusy && (
                 <Button
                   variant="ghost"
@@ -766,15 +789,16 @@ function AmocrmSection() {
               </p>
             )}
           </div>
+          )}
 
           <CardFooterRow>
             <Button
               onClick={save}
               loading={busy}
-              disabled={!pipelineId || !wonStageId}
-              className="sm:w-28"
+              disabled={wonPairs.length === 0}
+              className="sm:w-40"
             >
-              Save
+              Etaplarni saqlash
             </Button>
           </CardFooterRow>
         </div>

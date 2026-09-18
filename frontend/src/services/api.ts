@@ -95,6 +95,7 @@ export const amocrmApi = {
     wonStageId: string;
     wonPairs?: string[];
     qualifiedPairs?: string[];
+    leadPairs?: string[];
   }) => api.post('/api/workspace/amocrm-pipeline', payload).then((r) => r.data),
 };
 
