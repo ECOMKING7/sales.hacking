@@ -32,6 +32,7 @@ function yorliq(f: FieldRow): string {
 export default function LeadIdField() {
   const [data, setData] = useState<FieldReport | null>(null);
   const [tanlov, setTanlov] = useState<string>('');
+  const [manba, setManba] = useState<'field' | 'name' | 'tag'>('field');
   const [liniyaMaydoni, setLiniyaMaydoni] = useState<string>('');
   const [reklamaLiniyalari, setReklamaLiniyalari] = useState<string[]>([]);
   const [yuklanmoqda, setYuklanmoqda] = useState(false);
@@ -45,14 +46,14 @@ export default function LeadIdField() {
     try {
       const r = await amocrmApi.fields();
       /**
-       * FRONTEND VA BACKEND ALOHIDA DEPLOY BO'LADI (ikkita Vercel
+       * ⚠ FRONTEND VA BACKEND ALOHIDA DEPLOY BO'LADI (ikkita Vercel
        * loyihasi). Frontend tezroq chiqib ketsa, u backend hali
        * yubormayotgan maydonni o'qiydi va `undefined.join()` butun
        * sahifani oq qilib qo'yadi — aynan shu bo'ldi.
        *
-       * Shuning uchun javob BIR JOYDA normallashtiriladi: har yangi
-       * maydonga xavfsiz sukut. Komponent ichida `?.` tarqatib yurish
-       * emas — u bitta joyda unutiladi va xato takrorlanadi.
+       * Shuning uchun javob BIR JOYDA normallashtiriladi: yangi
+       * maydonlar uchun har doim xavfsiz sukut. Komponent ichida
+       * `?.` tarqatib yurish emas — u bitta joyda unutiladi.
        */
       setData({
         ...r,
@@ -68,6 +69,7 @@ export default function LeadIdField() {
         tegdaTopildi: r.tegdaTopildi ?? 0,
         tegNoyob: r.tegNoyob ?? 0,
         tegNamunalar: r.tegNamunalar ?? [],
+        manba: r.manba ?? 'field',
         atribusiya: r.atribusiya ?? {
           utm_term: 0,
           utm_campaign: 0,
@@ -77,6 +79,7 @@ export default function LeadIdField() {
         },
       });
       setTanlov(r.tanlangan ?? '');
+      setManba(r.manba ?? 'field');
       setLiniyaMaydoni(r.liniyaMaydoni ?? '');
       setReklamaLiniyalari(r.reklamaLiniyalari ?? []);
     } catch (err) {
@@ -90,7 +93,7 @@ export default function LeadIdField() {
   // so'rov, ya'ni limitdan yeydi. Faqat tugma bosilganda.
   useEffect(() => {
     setSaqlandi(false);
-  }, [tanlov, liniyaMaydoni, reklamaLiniyalari]);
+  }, [tanlov, manba, liniyaMaydoni, reklamaLiniyalari]);
 
   const saqla = async () => {
     setSaqlanmoqda(true);
@@ -98,6 +101,7 @@ export default function LeadIdField() {
     try {
       await amocrmApi.saveLeadIdField({
         fieldId: tanlov || null,
+        source: manba,
         lineField: liniyaMaydoni || null,
         adLines: reklamaLiniyalari,
       });
@@ -222,15 +226,11 @@ export default function LeadIdField() {
                   Misol: <span className="font-mono">{data.tegNamunalar.join(', ') || '—'}</span>
                 </p>
               )}
-              <p
-                className={cn(
-                  'mt-2 text-xs leading-relaxed',
-                  data.nomNoyob > data.nomdaTopildi * 0.9 ? 'text-ok' : 'text-bad'
-                )}
-              >
-                {data.nomNoyob > data.nomdaTopildi * 0.9
-                  ? 'Deyarli har lidda boshqa qiymat — bu Meta Lead ID ga o\'xshaydi.'
-                  : 'Qiymatlar TAKRORLANMOQDA — bu Lead ID emas, ehtimol forma yoki reklama ID si. Facebook\'da 15–17 xonali bo\'ladigan narsalar: lead ID, forma ID, kampaniya ID, ad ID, ad account ID. Faqat lead ID har lidda boshqa bo\'ladi.'}
+              <p className="mt-2 text-xs leading-relaxed text-ink-3">
+                Qiymat deyarli har lidda boshqa bo'lsa — bu Meta Lead ID.
+                Takrorlansa — forma yoki reklama ID si (Facebook'da lead ID,
+                forma ID, kampaniya ID, ad ID va ad account ID — hammasi 15–17
+                xonali; faqat lead ID noyob bo'ladi).
               </p>
             </div>
           )}
@@ -254,13 +254,28 @@ export default function LeadIdField() {
           )}
 
           <div>
+            <label className={LABEL} htmlFor="lead-id-source">
+              Meta Lead ID qayerdan o'qilsin
+            </label>
+            <select
+              id="lead-id-source"
+              className={cn(SELECT, 'mb-3')}
+              value={manba}
+              onChange={(e) => setManba(e.target.value as 'field' | 'name' | 'tag')}
+            >
+              <option value="field">Maxsus maydondan</option>
+              <option value="name">Lid nomidan</option>
+              <option value="tag">Tegdan</option>
+            </select>
+
             <label className={LABEL} htmlFor="lead-id-field">
-              Qaysi maydon Meta Lead ID ni saqlaydi
+              Qaysi maydon Meta Lead ID ni saqlaydi{manba !== 'field' && ' (bu manbada ishlatilmaydi)'}
             </label>
             <select
               id="lead-id-field"
               className={SELECT}
               value={tanlov}
+              disabled={manba !== 'field'}
               onChange={(e) => setTanlov(e.target.value)}
             >
               <option value="">Sozlanmagan</option>

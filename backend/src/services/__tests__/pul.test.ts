@@ -87,6 +87,7 @@ const BOSH_CONFIG: ImportConfig = {
   amocrm_qualified_pairs: [],
   amocrm_lead_pairs: [],
   amocrm_lead_id_field: null,
+  amocrm_lead_id_source: 'field',
   amocrm_line_field: null,
 };
 
@@ -526,4 +527,49 @@ test('capi vaqti: kelajakdagi vaqt hozirgi vaqtga tekislanadi', async () => {
   const t = toUnixSeconds(new Date(Date.now() + 3 * 3600 * 1000));
   assert.notEqual(t, null);
   assert.equal((t as number) <= Math.floor(Date.now() / 1000) + 1, true);
+});
+
+/* ── Lead ID manbasi: maydon / lid nomi / teg ────────────────────────
+   Furninglass'da Lead ID hech bir maxsus maydonda emas, LID NOMIDA
+   turibdi. Teglarda ham 15–17 xonali son bor, lekin 205 lidda atigi
+   14 xil — ya'ni u lead ID emas, forma yoki reklama ID si. Manbani
+   noto'g'ri tanlash Meta'ga boshqa odamning hodisasini yuborish
+   demakdir, shuning uchun uchala yo'l ham test bilan qotirilgan. */
+
+const LID_NAMUNA = {
+  name: 'Заявка #1504085748405578',
+  custom_fields_values: [
+    { field_id: 42, field_name: 'Facebook Lead ID', values: [{ value: '1657533052655958' }] },
+  ],
+  _embedded: { tags: [{ name: 'forma 1394587378208816' }] },
+};
+
+test('lead id manbasi: name — lid nomidan olinadi', async () => {
+  const { leadIdniOl } = await import('../amocrmFields');
+  assert.equal(leadIdniOl(LID_NAMUNA, 'name', null), '1504085748405578');
+});
+
+test('lead id manbasi: tag — tegdan olinadi', async () => {
+  const { leadIdniOl } = await import('../amocrmFields');
+  assert.equal(leadIdniOl(LID_NAMUNA, 'tag', null), '1394587378208816');
+});
+
+test('lead id manbasi: field — maxsus maydondan olinadi', async () => {
+  const { leadIdniOl } = await import('../amocrmFields');
+  assert.equal(leadIdniOl(LID_NAMUNA, 'field', '42'), '1657533052655958');
+  // Manba field, lekin maydon sozlanmagan — nom bo'lsa ham OLINMAYDI.
+  assert.equal(leadIdniOl(LID_NAMUNA, 'field', null), null);
+});
+
+test('lead id manbasi: nomda son bo\'lmasa null', async () => {
+  const { leadIdniOl } = await import('../amocrmFields');
+  assert.equal(leadIdniOl({ name: 'Ahmad Karimov' }, 'name', null), null);
+  assert.equal(leadIdniOl({ name: 'Buyurtma 12345' }, 'name', null), null, '5 xona — kam');
+});
+
+test('lead id manbasi: telefon raqami nomda bo\'lsa olinmaydi', async () => {
+  const { leadIdniOl } = await import('../amocrmFields');
+  // 998901234567 = 12 xona. Chegaradan tashqarida, ya'ni Meta'ga
+  // telefon raqami lead_id sifatida hech qachon ketmaydi.
+  assert.equal(leadIdniOl({ name: 'Mijoz 998901234567' }, 'name', null), null);
 });

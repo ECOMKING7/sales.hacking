@@ -264,9 +264,12 @@ function maydonlarniSana(
 
     // Noyob qiymatlar: liniya raqamini mijoz raqamidan shu bilan ajratamiz.
     // Ro'yxat cheklangan — mijoz raqamlari maydonida u minglab bo'lib ketardi.
+    // Noyoblikni TO'LIQ sanaymiz (namuna ko'pi bilan 800 qator — arzon).
+    // Qiymatlar ro'yxati esa faqat kam bo'lganda ochiladi: mijoz
+    // raqamlari maydonida u yuzlab raqamni oshkor qilardi.
     const kalit = raqamlash(qiymat) || qiymat;
     const nq = noyobHisob.get(id) ?? new Set<string>();
-    if (nq.size <= LINIYA.engKopNoyob) nq.add(kalit);
+    nq.add(kalit);
     noyobHisob.set(id, nq);
     qator.noyob = nq.size;
   }
@@ -377,9 +380,12 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
       const nomdagi = lid.name ? MATNDA_LEAD_ID.exec(lid.name) : null;
       if (nomdagi) {
         nomdaTopildi += 1;
-        // Noyob qiymatlar ro'yxati cheklangan: Lead ID bo'lsa u
-        // namuna hajmiga teng bo'lib ketardi.
-        if (nomQiymatlar.size <= VORONKADAN) nomQiymatlar.add(nomdagi[0]);
+        // ⚠ CHEKLOV QO'YILMAYDI. Ilgari bu yerda `size <= 100` sharti
+        // bor edi va o'lchov aynan 101 da to'xtardi — "205 tadan 101
+        // noyob" degan raqam chiqdi va u YOLG'ON edi: u cheklovning
+        // o'zini o'lchayotgandi. Diagnostika o'z chegarasini o'lchab
+        // qo'ysa, u diagnostika emas.
+        nomQiymatlar.add(nomdagi[0]);
         topildi = true;
       }
       // Teglar: ba'zi integratsiyalar manbani tegga yozadi.
@@ -387,7 +393,7 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
         const tegdagi = t.name ? MATNDA_LEAD_ID.exec(t.name) : null;
         if (tegdagi) {
           tegdaTopildi += 1;
-          if (tegQiymatlar.size <= VORONKADAN) tegQiymatlar.add(tegdagi[0]);
+          tegQiymatlar.add(tegdagi[0]);
           topildi = true;
           break;
         }
@@ -507,6 +513,21 @@ export function extractLeadId(
   return null;
 }
 
+/** Qayerdan o'qiladi: maxsus maydon, lid nomi yoki teg. */
+export type LeadIdManbasi = 'field' | 'name' | 'tag';
+
+/**
+ * Matn ichidan Meta Lead ID ni oladi (lid nomi yoki teg).
+ *
+ * Ba'zi amoCRM–Facebook integratsiyalari uni maxsus maydonga emas,
+ * lid NOMIGA yozadi: "Заявка #1504085748405578".
+ */
+export function extractLeadIdFromText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const m = MATNDA_LEAD_ID.exec(text);
+  return m ? m[0] : null;
+}
+
 /**
  * Sozlangan maydondan qo'ng'iroq liniyasini oladi (faqat raqam).
  *
@@ -541,6 +562,33 @@ export function reklamaLiniyasimi(
   if (!royxat.length) return true;
   if (!liniya) return false;
   return royxat.includes(raqamlash(liniya));
+}
+
+/**
+ * Lidning Meta Lead ID si — manbaga qarab.
+ *
+ * Bitta kirish nuqtasi: import ham, webhook ham shu funksiyani
+ * chaqiradi, ya'ni ikkita joyda ikki xil mantiq paydo bo'lmaydi.
+ */
+export function leadIdniOl(
+  lid: { name?: string | null; custom_fields_values?: AmoMaydonQiymati[] | null;
+         _embedded?: { tags?: Array<{ name?: string }> } },
+  manba: LeadIdManbasi | null,
+  fieldId: string | null
+): string | null {
+  switch (manba) {
+    case 'name':
+      return extractLeadIdFromText(lid.name);
+    case 'tag': {
+      for (const t of lid._embedded?.tags ?? []) {
+        const v = extractLeadIdFromText(t.name);
+        if (v) return v;
+      }
+      return null;
+    }
+    default:
+      return extractLeadId(lid.custom_fields_values, fieldId);
+  }
 }
 
 /** Test va diagnostika uchun ochiq. */

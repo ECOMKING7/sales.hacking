@@ -299,6 +299,8 @@ export interface FieldReport {
   tegdaTopildi: number;
   tegNoyob: number;
   tegNamunalar: string[];
+  /** Lead ID qayerdan o'qiladi: maxsus maydon, lid nomi yoki teg. */
+  manba: 'field' | 'name' | 'tag';
   atribusiya: {
     utm_term: number;
     utm_campaign: number;

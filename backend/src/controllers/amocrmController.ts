@@ -404,16 +404,19 @@ export async function listFields(req: Request, res: Response): Promise<void> {
     const tahlil = await discoverLeadFields(req.user.workspaceId);
     const { rows } = await pool.query<{
       amocrm_lead_id_field: string | null;
+      amocrm_lead_id_source: string | null;
       amocrm_line_field: string | null;
       amocrm_ad_lines: string[] | null;
     }>(
-      `SELECT amocrm_lead_id_field, amocrm_line_field, amocrm_ad_lines
+      `SELECT amocrm_lead_id_field, amocrm_lead_id_source,
+              amocrm_line_field, amocrm_ad_lines
          FROM workspaces WHERE id = $1`,
       [req.user.workspaceId]
     );
     res.json({
       ...tahlil,
       tanlangan: rows[0]?.amocrm_lead_id_field ?? null,
+      manba: rows[0]?.amocrm_lead_id_source ?? 'field',
       liniyaMaydoni: rows[0]?.amocrm_line_field ?? null,
       reklamaLiniyalari: rows[0]?.amocrm_ad_lines ?? [],
     });
@@ -428,6 +431,8 @@ export async function listFields(req: Request, res: Response): Promise<void> {
 const leadIdFieldSchema = z.object({
   /** amoCRM field_id. null — sozlamani bekor qilish. */
   fieldId: z.union([amoId, z.null()]),
+  /** Lead ID qayerdan o'qiladi. Yuborilmasa mavjud qiymat saqlanadi. */
+  source: z.enum(['field', 'name', 'tag']).optional(),
   /** Qo'ng'iroq liniyasi maydoni. Yuborilmasa mavjud qiymat saqlanadi. */
   lineField: z.union([amoId, z.null()]).optional(),
   /**
@@ -456,6 +461,7 @@ export async function saveLeadIdField(req: Request, res: Response): Promise<void
     const result = await pool.query(
       `UPDATE workspaces
           SET amocrm_lead_id_field = $1,
+              amocrm_lead_id_source = COALESCE($5, amocrm_lead_id_source),
               amocrm_line_field = COALESCE($3, amocrm_line_field),
               amocrm_ad_lines = COALESCE($4::text[], amocrm_ad_lines),
               updated_at = now()
@@ -465,6 +471,7 @@ export async function saveLeadIdField(req: Request, res: Response): Promise<void
         req.user.workspaceId,
         parsed.data.lineField ?? null,
         parsed.data.adLines ?? null,
+        parsed.data.source ?? null,
       ]
     );
     if (!result.rowCount) {
@@ -474,6 +481,7 @@ export async function saveLeadIdField(req: Request, res: Response): Promise<void
     res.json({
       success: true,
       fieldId: parsed.data.fieldId,
+      source: parsed.data.source ?? null,
       lineField: parsed.data.lineField ?? null,
       adLines: parsed.data.adLines ?? null,
     });

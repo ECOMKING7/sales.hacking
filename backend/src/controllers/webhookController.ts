@@ -11,7 +11,7 @@ import {
 } from '../services/metaCapi';
 import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
-import { extractLeadId, extractLine } from '../services/amocrmFields';
+import { leadIdniOl, extractLine, type LeadIdManbasi } from '../services/amocrmFields';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
 import { xatoQayd } from '../utils/xatolar';
@@ -92,6 +92,8 @@ interface WorkspaceCrmConfig {
   amocrm_webhook_secret: string | null;
   /** Meta Lead ID qaysi maydonda (amoCRM field_id). NULL — sozlanmagan. */
   amocrm_lead_id_field: string | null;
+  /** Lead ID qayerdan o'qiladi: field | name | tag. */
+  amocrm_lead_id_source: LeadIdManbasi;
   /** Qo'ng'iroq liniyasi qaysi maydonda. NULL — sozlanmagan. */
   amocrm_line_field: string | null;
 }
@@ -112,6 +114,7 @@ async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrm
             COALESCE(amocrm_lead_pairs, '{}')          AS amocrm_lead_pairs,
             amocrm_webhook_secret,
             amocrm_lead_id_field,
+            COALESCE(amocrm_lead_id_source, 'field') AS amocrm_lead_id_source,
             amocrm_line_field
        FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
@@ -159,7 +162,7 @@ async function handleLeadAdd(
     const full = await getLead(workspaceId, lead.id);
     // UTM lid maydonlarida keladi — atribusiyaning asosiy kaliti (§5).
     utm = extractUtm(full.custom_fields_values);
-    fbLeadId = extractLeadId(full.custom_fields_values, config.amocrm_lead_id_field);
+    fbLeadId = leadIdniOl(full, config.amocrm_lead_id_source, config.amocrm_lead_id_field);
     sourceLine = extractLine(full.custom_fields_values, config.amocrm_line_field);
     contactId = full._embedded?.contacts?.[0]?.id ?? null;
     if (contactId) {

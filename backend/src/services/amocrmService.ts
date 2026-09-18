@@ -372,13 +372,15 @@ export async function getContact(
 
 interface AmoLead {
   id: number;
+  /** Ba'zi integratsiyalar Meta Lead ID ni lid NOMIGA yozadi. */
+  name?: string;
   price?: number;
   status_id?: number;
   pipeline_id?: number;
   created_at?: number;
   /** UTM shu yerda keladi — atribusiya zanjirining kaliti (§5). */
   custom_fields_values?: AmoCustomFieldValue[] | null;
-  _embedded?: { contacts?: Array<{ id: number }> };
+  _embedded?: { contacts?: Array<{ id: number }>; tags?: Array<{ name?: string }> };
 }
 
 export async function getLead(workspaceId: string, leadId: number | string): Promise<AmoLead> {

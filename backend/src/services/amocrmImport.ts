@@ -31,7 +31,7 @@
 import { pool } from '../db/pool';
 import { amoGetPath, hashPhone, hashEmail } from './amocrmService';
 import { extractUtm, matchLeadToAd } from './leadMatcher';
-import { extractLeadId, extractLine } from './amocrmFields';
+import { leadIdniOl, extractLine, type LeadIdManbasi } from './amocrmFields';
 import { processLeadAttribution } from './attributionEngine';
 
 /** Bitta sahifadagi yozuvlar soni — amoCRM ruxsat bergan maksimum. */
@@ -61,13 +61,15 @@ interface AmoMaydon {
 
 interface AmoLid {
   id: number;
+  /** Ba'zi integratsiyalar Meta Lead ID ni aynan shu yerga yozadi. */
+  name?: string;
   price?: number;
   status_id?: number;
   pipeline_id?: number;
   created_at?: number;
   closed_at?: number;
   custom_fields_values?: AmoMaydon[] | null;
-  _embedded?: { contacts?: Array<{ id: number }> };
+  _embedded?: { contacts?: Array<{ id: number }>; tags?: Array<{ name?: string }> };
 }
 
 interface AmoKontakt {
@@ -98,6 +100,8 @@ export interface ImportConfig {
   amocrm_lead_pairs: string[];
   /** Meta Lead ID qaysi maydonda (amoCRM field_id). NULL — sozlanmagan. */
   amocrm_lead_id_field: string | null;
+  /** Lead ID qayerdan o'qiladi: field | name | tag. */
+  amocrm_lead_id_source: LeadIdManbasi;
   /** Qo'ng'iroq liniyasi qaysi maydonda. NULL — sozlanmagan. */
   amocrm_line_field: string | null;
 }
@@ -120,6 +124,7 @@ export async function loadImportConfig(workspaceId: string): Promise<ImportConfi
             COALESCE(amocrm_qualified_pairs, '{}')       AS amocrm_qualified_pairs,
             COALESCE(amocrm_lead_pairs, '{}')            AS amocrm_lead_pairs,
             amocrm_lead_id_field,
+            COALESCE(amocrm_lead_id_source, 'field') AS amocrm_lead_id_source,
             amocrm_line_field
        FROM workspaces WHERE id = $1`,
     [workspaceId]
@@ -362,7 +367,7 @@ async function lidYoz(
   const utm = extractUtm(maydonlar);
   // Meta Lead ID va qo'ng'iroq liniyasi — ikkalasi ham konfiguratsiyadagi
   // maydondan o'qiladi. Sozlanmagan bo'lsa null, bu xato emas.
-  const fbLeadId = extractLeadId(maydonlar, config.amocrm_lead_id_field);
+  const fbLeadId = leadIdniOl(lid, config.amocrm_lead_id_source, config.amocrm_lead_id_field);
   const sourceLine = extractLine(maydonlar, config.amocrm_line_field);
 
   const contactId = lid._embedded?.contacts?.[0]?.id ?? null;

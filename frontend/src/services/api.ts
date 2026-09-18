@@ -105,6 +105,7 @@ export const amocrmApi = {
   fields: () => api.get<FieldReport>('/api/workspace/amocrm-fields').then((r) => r.data),
   saveLeadIdField: (payload: {
     fieldId: string | null;
+    source?: 'field' | 'name' | 'tag';
     lineField?: string | null;
     adLines?: string[];
   }) =>
