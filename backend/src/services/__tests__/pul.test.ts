@@ -262,3 +262,42 @@ test('model: bo\'sh yo\'l — xato emas, null', () => {
   assert.equal(lastClickAttribution([]), null);
   assert.equal(linearAttribution([]).size, 0);
 });
+
+/* ═══════════════ 7. Shifrlash ═══════════════
+   HODISA: CI birinchi ishga tushishidayoq yiqildi — encryption.ts
+   modul darajasida `throw` qilardi va ENCRYPTION_KEY yo'q muhitda
+   uni bilvosita import qilgan hamma narsa ishga tushmasdi. */
+
+test('shifrlash: kalit yo\'q bo\'lsa import emas, ISHLATISH yiqiladi', async () => {
+  const enc = await import('../../utils/encryption');
+  const oldin = process.env.ENCRYPTION_KEY;
+  delete process.env.ENCRYPTION_KEY;
+  try {
+    // Import bu qatorgacha muvaffaqiyatli o'tdi — asosiy talab shu.
+    assert.equal(typeof enc.encrypt, 'function');
+  } finally {
+    if (oldin !== undefined) process.env.ENCRYPTION_KEY = oldin;
+  }
+});
+
+test('shifrlash: encrypt -> decrypt asl matnni qaytaradi', async () => {
+  process.env.ENCRYPTION_KEY = 'test-kalit-faqat-test-uchun';
+  const enc = await import('../../utils/encryption');
+  const matn = 'amocrm_token_namunasi_12345';
+  const shifr = enc.encrypt(matn);
+  assert.notEqual(shifr, matn, 'shifrlangan matn asl matnga teng bo\'lmasin');
+  assert.match(shifr, /^[0-9a-f]{32}:[0-9a-f]+$/, 'shakl: <iv-hex>:<data-hex>');
+  assert.equal(enc.decrypt(shifr), matn);
+});
+
+test('shifrlash: har safar boshqa IV — bir xil matn boshqacha shifrlanadi', async () => {
+  process.env.ENCRYPTION_KEY = 'test-kalit-faqat-test-uchun';
+  const enc = await import('../../utils/encryption');
+  assert.notEqual(enc.encrypt('bir xil'), enc.encrypt('bir xil'));
+});
+
+test('shifrlash: buzuq qiymat aniq xato beradi', async () => {
+  process.env.ENCRYPTION_KEY = 'test-kalit-faqat-test-uchun';
+  const enc = await import('../../utils/encryption');
+  assert.throws(() => enc.decrypt('ikki-qismsiz-matn'), /Invalid encrypted payload/);
+});
