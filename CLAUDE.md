@@ -28,6 +28,33 @@ Infra (Postgres :5432, Redis :6379) via `docker-compose up -d` from repo root.
 
 Two real defects came out of writing it: `normalizePhoneE164('12345')` used to return `'99812345'` — garbage silently became a plausible number that hashed to nothing — and the single-digit country-code case (7 = RU/KZ, 1 = US/CA) is a documented limitation, not a fixed behaviour. Keep that pattern: when a test finds a limit that can't be fixed correctly yet, assert the current behaviour and name it a limitation.
 
+### Sending CRM results back to Meta (CAPI)
+
+`services/metaCapi.ts` posts three stages — `lead`, `qualified`, `purchase` — to a Meta dataset. The **event names are identical across ad objectives on purpose**: Meta must see one signal set, so a call funnel and a lead funnel emit the same names and the difference lives only in the stage→pair config. Names themselves come from `workspaces.capi_event_*`, never from code.
+
+Meta's *Conversions API for CRM* requires three things this code used to get wrong:
+
+- **`custom_data` is always present**, carrying `event_source: "crm"` and `lead_event_source`. Meta states at least one custom parameter is mandatory; previously `custom_data` was attached only to `purchase` (for the value), so every `qualified` event fell short of the spec.
+- **`action_source`** is `system_generated` for CRM events. It now comes from `workspaces.capi_action_source` rather than a literal — a call funnel may need `phone_call`, and that is **unverified**: Meta's docs have no separate call page that this session could find.
+- **`event_time` older than 7 days is not sent at all.** It used to be rewritten to `now()`, which told Meta a three-month-old sale happened today and rewarded today's ads for it. A false signal is worse than no signal. The practical consequence: **the historical import can never be pushed to CAPI** — Meta would reject it anyway — so CAPI's value starts the day it is switched on.
+
+Matching keys, strongest first: `lead_id` (Meta Lead ID from `leads.fb_lead_id`), `fbc` (built from `fbclid`), `ph`, `em`. With no key at all the event is recorded as an error and skipped rather than sent blind. `fb_lead_id` is sent **as a string** — the docs' sample shows an unquoted number, but a 17-digit value exceeds `Number.MAX_SAFE_INTEGER`; whether Meta accepts the string form still needs checking.
+
+Dedup is `event_id = "<crm_lead_id>:<event_name>"` plus a `capi_events` row, which outlives Meta's own 48-hour window. The age check runs **before** the dedup row is claimed — claiming first would permanently block a later, legitimate resend.
+
+### Identifying which ad a lead came from, per account
+
+Nothing about a customer's CRM is hardcoded (§3.1), and IDs are never guessed (§3.5). `services/amocrmFields.ts` discovers them **by value shape**, which is independent of field name, language and telephony vendor:
+
+- **Meta Lead ID** — a clean 15–17 digit number. The bounds are chosen to exclude what else lives in those fields: a phone is 12 digits, a unix timestamp 10, an amoCRM lead id 7–9. Searched in lead custom fields, the lead *name*, tags, and linked contact fields, because integrations vary in where they put it.
+- **Call line** — phone-shaped values with **low cardinality**. A customer's number is unique per lead; the line they dialled repeats. So "phone-shaped but only 1–8 distinct values across ≥10 leads" identifies the line field without knowing its name.
+
+The sample is drawn **per pipeline**, 100 leads each. The first version sampled "the last 250 leads" overall and produced a confidently wrong answer on the first real account: the high-volume call pipeline filled the sample and the lead-form pipeline never appeared, so the report said "no Meta Lead ID" when it had simply never looked. Pipelines are fed by different machines — a form, a telephony integration — and averaging across them destroys the conclusion.
+
+Discovery only *proposes*: candidates are ranked and shown, a human picks, and the choice is stored in `amocrm_lead_id_field` / `amocrm_line_field`. Both the importer and the webhook then read those fields into `leads.fb_lead_id` and `leads.source_line`.
+
+`amocrm_ad_lines` marks which lines are ad lines. **An empty list means no filtering** — behaviour stays exactly as before for an unconfigured account, so nothing disappears silently; enabling the filter is a deliberate act. It matters because organic calls (existing customers, referrals) land in the same pipeline as ad calls and are currently credited to ad spend, which makes the call channel's CAC look better than it is.
+
 ### Error reporting
 
 `utils/xatolar.ts` is the single place an error is reported from. `xatoQayd(err, { joy, workspaceId, qoshimcha })` logs to the console and, **only when `SENTRY_DSN` is set**, forwards to Sentry; `xatolarniYubor()` flushes. With no DSN the module is a console logger and never throws — Sentry is optional in exactly the way Redis is.

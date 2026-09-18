@@ -11,6 +11,7 @@ import {
 } from '../services/metaCapi';
 import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
+import { extractLeadId, extractLine } from '../services/amocrmFields';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
 import { xatoQayd } from '../utils/xatolar';
@@ -89,6 +90,10 @@ interface WorkspaceCrmConfig {
   amocrm_lead_pairs: string[];
   /** Har mijozga alohida webhook siri; bo'lmasa .env dagi umumiysi. */
   amocrm_webhook_secret: string | null;
+  /** Meta Lead ID qaysi maydonda (amoCRM field_id). NULL — sozlanmagan. */
+  amocrm_lead_id_field: string | null;
+  /** Qo'ng'iroq liniyasi qaysi maydonda. NULL — sozlanmagan. */
+  amocrm_line_field: string | null;
 }
 
 /** Hodisaning (voronka:etap) kaliti. Ikkisi ham bo'lmasa — null. */
@@ -105,7 +110,9 @@ async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrm
             COALESCE(amocrm_won_pairs, '{}')           AS amocrm_won_pairs,
             COALESCE(amocrm_qualified_pairs, '{}')     AS amocrm_qualified_pairs,
             COALESCE(amocrm_lead_pairs, '{}')          AS amocrm_lead_pairs,
-            amocrm_webhook_secret
+            amocrm_webhook_secret,
+            amocrm_lead_id_field,
+            amocrm_line_field
        FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
     [`${subdomain}.%`]
   );
@@ -143,12 +150,17 @@ async function handleLeadAdd(
   let phoneHash: string | null = null;
   let emailHash: string | null = null;
   let utm: ReturnType<typeof extractUtm> = {};
+  // Meta Lead ID va qo'ng'iroq liniyasi — konfiguratsiyadagi maydondan.
+  let fbLeadId: string | null = null;
+  let sourceLine: string | null = null;
 
   // Enrich with contact info + UTM from the AmoCRM API (needs a valid token).
   try {
     const full = await getLead(workspaceId, lead.id);
     // UTM lid maydonlarida keladi — atribusiyaning asosiy kaliti (§5).
     utm = extractUtm(full.custom_fields_values);
+    fbLeadId = extractLeadId(full.custom_fields_values, config.amocrm_lead_id_field);
+    sourceLine = extractLine(full.custom_fields_values, config.amocrm_line_field);
     contactId = full._embedded?.contacts?.[0]?.id ?? null;
     if (contactId) {
       const contact = await getContact(workspaceId, contactId);
@@ -193,10 +205,11 @@ async function handleLeadAdd(
        (workspace_id, crm_lead_id, crm_contact_id, phone_hash, email_hash,
         status, revenue, crm_created_at,
         utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid,
-        last_click_ad_id, first_click_ad_id, match_method)
+        last_click_ad_id, first_click_ad_id, match_method,
+        fb_lead_id, source_line)
      VALUES ($1,$2,$3,$4,$5,'new',$6,
              CASE WHEN $7::bigint IS NULL THEN NULL ELSE to_timestamp($7::bigint) END,
-             $8,$9,$10,$11,$12,$13,$14,$14,$15)
+             $8,$9,$10,$11,$12,$13,$14,$14,$15,$16,$17)
      ON CONFLICT (workspace_id, crm_lead_id) DO UPDATE SET
         crm_contact_id = COALESCE(EXCLUDED.crm_contact_id, leads.crm_contact_id),
         phone_hash = COALESCE(EXCLUDED.phone_hash, leads.phone_hash),
@@ -211,7 +224,9 @@ async function handleLeadAdd(
         fbclid       = COALESCE(leads.fbclid,       EXCLUDED.fbclid),
         last_click_ad_id  = COALESCE(leads.last_click_ad_id,  EXCLUDED.last_click_ad_id),
         first_click_ad_id = COALESCE(leads.first_click_ad_id, EXCLUDED.first_click_ad_id),
-        match_method      = COALESCE(leads.match_method,      EXCLUDED.match_method)`,
+        match_method      = COALESCE(leads.match_method,      EXCLUDED.match_method),
+        fb_lead_id        = COALESCE(leads.fb_lead_id,        EXCLUDED.fb_lead_id),
+        source_line       = COALESCE(leads.source_line,       EXCLUDED.source_line)`,
     [
       workspaceId,
       lead.id,
@@ -228,6 +243,8 @@ async function handleLeadAdd(
       utm.fbclid ?? null,
       match.adId,
       match.method,
+      fbLeadId,
+      sourceLine,
     ]
   );
 

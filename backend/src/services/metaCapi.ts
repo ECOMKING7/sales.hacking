@@ -46,6 +46,16 @@ export interface CapiLead {
   phone_hash: string | null;
   email_hash: string | null;
   fbclid: string | null;
+  /**
+   * Meta Lead ID (15–17 xonali). Eng kuchli moslik kaliti: piksel ham,
+   * UTM ham, fbclid ham bo'lmasa ishlaydi.
+   *
+   * ⚠ MATN sifatida yuboriladi. Meta hujjatidagi misolda u tirnoqsiz
+   * (son) ko'rsatilgan, lekin 17 xonali son JS'da aniqlikni yo'qotadi
+   * (Number.MAX_SAFE_INTEGER ≈ 9.0e15). Matn xavfsizroq — BU
+   * TEKSHIRILISHI KERAK: Meta matnni ham qabul qiladimi.
+   */
+  fb_lead_id: string | null;
   revenue: string | number | null;
   crm_created_at: Date | string | null;
   won_at: Date | string | null;
@@ -58,6 +68,10 @@ interface CapiConfig {
   currency: string;
   /** Bosqich -> Meta hodisa nomi. Konfiguratsiyadan keladi. */
   eventNames: Record<CapiStage, string>;
+  /** Meta CRM talabi: 'system_generated'. Sozlamadan o'zgartirish mumkin. */
+  actionSource: string;
+  /** custom_data.lead_event_source — manba tizim nomi. */
+  leadEventSource: string;
 }
 
 /**
@@ -86,12 +100,16 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     capi_event_lead: string | null;
     capi_event_qualified: string | null;
     capi_event_purchase: string | null;
+    capi_action_source: string | null;
+    capi_lead_event_source: string | null;
   }>(
     `SELECT meta_dataset_id, meta_capi_enabled, secret_key,
             COALESCE(currency, 'UZS')              AS currency,
             COALESCE(capi_event_lead, 'Lead')      AS capi_event_lead,
             COALESCE(capi_event_qualified, 'Schedule') AS capi_event_qualified,
-            COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase
+            COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase,
+            COALESCE(capi_action_source, 'system_generated') AS capi_action_source,
+            COALESCE(capi_lead_event_source, 'amoCRM')       AS capi_lead_event_source
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
@@ -115,6 +133,8 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
       qualified: ws.capi_event_qualified ?? 'Schedule',
       purchase: ws.capi_event_purchase ?? 'Purchase',
     },
+    actionSource: ws.capi_action_source ?? 'system_generated',
+    leadEventSource: ws.capi_lead_event_source ?? 'amoCRM',
   };
 }
 
@@ -125,16 +145,28 @@ export function buildFbc(fbclid: string | null, clickedAt: Date | string | null)
   return `fb.1.${Number.isFinite(ms) ? ms : Date.now()}.${fbclid}`;
 }
 
-function toUnixSeconds(value: Date | string | null): number {
-  const ms = value ? new Date(value).getTime() : NaN;
+/**
+ * Hodisa vaqti (sekund). `null` — yuborilmasligi kerak.
+ *
+ * ⚠ ILGARI XATO BOR EDI: 7 kundan eski hodisa HOZIRGI vaqt bilan
+ * yuborilardi. Ya'ni Meta'ga "3 oy oldingi sotuv bugun bo'ldi" deb
+ * aytardik. Bu shunchaki noto'g'ri emas — u optimallashtirishni
+ * BUZADI: algoritm bugungi reklamani o'sha eski sotuv bilan
+ * mukofotlaydi. Yolg'on signal signalsizlikdan yomon.
+ *
+ * Endi bunday hodisa yuborilmaydi. Amaliy oqibati: tarixiy importni
+ * CAPI ga o'tkazib bo'lmaydi — Meta baribir qabul qilmagan bo'lardi.
+ * CAPI ning foydasi yoqilgan kundan boshlanadi.
+ */
+export function toUnixSeconds(value: Date | string | null): number | null {
   const now = Math.floor(Date.now() / 1000);
+  const ms = value ? new Date(value).getTime() : NaN;
+  // Vaqt noma'lum — hodisa hozir sodir bo'ldi deb qaraymiz (webhook oqimi).
   if (!Number.isFinite(ms)) return now;
 
   const sec = Math.floor(ms / 1000);
-  // 7 kundan eski hodisani Meta rad etadi. Rad etilgandan ko'ra hozirgi
-  // vaqt bilan yuborilgani ma'qul: Meta baribir o'z atribusiya oynasi
-  // bo'yicha foydalanuvchining oldingi kligiga bog'laydi.
-  if (now - sec > MAX_EVENT_AGE_SEC) return now;
+  if (now - sec > MAX_EVENT_AGE_SEC) return null;
+  // Kelajakdagi vaqt (soat farqi) — hozirgi vaqtga tekislaymiz.
   if (sec > now) return now;
   return sec;
 }
@@ -170,6 +202,17 @@ export async function sendCapiEvent(
     eventName = cfg.eventNames[stage];
     eventId = `${lead.crm_lead_id ?? lead.id}:${eventName}`;
 
+    // Vaqtni DEDUP QATORIDAN OLDIN tekshiramiz: eski hodisa uchun
+    // qator yozib qo'ysak, u keyin qayta yuborishni ham to'sib qo'yardi.
+    const occurredAt = stage === 'purchase' ? lead.won_at : lead.crm_created_at;
+    const eventTime = toUnixSeconds(occurredAt);
+    if (eventTime === null) {
+      console.warn(
+        `CAPI ${eventName} o'tkazib yuborildi (lead ${lead.id}): hodisa 7 kundan eski, Meta qabul qilmaydi`
+      );
+      return false;
+    }
+
     // Takror yuborishni bazada to'samiz — Meta'ning 48 soatlik dedup
     // oynasidan uzoqroq muddatda ham ishlaydi.
     const claimed = await pool.query(
@@ -181,9 +224,10 @@ export async function sendCapiEvent(
     );
     if (!claimed.rowCount) return false; // allaqachon yuborilgan
 
-    const occurredAt = stage === 'purchase' ? lead.won_at : lead.crm_created_at;
-
     const userData: Record<string, unknown> = {};
+    // Eng kuchli kalit birinchi: Meta Lead ID bo'lsa moslik deyarli
+    // kafolatlangan — piksel, UTM va fbclid umuman kerak emas.
+    if (lead.fb_lead_id) userData.lead_id = lead.fb_lead_id;
     const fbc = buildFbc(lead.fbclid, lead.crm_created_at);
     if (fbc) userData.fbc = fbc;
     if (lead.phone_hash) userData.ph = [lead.phone_hash];
@@ -199,24 +243,41 @@ export async function sendCapiEvent(
       return false;
     }
 
-    const event: Record<string, unknown> = {
-      event_name: eventName,
-      event_time: toUnixSeconds(occurredAt),
-      event_id: eventId,
-      // CRM'dan kelib chiqqan, foydalanuvchi qurilmasida sodir bo'lmagan hodisa.
-      action_source: 'system_generated',
-      user_data: userData,
+    /**
+     * custom_data HAR DOIM bo'ladi.
+     *
+     * Meta CRM hujjati: "at least one valid custom parameter is
+     * mandatory" va `event_source` "crm" bo'lishi kerak. Ilgari bizda
+     * custom_data faqat sotuv bosqichida (summa uchun) qo'shilardi —
+     * ya'ni `qualified` hodisalarimiz talabga javob bermasdi.
+     */
+    const customData: Record<string, unknown> = {
+      event_source: 'crm',
+      lead_event_source: cfg.leadEventSource,
     };
 
-    // Summa faqat sotuv bosqichida ketadi — hodisa nomi qanday
-    // atalganidan qat'i nazar (mijoz uni 'Purchase' emas, boshqa
-    // nom bilan atagan bo'lishi mumkin).
+    // Summa faqat sotuv bosqichida — hodisa nomi qanday atalganidan
+    // qat'i nazar (mijoz uni 'Purchase' emas, boshqa nom bilan
+    // atagan bo'lishi mumkin).
     if (stage === 'purchase') {
       const value = Number(lead.revenue ?? 0);
       if (value > 0) {
-        event.custom_data = { value, currency: cfg.currency };
+        customData.value = value;
+        customData.currency = cfg.currency;
       }
     }
+
+    const event: Record<string, unknown> = {
+      event_name: eventName,
+      event_time: eventTime,
+      event_id: eventId,
+      // CRM'dan kelib chiqqan, foydalanuvchi qurilmasida sodir bo'lmagan
+      // hodisa. Meta CRM talabi 'system_generated'; qo'ng'iroq voronkasi
+      // uchun boshqacha bo'lishi mumkin, shuning uchun sozlamadan (§3.1).
+      action_source: cfg.actionSource,
+      user_data: userData,
+      custom_data: customData,
+    };
 
     await axios.post(
       `${GRAPH_URL}/${cfg.datasetId}/events`,
@@ -260,7 +321,7 @@ export async function loadCapiLead(
   leadId: string
 ): Promise<CapiLead | null> {
   const { rows } = await pool.query<CapiLead>(
-    `SELECT id, crm_lead_id, phone_hash, email_hash, fbclid,
+    `SELECT id, crm_lead_id, phone_hash, email_hash, fbclid, fb_lead_id,
             revenue, crm_created_at, won_at
        FROM leads
       WHERE workspace_id = $1 AND id = $2`,

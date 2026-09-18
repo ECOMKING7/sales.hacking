@@ -493,3 +493,37 @@ test('liniya filtri: sozlangandan keyin faqat reklama liniyasi o\'tadi', async (
   assert.equal(reklamaLiniyasimi('998712000000', reklama), false, 'boshqa liniya — organik');
   assert.equal(reklamaLiniyasimi(null, reklama), false, 'liniya yo\'q — reklama emas');
 });
+
+/* ── CAPI: hodisa vaqti ──────────────────────────────────────────────
+   ILGARI XATO: 7 kundan eski hodisa HOZIRGI vaqt bilan yuborilardi.
+   Ya'ni Meta'ga "3 oy oldingi sotuv bugun bo'ldi" deb aytardik va
+   algoritm bugungi reklamani o'sha eski sotuv bilan mukofotlardi.
+   Yolg'on signal signalsizlikdan yomon — endi yuborilmaydi. */
+
+test('capi vaqti: yangi hodisa o\'z vaqti bilan ketadi', async () => {
+  const { toUnixSeconds } = await import('../metaCapi');
+  const ikkiKunOldin = new Date(Date.now() - 2 * 24 * 3600 * 1000);
+  const t = toUnixSeconds(ikkiKunOldin);
+  assert.notEqual(t, null);
+  assert.equal(Math.abs((t as number) - Math.floor(ikkiKunOldin.getTime() / 1000)) < 2, true);
+});
+
+test('capi vaqti: 7 kundan eski hodisa YUBORILMAYDI', async () => {
+  const { toUnixSeconds } = await import('../metaCapi');
+  assert.equal(toUnixSeconds(new Date(Date.now() - 8 * 24 * 3600 * 1000)), null);
+  assert.equal(toUnixSeconds(new Date('2024-01-01')), null, 'tarixiy import — yuborilmaydi');
+});
+
+test('capi vaqti: vaqt noma\'lum bo\'lsa hozirgi vaqt', async () => {
+  const { toUnixSeconds } = await import('../metaCapi');
+  const t = toUnixSeconds(null);
+  assert.notEqual(t, null);
+  assert.equal(Math.abs((t as number) - Math.floor(Date.now() / 1000)) < 2, true);
+});
+
+test('capi vaqti: kelajakdagi vaqt hozirgi vaqtga tekislanadi', async () => {
+  const { toUnixSeconds } = await import('../metaCapi');
+  const t = toUnixSeconds(new Date(Date.now() + 3 * 3600 * 1000));
+  assert.notEqual(t, null);
+  assert.equal((t as number) <= Math.floor(Date.now() / 1000) + 1, true);
+});
