@@ -12,7 +12,8 @@
     "seed:clean": "ts-node src/scripts/seed-demo.ts clean",
     "migrate:prod": "node dist/db/migrate.js",
     "typecheck": "tsc --noEmit",
-    "fx:sync": "ts-node src/scripts/fx-sync.ts"
+    "fx:sync": "ts-node src/scripts/fx-sync.ts",
+    "attribution:rebuild": "ts-node src/scripts/rebuild-attribution.ts"
   },
   "keywords": [],
   "author": "",
