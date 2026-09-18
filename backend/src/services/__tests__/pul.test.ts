@@ -334,3 +334,27 @@ test('limit: so\'rovlar orasida eng kam oraliq saqlanadi', async () => {
   const otgan = Date.now() - boshlandi;
   assert.ok(otgan >= 200, `oraliq saqlanmadi: ${otgan}ms`);
 });
+
+/* ═══════════════ 9. Piksel cheklovi ═══════════════
+   HODISA: cheklov xotiradagi Map da edi. Serverless'da har so'rov
+   boshqa nusxada bajarilishi mumkin va har nusxaning o'z xotirasi
+   bor — "daqiqasiga 100 ta" amalda "100 × nusxalar soni" edi. */
+
+test('piksel: daqiqa raqami har 60 soniyada o\'zgaradi', async () => {
+  const { daqiqaRaqami } = await import('../../utils/pixelThrottle');
+  // Daqiqa BOSHIGA tenglashtirilgan vaqt olinadi. Dastlab tasodifiy
+  // vaqt olgan edim — u daqiqaning 20-soniyasiga tushdi va +59s
+  // allaqachon keyingi daqiqa edi. Test yiqildi, kod emas: chegara
+  // testida boshlanish nuqtasi ham shartning bir qismi.
+  const t = 28_333_333 * 60_000;
+  assert.equal(daqiqaRaqami(t), daqiqaRaqami(t + 59_000), 'bir daqiqa ichida bir xil');
+  assert.notEqual(daqiqaRaqami(t), daqiqaRaqami(t + 61_000), 'keyingi daqiqada boshqa');
+});
+
+test('piksel: baza yiqilsa so\'rov o\'tkaziladi (fail-open)', async () => {
+  // Bu yerda baza yo'q — pool.query xato beradi. Piksel mijoz saytini
+  // buzmasligi kerak, shuning uchun bloklamaslik kutiladi.
+  const { pikselCheklovi } = await import('../../utils/pixelThrottle');
+  const holat = await pikselCheklovi('00000000-0000-0000-0000-000000000000');
+  assert.equal(holat.bloklandi, false);
+});

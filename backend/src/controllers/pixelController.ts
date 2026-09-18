@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { recordTouchpoint } from '../services/attributionEngine';
 import { hashPhone, hashEmail } from '../services/amocrmService';
 import { pool } from '../db/pool';
+import { pikselCheklovi } from '../utils/pixelThrottle';
 
 // 1x1 transparent GIF.
 const TRANSPARENT_GIF = Buffer.from(
@@ -13,20 +14,9 @@ const TRANSPARENT_GIF = Buffer.from(
 const VALID_EVENTS = ['view', 'click', 'lead', 'purchase'] as const;
 type EventType = (typeof VALID_EVENTS)[number];
 
-// ---------- simple in-memory rate limiter: 100 events/min per workspace ----------
-const RATE_LIMIT = 100;
-const WINDOW_MS = 60_000;
-const buckets = new Map<string, { count: number; resetAt: number }>();
-
-function isRateLimited(workspaceId: string, now: number): boolean {
-  const bucket = buckets.get(workspaceId);
-  if (!bucket || now >= bucket.resetAt) {
-    buckets.set(workspaceId, { count: 1, resetAt: now + WINDOW_MS });
-    return false;
-  }
-  bucket.count += 1;
-  return bucket.count > RATE_LIMIT;
-}
+// Cheklov endi `utils/pixelThrottle.ts` da: xotira tez yo'l sifatida,
+// baza esa hamma funksiya nusxasi uchun yagona haqiqat. Sabab u yerda
+// yozilgan — qisqasi: serverless'da xotiradagi hisoblagich to'smaydi.
 
 function hashIp(ip: string | undefined): string | null {
   if (!ip) return null;
@@ -73,8 +63,9 @@ export async function trackEvent(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const now = Date.now();
-    if (isRateLimited(workspaceId, now)) {
+    const cheklov = await pikselCheklovi(workspaceId);
+    if (cheklov.bloklandi) {
+      // 200 qaytaramiz: piksel mijoz saytida xato ko'rsatmasligi kerak.
       res.status(200).json({ success: true, eventId: null, rateLimited: true });
       return;
     }
@@ -148,17 +139,24 @@ export function script(req: Request, res: Response): void {
 // ---- GET /api/pixel/1x1.gif ----
 export async function pixelGif(req: Request, res: Response): Promise<void> {
   const workspaceId = req.query.workspaceId ? String(req.query.workspaceId) : null;
-  const now = Date.now();
 
-  // Fire-and-forget: record an open/view if a workspace is supplied.
-  if (workspaceId && !isRateLimited(workspaceId, now)) {
-    const ipHash = hashIp((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip);
-    recordTouchpoint({
-      workspaceId,
-      eventType: 'view',
-      ipHash,
-      userAgent: req.headers['user-agent'] ?? null,
-    }).catch((err) => console.error('pixel gif record error:', (err as Error).message));
+  // Rasm DARHOL qaytariladi, hisob esa orqa fonda. GIF mijoz sahifasida
+  // turadi — uni cheklov so'rovi kutib turmasligi kerak.
+  if (workspaceId) {
+    void pikselCheklovi(workspaceId)
+      .then((cheklov) => {
+        if (cheklov.bloklandi) return;
+        const ipHash = hashIp(
+          (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip
+        );
+        return recordTouchpoint({
+          workspaceId,
+          eventType: 'view',
+          ipHash,
+          userAgent: req.headers['user-agent'] ?? null,
+        });
+      })
+      .catch((err) => console.error('pixel gif record error:', (err as Error).message));
   }
 
   res.setHeader('Content-Type', 'image/gif');
