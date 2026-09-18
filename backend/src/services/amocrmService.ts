@@ -272,6 +272,18 @@ async function amoGet<T = unknown>(workspaceId: string, path: string): Promise<T
   }
 }
 
+/**
+ * Ixtiyoriy amoCRM yo'liga GET. Token yangilash, 401 dan keyin qayta
+ * urinish — hammasi amoGet ichida, ya'ni import ham xuddi shu yo'ldan
+ * yuradi va ikkinchi nusxa mantiq paydo bo'lmaydi.
+ */
+export async function amoGetPath<T = unknown>(
+  workspaceId: string,
+  path: string
+): Promise<T> {
+  return amoGet<T>(workspaceId, path);
+}
+
 // ---------- data methods ----------
 
 interface AmoCustomFieldValue {

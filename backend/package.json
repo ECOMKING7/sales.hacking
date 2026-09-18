@@ -13,7 +13,8 @@
     "migrate:prod": "node dist/db/migrate.js",
     "typecheck": "tsc --noEmit",
     "fx:sync": "ts-node src/scripts/fx-sync.ts",
-    "attribution:rebuild": "ts-node src/scripts/rebuild-attribution.ts"
+    "attribution:rebuild": "ts-node src/scripts/rebuild-attribution.ts",
+    "amo:import": "ts-node src/scripts/amo-import.ts"
   },
   "keywords": [],
   "author": "",

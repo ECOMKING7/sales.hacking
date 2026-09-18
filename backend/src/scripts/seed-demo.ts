@@ -459,9 +459,24 @@ async function seed(workspaceId: string): Promise<void> {
   console.log('  O\'chirish uchun: npm run seed:clean');
 }
 
+
+/** Argument workspace ID ga o'xshaydimi. */
+function wsArgOrThrow(v: string | undefined): string | undefined {
+  if (v === undefined) return undefined;
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (UUID.test(v.trim())) return v.trim();
+  // Terminalda buyruq yoniga izoh yozilsa (`npm run seed:clean  # izoh`)
+  // zsh uni argument qilib uzatadi va skript uni workspace ID deb oladi.
+  // Jim davom etsa — noto'g'ri workspace ustida ish ketadi.
+  throw new Error(
+    `Workspace ID noto'g'ri: "${v}". UUID kutilgan. ` +
+      `Buyruq yoniga izoh (#) yozmang — u argument sifatida uzatiladi.`
+  );
+}
+
 async function main(): Promise<void> {
   const rejim = process.argv[2] === 'clean' ? 'clean' : 'seed';
-  const wsArg = process.argv[3];
+  const wsArg = wsArgOrThrow(process.argv[3]);
 
   try {
     const workspaceId = wsArg ?? (await workspaceTop());
