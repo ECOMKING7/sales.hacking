@@ -270,23 +270,37 @@ function entitySelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null
  * savolga javob yo'q. UI bunda "natija" deb umumiy yozadi.
  */
 function totalsSelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null = null): string {
+  /**
+   * KUNLIK REJIMDA `COALESCE(..., 0)` ISHLATILMAYDI.
+   *
+   * Qator darajasida sotuv/daromad `null` qaytadi (kunlik jadvalda yo'q).
+   * Jami qatorida ularni `COALESCE(SUM(...), 0)` bilan yig'sak, `null`
+   * jimgina `0` ga aylanadi va ekranda "daromad $0" chiqadi.
+   *
+   * "$0" = "reklama pul keltirmadi". "—" = "hisoblab bo'lmadi".
+   * Ikkisi bir xil ko'rinsa, operator birinchi ma'noni o'qiydi va
+   * ishlayotgan kampaniyani o'chirib yuborishi mumkin.
+   */
+  const nol = (ifoda: string) => (o ? 'NULL::numeric' : `COALESCE(${ifoda}, 0)`);
+  const hisob = (ifoda: string) => (o ? 'NULL::numeric' : ifoda);
+
   return `
     SELECT COUNT(*)                                   AS "rowCount",
            COALESCE(SUM(spend), 0)                    AS spend,
            COALESCE(SUM(clicks), 0)                   AS clicks,
            COALESCE(SUM(impressions), 0)              AS impressions,
            COALESCE(SUM(leads_count), 0)              AS leads,
-           COALESCE(SUM(purchases_count), 0)          AS purchases,
-           COALESCE(SUM(results), 0)                  AS results,
-           COALESCE(SUM(revenue), 0)                  AS revenue,
+           ${nol('SUM(purchases_count)')}             AS purchases,
+           ${nol('SUM(results)')}                     AS results,
+           ${nol('SUM(revenue)')}                     AS revenue,
            COALESCE(SUM(fb_revenue), 0)               AS "fbRevenue",
            SUM(spend) / NULLIF(SUM(clicks), 0)              AS cpc,
            SUM(spend) / NULLIF(SUM(impressions), 0) * 1000  AS cpm,
            SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) * 100 AS ctr,
            SUM(spend) / NULLIF(SUM(leads_count), 0)         AS "costPerLead",
-           SUM(spend) / NULLIF(SUM(purchases_count), 0)     AS "costPerPurchase",
-           SUM(spend) / NULLIF(SUM(results), 0)             AS "costPerResult",
-           SUM(revenue) / NULLIF(SUM(spend), 0)             AS roas,
+           ${hisob('SUM(spend) / NULLIF(SUM(purchases_count), 0)')} AS "costPerPurchase",
+           ${hisob('SUM(spend) / NULLIF(SUM(results), 0)')}         AS "costPerResult",
+           ${hisob('SUM(revenue) / NULLIF(SUM(spend), 0)')}         AS roas,
            CASE WHEN COUNT(DISTINCT result_type) = 1
                 THEN MIN(result_type) END              AS "resultType"
     FROM ${o ? kunlikManba(table, o) : table}`;
