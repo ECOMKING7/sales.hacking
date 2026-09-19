@@ -29,9 +29,10 @@
 import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
 import { fetchAll, normalizeActId } from './facebookAdsService';
+import { discoverLeadFields } from './amocrmFields';
 
 /** Necha reklamani tekshiramiz. Tajriba — butun akkaunt shart emas. */
-const NAMUNA = 200;
+const NAMUNA = 300;
 
 /**
  * Javobning ichidan forma ID'sini REKURSIV qidiradi.
@@ -86,6 +87,37 @@ export interface FormNatija {
   namuna_form_idlar: string[];
   /** Hech narsa topilmasa — javob qanday ko'ringani (tashxis uchun). */
   namuna_kalitlar: string[];
+
+  /**
+   * Har forma nechta KAMPANIYA va AD SET ga yoyilgan.
+   *
+   * NEGA MUHIM: forma 18 ta reklamada bo'lsa reklama darajasida atribusiya
+   * yo'q. LEKIN agar o'sha 18 ta reklama BITTA kampaniyada bo'lsa, forma
+   * kampaniya darajasida ANIQ javob beradi — "qaysi kampaniya pul keltirdi"
+   * degan savol esa byudjet qarori uchun aynan yetarli.
+   *
+   * Reklama darajasi ideal, kampaniya darajasi foydali, noldan yaxshi.
+   */
+  kampaniya_darajasi: {
+    formalar_bitta_kampaniyada: number;
+    formalar_bitta_adsetda: number;
+    tafsilot: Array<{ form_id: string; reklamalar: number; kampaniyalar: number; adsetlar: number }>;
+  };
+
+  /**
+   * ⚠ HAL QILUVCHI TEKSHIRUV: CRM tomonida forma ID bormi?
+   *
+   * Xarita qanchalik toza bo'lmasin, agar amoCRM lidida forma ID yo'q
+   * bo'lsa — bog'lash uchun kalit yo'q va B yo'li o'lik. Shuning uchun
+   * FB dan topilgan forma ID'lari amoCRM teglaridagi qiymatlar bilan
+   * SOLISHTIRILADI. Taxmin emas — kesishma sanaladi.
+   */
+  crm_tekshiruv: {
+    crm_teg_qiymatlari: number;
+    kesishma: number;
+    kesishgan_idlar: string[];
+    xulosa: string;
+  };
 }
 
 interface AdCreative {
@@ -128,6 +160,17 @@ export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija>
     aniq_qamrov_foiz: 0,
     namuna_form_idlar: [],
     namuna_kalitlar: [],
+    kampaniya_darajasi: {
+      formalar_bitta_kampaniyada: 0,
+      formalar_bitta_adsetda: 0,
+      tafsilot: [],
+    },
+    crm_tekshiruv: {
+      crm_teg_qiymatlari: 0,
+      kesishma: 0,
+      kesishgan_idlar: [],
+      xulosa: 'tekshirilmadi',
+    },
   };
 
   let adlar: AdCreative[];
@@ -141,7 +184,8 @@ export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija>
         fields: 'id,creative{id,object_story_spec,asset_feed_spec,object_type}',
         limit: 50,
       },
-      token
+      token,
+      NAMUNA
     );
   } catch (e) {
     // Ruxsat yetmasa yoki FB 500 bersa — bu ham NATIJA. "Ishlamadi" deb
@@ -200,6 +244,63 @@ export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija>
     bosh.tekshirilgan_reklama > 0
       ? Math.round((aniqReklama / bosh.tekshirilgan_reklama) * 1000) / 10
       : 0;
+
+  /* ── Kampaniya darajasi: forma nechta kampaniyaga yoyilgan ──────────
+     Kampaniya/ad set bog'lanishi O'Z BAZAMIZDAN olinadi — Facebook'ga
+     qo'shimcha so'rov yubormaymiz (limit tor). */
+  const hammaAdIdlar = [...new Set([...xarita.values()].flatMap((s2) => [...s2]))];
+  if (hammaAdIdlar.length > 0) {
+    const { rows: adRows } = await pool.query<{
+      fb_ad_id: string;
+      campaign_fb_id: string | null;
+      adset_fb_id: string | null;
+    }>(
+      `SELECT a.fb_ad_id,
+              c.fb_campaign_id AS campaign_fb_id,
+              s.fb_adset_id    AS adset_fb_id
+         FROM ads a
+         LEFT JOIN campaigns c ON c.id = a.campaign_id
+         LEFT JOIN adsets    s ON s.id = a.adset_id
+        WHERE a.workspace_id = $1 AND a.fb_ad_id = ANY($2::text[])`,
+      [workspaceId, hammaAdIdlar]
+    );
+    const adKampaniya = new Map(adRows.map((r) => [r.fb_ad_id, r]));
+
+    for (const [formId, adSet] of xarita) {
+      const kamp = new Set<string>();
+      const adset = new Set<string>();
+      for (const adId of adSet) {
+        const r = adKampaniya.get(adId);
+        if (r?.campaign_fb_id) kamp.add(r.campaign_fb_id);
+        if (r?.adset_fb_id) adset.add(r.adset_fb_id);
+      }
+      if (kamp.size === 1) bosh.kampaniya_darajasi.formalar_bitta_kampaniyada += 1;
+      if (adset.size === 1) bosh.kampaniya_darajasi.formalar_bitta_adsetda += 1;
+      bosh.kampaniya_darajasi.tafsilot.push({
+        form_id: formId,
+        reklamalar: adSet.size,
+        kampaniyalar: kamp.size,
+        adsetlar: adset.size,
+      });
+    }
+    bosh.kampaniya_darajasi.tafsilot.sort((a, b) => b.reklamalar - a.reklamalar);
+  }
+
+  /* ── HAL QILUVCHI: CRM tomonida shu forma ID'lari bormi ─────────────── */
+  try {
+    const crm = await discoverLeadFields(workspaceId);
+    const tegQiymatlar = new Set<string>(crm.tegMatnlari ?? []);
+    bosh.crm_tekshiruv.crm_teg_qiymatlari = tegQiymatlar.size;
+    const kesishgan = [...xarita.keys()].filter((f) => tegQiymatlar.has(f));
+    bosh.crm_tekshiruv.kesishma = kesishgan.length;
+    bosh.crm_tekshiruv.kesishgan_idlar = kesishgan.slice(0, 20);
+    bosh.crm_tekshiruv.xulosa =
+      kesishgan.length > 0
+        ? `CRM teglarida ${kesishgan.length} ta forma ID topildi — B yo'li uchun kalit BOR`
+        : "CRM teglarida birorta forma ID topilmadi — B yo'li uchun CRM tomonida kalit YO'Q";
+  } catch (e) {
+    bosh.crm_tekshiruv.xulosa = `CRM tekshiruvi bajarilmadi: ${(e as Error).message}`;
+  }
 
   return bosh;
 }

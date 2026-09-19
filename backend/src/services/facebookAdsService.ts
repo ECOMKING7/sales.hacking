@@ -475,7 +475,17 @@ interface Paged<T> {
 export async function fetchAll<T>(
   path: string,
   params: Record<string, string | number>,
-  token: string
+  token: string,
+  /**
+   * Ixtiyoriy chegara: shuncha yozuv yig'ilgach sahifalash TO'XTAYDI.
+   *
+   * Nega kerak: tashxis/kashfiyot uchun 200 ta yozuv yetarli, lekin
+   * usiz funksiya butun akkauntni (1 600+ reklama, ~33 so'rov) tortib
+   * oladi. Bu ham vaqt, ham FB limitidan behuda sarf.
+   *
+   * Berilmasa — eski xulq: oxirigacha.
+   */
+  chegara?: number
 ): Promise<T[]> {
   const out: T[] = [];
   let after: string | undefined;
@@ -487,6 +497,7 @@ export async function fetchAll<T>(
       ...(after ? { after } : {}),
     });
     out.push(...(page.data ?? []));
+    if (chegara !== undefined && out.length >= chegara) return out.slice(0, chegara);
     after = page.paging?.cursors?.after && page.paging?.next ? page.paging.cursors.after : undefined;
   } while (after);
   return out;
