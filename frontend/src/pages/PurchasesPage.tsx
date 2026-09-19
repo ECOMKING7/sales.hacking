@@ -3,7 +3,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import type { WonDeal } from '../types';
-import { formatCurrency, formatDays, n } from '../utils/format';
+import { formatMoney, formatDays, n } from '../utils/format';
 import SourceBadge from '../components/SourceBadge';
 import LeadDetailPanel from '../components/LeadDetailPanel';
 import {
@@ -45,6 +45,8 @@ export default function PurchasesPage() {
   });
 
   const deals: WonDeal[] = query.data?.data ?? [];
+  // Bu sahifadagi hamma pul — CRM daromadi. Reklama valyutasi bu yerda yo'q.
+  const crmVal = overview.data?.currency?.crm ?? null;
   const total = query.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
@@ -97,7 +99,7 @@ export default function PurchasesPage() {
             </div>
           ) : (
             <p className="mt-0.5 text-2xl font-bold tabular-nums text-ink">
-              {formatCurrency(overview.data?.revenue)}
+              {formatMoney(overview.data?.revenue, crmVal)}
             </p>
           )}
         </div>
@@ -183,7 +185,7 @@ export default function PurchasesPage() {
                   <Td className="text-ink-2">{d.campaignName ?? '—'}</Td>
                   <Td className="text-ink-2">{d.adsetName ?? '—'}</Td>
                   <Td className="text-ink-2">{d.adName ?? '—'}</Td>
-                  <Td numeric>{formatCurrency(d.revenue)}</Td>
+                  <Td numeric>{formatMoney(d.revenue, crmVal)}</Td>
                   <Td numeric className="text-ink-2">
                     {d.dealTime != null ? formatDays(d.dealTime) : '—'}
                   </Td>
@@ -223,7 +225,11 @@ export default function PurchasesPage() {
         </div>
       </div>
 
-      <LeadDetailPanel leadId={selectedLead} onClose={() => setSelectedLead(null)} />
+      <LeadDetailPanel
+        leadId={selectedLead}
+        onClose={() => setSelectedLead(null)}
+        crmCurrency={crmVal}
+      />
     </div>
   );
 }

@@ -13,8 +13,7 @@ import CurrencyNote from '../CurrencyNote';
 import { dashboardApi } from '../../services/api';
 import type { EntityRow, EntityTotals } from '../../types';
 import {
-  formatCurrency,
-  formatCurrency2,
+  formatMoney,
   formatNumber,
   formatPercent,
   formatRoas,
@@ -80,7 +79,19 @@ function CreativeTile({ url, type }: { url?: string | null; type?: string | null
   );
 }
 
-function renderCell(row: EntityRow, key: string, drillable: boolean) {
+/**
+ * `fbVal` / `crmVal` — qaysi ustun qaysi valyutada.
+ * Xarajat tomoni (spend, cpc, cpm, cost-per-*) reklama akkaunti valyutasida,
+ * revenue esa CRM valyutasida. Ilgari ikkalasi ham `$` bilan chiqardi va
+ * 315 000 000 so'm "$315,000,000" bo'lib ko'rinardi.
+ */
+function renderCell(
+  row: EntityRow,
+  key: string,
+  drillable: boolean,
+  fbVal: string | null,
+  crmVal: string | null
+) {
   switch (key) {
     case 'name':
       return (
@@ -106,11 +117,11 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
     case 'status':
       return <DeliveryBadge status={row.status} />;
     case 'spend':
-      return formatCurrency(row.spend);
+      return formatMoney(row.spend, fbVal);
     case 'cpc':
-      return formatCurrency2(row.cpc);
+      return formatMoney(row.cpc, fbVal, 2);
     case 'cpm':
-      return formatCurrency2(row.cpm);
+      return formatMoney(row.cpm, fbVal, 2);
     case 'ctr':
       return formatPercent(row.ctr);
     case 'clicks':
@@ -132,17 +143,17 @@ function renderCell(row: EntityRow, key: string, drillable: boolean) {
         </span>
       );
     case 'costPerResult':
-      return formatCurrency2(row.costPerResult);
+      return formatMoney(row.costPerResult, fbVal, 2);
     case 'leads':
       return formatNumber(row.leads);
     case 'costPerLead':
-      return formatCurrency2(row.costPerLead);
+      return formatMoney(row.costPerLead, fbVal, 2);
     case 'purchases':
       return formatNumber(row.purchases);
     case 'costPerPurchase':
-      return formatCurrency2(row.costPerPurchase);
+      return formatMoney(row.costPerPurchase, fbVal, 2);
     case 'revenue':
-      return formatCurrency(row.revenue);
+      return formatMoney(row.revenue, crmVal);
     case 'roas':
       // null = hisoblanmadi (valyuta mos emas). Rang berilmaydi: "—" ni
       // qizil qilish "yomon ROAS" degan yolg'on signal bo'lardi.
@@ -224,14 +235,19 @@ function totalsFromRows(
  * Jami qatoridagi bitta katak. Matnli ustunlar (nom, status) bo'sh qoladi —
  * ularning jami'si yo'q.
  */
-function renderTotal(t: EntityTotals, key: string) {
+function renderTotal(
+  t: EntityTotals,
+  key: string,
+  fbVal: string | null,
+  crmVal: string | null
+) {
   switch (key) {
     case 'spend':
-      return formatCurrency(t.spend);
+      return formatMoney(t.spend, fbVal);
     case 'cpc':
-      return formatCurrency2(t.cpc);
+      return formatMoney(t.cpc, fbVal, 2);
     case 'cpm':
-      return formatCurrency2(t.cpm);
+      return formatMoney(t.cpm, fbVal, 2);
     case 'ctr':
       return formatPercent(t.ctr);
     case 'clicks':
@@ -250,17 +266,17 @@ function renderTotal(t: EntityTotals, key: string) {
         </span>
       );
     case 'costPerResult':
-      return formatCurrency2(t.costPerResult);
+      return formatMoney(t.costPerResult, fbVal, 2);
     case 'leads':
       return formatNumber(t.leads);
     case 'costPerLead':
-      return formatCurrency2(t.costPerLead);
+      return formatMoney(t.costPerLead, fbVal, 2);
     case 'purchases':
       return formatNumber(t.purchases);
     case 'costPerPurchase':
-      return formatCurrency2(t.costPerPurchase);
+      return formatMoney(t.costPerPurchase, fbVal, 2);
     case 'revenue':
-      return formatCurrency(t.revenue);
+      return formatMoney(t.revenue, crmVal);
     case 'roas':
       if (t.roas === null || t.roas === undefined) {
         return <span className="text-ink-3">—</span>;
@@ -363,6 +379,9 @@ export default function EntityTable({
   const filtered = Boolean(search) || filter !== 'all';
   const serverTotals = query.data?.totals;
   const currency = query.data?.currency;
+  // Har ustun o'z valyutasi bilan chiqadi — `$` hech qachon taxmin qilinmaydi.
+  const fbVal = currency?.fb ?? null;
+  const crmVal = currency?.crm ?? null;
   // Faqat kurs topilmagan holatda ROAS to'siladi. Kurs bo'lsa backend
   // uni o'girib hisoblab yuboradi va bu yerda ham qayta hisoblanadi.
   const roasBlocked = Boolean(currency?.mismatch && !currency.converted);
@@ -542,7 +561,7 @@ export default function EntityTable({
                   </Td>
                   {cols.map((c) => (
                     <Td key={c.key} numeric={c.align === 'right'}>
-                      {renderCell(r, c.key, c.key === 'name' && rowClickable)}
+                      {renderCell(r, c.key, c.key === 'name' && rowClickable, fbVal, crmVal)}
                     </Td>
                   ))}
                 </Tr>
@@ -574,7 +593,7 @@ export default function EntityTable({
                         </span>
                       </span>
                     ) : (
-                      renderTotal(totals, c.key)
+                      renderTotal(totals, c.key, fbVal, crmVal)
                     )}
                   </td>
                 ))}

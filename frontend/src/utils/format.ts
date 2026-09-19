@@ -3,12 +3,39 @@ export function n(v: unknown): number {
   return Number.isFinite(x) ? x : 0;
 }
 
-export function formatCurrency(v: unknown): string {
-  return `$${n(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
+/**
+ * Pul — HAR DOIM o'z valyutasi bilan.
+ *
+ * NEGA BU SHUNCHAKI FORMATLASH EMAS: dashboardda ikki xil valyutadagi raqam
+ * yonma-yon turadi. Xarajat reklama akkauntining valyutasida (bu mijozda USD),
+ * daromad esa CRM valyutasida (UZS). Ilgari ikkalasi ham `$` bilan chiqardi:
+ *
+ *     Amount Spent  $47,516        ← rost, USD
+ *     Revenue       $315,300,000   ← YOLG'ON, aslida 315 300 000 so'm ≈ $26 646
+ *     ARPL          $20,135        ← YOLG'ON, aslida 20 135 so'm ≈ $1.70
+ *
+ * Bu ROAS 6558x bug'ining aynan o'zi, faqat boshqa ustunda: operator raqamga
+ * qarab qaror qabul qiladi va 11 833 barobar adashadi.
+ *
+ * Shuning uchun valyuta kodi MAJBURIY argument. Uni "unutib qoldirish"
+ * mumkin emas — TypeScript o'tkazmaydi.
+ *
+ * `code` null bo'lsa (hali sinxron bo'lmagan, valyuta noma'lum) — belgisiz
+ * yalang'och raqam chiqadi. Noto'g'ri belgidan ko'ra belgisiz yaxshiroq.
+ */
+export function formatMoney(v: unknown, code: string | null | undefined, digits = 0): string {
+  const x = n(v);
+  const kod = (code ?? '').trim().toUpperCase();
+  const opts = { minimumFractionDigits: digits, maximumFractionDigits: digits };
 
-export function formatCurrency2(v: unknown): string {
-  return `$${n(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (!kod) return x.toLocaleString(undefined, opts);
+
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: kod, ...opts }).format(x);
+  } catch {
+    // Noma'lum ISO kod — Intl xato beradi. Raqam + kod baribir aniq.
+    return `${x.toLocaleString(undefined, opts)} ${kod}`;
+  }
 }
 
 export function formatPercent(v: unknown): string {

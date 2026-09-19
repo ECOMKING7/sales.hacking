@@ -14,7 +14,7 @@ import ColumnsButton from '../components/dashboard/ColumnsButton';
 import BreakdownButton from '../components/dashboard/BreakdownButton';
 import { loadVisibleColumns, saveVisibleColumns } from '../components/dashboard/columns';
 import { PresetId, rangeForPreset } from '../utils/dateRanges';
-import { formatCurrency, formatPercent, formatRoas, formatDays, n } from '../utils/format';
+import { formatMoney, formatPercent, formatRoas, formatDays, n } from '../utils/format';
 import { Button, Input, cn } from '../components/ui';
 
 type Model = 'first_click' | 'last_click';
@@ -109,9 +109,23 @@ export default function DashboardPage() {
   const loading = overview.isLoading;
   const metaPct = d && d.revenue > 0 ? Math.round((d.revenueBySource.metaAds / d.revenue) * 100) : 0;
 
+  /**
+   * Ikki valyuta, ikki manba. Chalkashtirmaslik uchun har raqam qaysi
+   * tomondan kelganiga qarab belgilanadi:
+   *   fbVal  — Facebook aytgan pul: xarajat va undan kelib chiqqan hamma narsa
+   *   crmVal — CRM aytgan pul: daromad va undan kelib chiqqan hamma narsa
+   * Hali ma'lum bo'lmasa (sinxrondan oldin) — null, belgisiz raqam chiqadi.
+   */
+  const fbVal = d?.currency?.fb ?? null;
+  const crmVal = d?.currency?.crm ?? null;
+
   const cards: KpiSpec[] = [
-    { title: 'Amount Spent', value: formatCurrency(d?.amountSpent) },
-    { title: 'Revenue', value: formatCurrency(d?.revenue), subtitle: `${metaPct}% from Meta Ads` },
+    { title: 'Amount Spent', value: formatMoney(d?.amountSpent, fbVal) },
+    {
+      title: 'Revenue',
+      value: formatMoney(d?.revenue, crmVal),
+      subtitle: `${metaPct}% from Meta Ads`,
+    },
     {
       title: 'ROAS',
       value: formatRoas(d?.roas),
@@ -120,10 +134,12 @@ export default function DashboardPage() {
       subtitle: d?.currency?.mismatch ? d.currency.reason ?? undefined : undefined,
       hero: true,
     },
-    { title: 'CAC', value: formatCurrency(d?.cac) },
+    // CAC = xarajat / sotuv → xarajat valyutasida.
+    { title: 'CAC', value: formatMoney(d?.cac, fbVal) },
     { title: 'Conversion Rate', value: formatPercent(d?.conversionRate) },
     { title: 'Deal Time', value: formatDays(d?.dealTime) },
-    { title: 'ARPL', value: formatCurrency(d?.arpl) },
+    // ARPL = daromad / lid → daromad valyutasida. Bu yerda `$` turgan edi.
+    { title: 'ARPL', value: formatMoney(d?.arpl, crmVal) },
     {
       title: 'Revenue Growth',
       value: formatPercent(d?.revenueGrowth),
@@ -390,9 +406,9 @@ export default function DashboardPage() {
 
       {/* ── Donut + Top Performers below ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <SourceDonut data={d?.revenueBySource} loading={loading} />
+        <SourceDonut data={d?.revenueBySource} loading={loading} crmCurrency={crmVal} />
         <div className="lg:col-span-2">
-          <TopPerformers />
+          <TopPerformers crmCurrency={crmVal} />
         </div>
       </div>
     </div>

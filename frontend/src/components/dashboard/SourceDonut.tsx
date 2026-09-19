@@ -1,6 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { PieChart as PieChartIcon } from 'lucide-react';
-import { formatCurrency } from '../../utils/format';
+import { formatMoney } from '../../utils/format';
 import { Card, EmptyState, Skeleton, SkeletonText } from '../ui';
 
 interface SourceData {
@@ -26,7 +26,19 @@ const COLORS = [
   'rgb(var(--ink-3))',
 ];
 
-export default function SourceDonut({ data, loading }: { data?: SourceData; loading?: boolean }) {
+/**
+ * `crmCurrency` — bu yerdagi raqamlar DAROMAD, ya'ni CRM valyutasida.
+ * Majburiy prop: unutilsa TypeScript ogohlantiradi, `$` jim qo'yilmaydi.
+ */
+export default function SourceDonut({
+  data,
+  loading,
+  crmCurrency,
+}: {
+  data?: SourceData;
+  loading?: boolean;
+  crmCurrency: string | null;
+}) {
   const slices = [
     { name: 'Meta Ads', value: data?.metaAds ?? 0 },
     { name: 'Direct', value: data?.direct ?? 0 },
@@ -73,7 +85,7 @@ export default function SourceDonut({ data, loading }: { data?: SourceData; load
                   {top.name}
                 </span>
                 <span className="mt-1 text-lg font-bold tabular-nums text-ink">
-                  {formatCurrency(top.value)}
+                  {formatMoney(top.value, crmCurrency)}
                 </span>
               </div>
             </div>
@@ -97,7 +109,7 @@ export default function SourceDonut({ data, loading }: { data?: SourceData; load
                   {s.name}
                 </span>
                 <span className="font-medium tabular-nums text-ink">
-                  {formatCurrency(s.value)}
+                  {formatMoney(s.value, crmCurrency)}
                 </span>
               </li>
             ))}

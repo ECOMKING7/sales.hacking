@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { TrendingUp } from 'lucide-react';
 import { dashboardApi, TopMetric } from '../../services/api';
 import type { EntityRow } from '../../types';
-import { formatCurrency, formatRoas, formatNumber, n } from '../../utils/format';
+import { formatMoney, formatRoas, formatNumber, n } from '../../utils/format';
 import { Button, Card, EmptyState, Skeleton, cn } from '../ui';
 
 const METRICS: TopMetric[] = ['roas', 'revenue', 'sales'];
@@ -15,9 +15,10 @@ function metricValue(row: EntityRow, metric: TopMetric): number {
   return n(row.purchases);
 }
 
-function metricLabel(row: EntityRow, metric: TopMetric): string {
+function metricLabel(row: EntityRow, metric: TopMetric, crmCurrency: string | null): string {
   if (metric === 'roas') return formatRoas(row.roas);
-  if (metric === 'revenue') return formatCurrency(row.revenue);
+  // Revenue — CRM valyutasida, xarajat valyutasida EMAS.
+  if (metric === 'revenue') return formatMoney(row.revenue, crmCurrency);
   return `${formatNumber(row.purchases)} sales`;
 }
 
@@ -25,10 +26,12 @@ function TopList({
   title,
   fetcher,
   keyPrefix,
+  crmCurrency,
 }: {
   title: string;
   fetcher: (m: TopMetric) => Promise<EntityRow[]>;
   keyPrefix: string;
+  crmCurrency: string | null;
 }) {
   const [metric, setMetric] = useState<TopMetric>('roas');
   const query = useQuery({
@@ -95,7 +98,7 @@ function TopList({
               <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="truncate pr-2 text-ink-2">{r.name ?? '—'}</span>
                 <span className="flex-none font-medium tabular-nums text-ink">
-                  {metricLabel(r, metric)}
+                  {metricLabel(r, metric, crmCurrency)}
                 </span>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
@@ -112,11 +115,22 @@ function TopList({
   );
 }
 
-export default function TopPerformers() {
+/** `crmCurrency` — Revenue ustuni CRM valyutasida ko'rsatiladi. */
+export default function TopPerformers({ crmCurrency }: { crmCurrency: string | null }) {
   return (
     <div className="space-y-6">
-      <TopList title="Top Campaigns" keyPrefix="top-campaigns" fetcher={dashboardApi.topCampaigns} />
-      <TopList title="Top Ad Sets" keyPrefix="top-adsets" fetcher={dashboardApi.topAdsets} />
+      <TopList
+        title="Top Campaigns"
+        keyPrefix="top-campaigns"
+        fetcher={dashboardApi.topCampaigns}
+        crmCurrency={crmCurrency}
+      />
+      <TopList
+        title="Top Ad Sets"
+        keyPrefix="top-adsets"
+        fetcher={dashboardApi.topAdsets}
+        crmCurrency={crmCurrency}
+      />
     </div>
   );
 }

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { dashboardApi, attributionApi } from '../services/api';
 import type { JourneyEvent } from '../types';
-import { formatCurrency, formatDays } from '../utils/format';
+import { formatMoney, formatDays } from '../utils/format';
 import SourceBadge from './SourceBadge';
 import {
   Badge,
@@ -86,12 +86,15 @@ function EventIcon({
   );
 }
 
+/** `crmCurrency` — lid summasi CRM valyutasida, reklama valyutasida emas. */
 export default function LeadDetailPanel({
   leadId,
   onClose,
+  crmCurrency,
 }: {
   leadId: string | null;
   onClose: () => void;
+  crmCurrency: string | null;
 }) {
   const [tab, setTab] = useState<Tab>('journey');
   const queryClient = useQueryClient();
@@ -239,7 +242,7 @@ export default function LeadDetailPanel({
                     {e.adName && <p className="text-xs text-ink-2">{e.adName}</p>}
                     {e.eventType === 'purchase' && data && (
                       <p className="text-sm font-semibold tabular-nums text-ok">
-                        {formatCurrency(data.lead.revenue)}
+                        {formatMoney(data.lead.revenue, crmCurrency)}
                       </p>
                     )}
                   </div>
@@ -292,7 +295,7 @@ export default function LeadDetailPanel({
                 <Card padding="sm" className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold tabular-nums text-ok">
-                      {formatCurrency(data.lead.revenue)}
+                      {formatMoney(data.lead.revenue, crmCurrency)}
                     </p>
                     <p className="text-xs tabular-nums text-ink-3">{fmtDate(data.lead.won_at)}</p>
                   </div>

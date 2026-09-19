@@ -17,8 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Clock } from 'lucide-react';
 import api from '../services/api';
 import {
-  formatCurrency,
-  formatCurrency2,
+  formatMoney,
   formatNumber,
   formatPercent,
   formatRoas,
@@ -148,7 +147,11 @@ const COLS = [
   { key: 'stuck', label: 'Qotgan', align: 'right' as const },
 ];
 
-function cell(row: FunnelRow, key: string) {
+/**
+ * Xarajat tomoni (spend, CPL, CQL, CAC) reklama akkaunti valyutasida,
+ * revenue esa CRM valyutasida. Ikkisini bir belgi bilan ko'rsatish mumkin emas.
+ */
+function cell(row: FunnelRow, key: string, fbVal: string | null, crmVal: string | null) {
   switch (key) {
     case 'name':
       return (
@@ -157,7 +160,7 @@ function cell(row: FunnelRow, key: string) {
         </span>
       );
     case 'spend':
-      return formatCurrency(row.spend);
+      return formatMoney(row.spend, fbVal);
     case 'fbResults':
       return (
         <span className="whitespace-nowrap">
@@ -172,21 +175,21 @@ function cell(row: FunnelRow, key: string) {
     case 'gapPct':
       return <GapCell value={row.gapPct} />;
     case 'cpl':
-      return formatCurrency2(row.cpl);
+      return formatMoney(row.cpl, fbVal, 2);
     case 'qualified':
       return formatNumber(row.qualified);
     case 'qualRate':
       return formatPercent(row.qualRate);
     case 'cql':
-      return formatCurrency2(row.cql);
+      return formatMoney(row.cql, fbVal, 2);
     case 'won':
       return formatNumber(row.won);
     case 'closeRate':
       return formatPercent(row.closeRate);
     case 'cac':
-      return formatCurrency2(row.cac);
+      return formatMoney(row.cac, fbVal, 2);
     case 'revenue':
-      return formatCurrency(row.revenue);
+      return formatMoney(row.revenue, crmVal);
     case 'roas':
       return <RoasCell value={row.roas} />;
     case 'dealMedian':
@@ -206,7 +209,13 @@ function cell(row: FunnelRow, key: string) {
   }
 }
 
-function totalCell(t: FunnelTotals, key: string, level: Level) {
+function totalCell(
+  t: FunnelTotals,
+  key: string,
+  level: Level,
+  fbVal: string | null,
+  crmVal: string | null
+) {
   switch (key) {
     case 'name':
       return (
@@ -218,7 +227,7 @@ function totalCell(t: FunnelTotals, key: string, level: Level) {
         </span>
       );
     case 'spend':
-      return formatCurrency(t.spend);
+      return formatMoney(t.spend, fbVal);
     case 'fbResults':
       return formatNumber(t.fbResults);
     case 'leads':
@@ -226,21 +235,21 @@ function totalCell(t: FunnelTotals, key: string, level: Level) {
     case 'gapPct':
       return <GapCell value={t.gapPct} />;
     case 'cpl':
-      return formatCurrency2(t.cpl);
+      return formatMoney(t.cpl, fbVal, 2);
     case 'qualified':
       return formatNumber(t.qualified);
     case 'qualRate':
       return formatPercent(t.qualRate);
     case 'cql':
-      return formatCurrency2(t.cql);
+      return formatMoney(t.cql, fbVal, 2);
     case 'won':
       return formatNumber(t.won);
     case 'closeRate':
       return formatPercent(t.closeRate);
     case 'cac':
-      return formatCurrency2(t.cac);
+      return formatMoney(t.cac, fbVal, 2);
     case 'revenue':
-      return formatCurrency(t.revenue);
+      return formatMoney(t.revenue, crmVal);
     case 'roas':
       return <RoasCell value={t.roas} />;
     case 'stuck':
@@ -264,6 +273,9 @@ export default function FunnelPage() {
 
   const rows = query.data?.data ?? [];
   const totals = query.data?.totals;
+  // Har ustun o'z valyutasi bilan. Noma'lum bo'lsa — belgisiz raqam.
+  const fbVal = query.data?.currency?.fb ?? null;
+  const crmVal = query.data?.currency?.crm ?? null;
 
   return (
     <div className="space-y-4">
@@ -360,7 +372,7 @@ export default function FunnelPage() {
                   <Tr key={r.id}>
                     {COLS.map((c) => (
                       <Td key={c.key} numeric={c.align === 'right'}>
-                        {cell(r, c.key)}
+                        {cell(r, c.key, fbVal, crmVal)}
                       </Td>
                     ))}
                   </Tr>
@@ -378,7 +390,7 @@ export default function FunnelPage() {
                         c.align === 'right' ? 'text-right' : 'text-left'
                       )}
                     >
-                      {totalCell(totals, c.key, level)}
+                      {totalCell(totals, c.key, level, fbVal, crmVal)}
                     </td>
                   ))}
                 </tr>
