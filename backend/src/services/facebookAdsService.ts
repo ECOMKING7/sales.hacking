@@ -342,7 +342,7 @@ function dateParams(range: DateRange): Record<string, string> {
   return { time_range: JSON.stringify({ since: range.since, until: range.until }) };
 }
 
-function normalizeActId(id: string): string {
+export function normalizeActId(id: string): string {
   return id.startsWith('act_') ? id : `act_${id}`;
 }
 
@@ -425,7 +425,7 @@ function fbErrorMessage(err: AxiosError): string {
 /**
  * GET a Graph API node with exponential backoff on rate limits (max 3 retries).
  */
-async function fbGet<T = unknown>(
+export async function fbGet<T = unknown>(
   path: string,
   params: Record<string, string | number>
 ): Promise<T> {
@@ -472,7 +472,7 @@ interface Paged<T> {
 /**
  * Fetch every page of a cursor-paginated edge.
  */
-async function fetchAll<T>(
+export async function fetchAll<T>(
   path: string,
   params: Record<string, string | number>,
   token: string

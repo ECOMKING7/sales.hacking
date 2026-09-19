@@ -17,7 +17,7 @@ import {
   entityIds,
 } from '../controllers/dashboardController';
 import { funnel, demoStatus } from '../controllers/funnelController';
-import { atribusiyaTashxis } from '../controllers/tashxisController';
+import { atribusiyaTashxis, formKashfiyot } from '../controllers/tashxisController';
 
 const router = Router();
 
@@ -27,6 +27,8 @@ router.use(verifyToken);
 router.get('/overview', overview);
 // Zanjir qayerda uzilgan — faqat o'qiydi, hech narsa o'zgartirmaydi.
 router.get('/atribusiya-tashxis', atribusiyaTashxis);
+// Instant Form -> reklama xaritasi qurilishi mumkinmi (B yo'li tajribasi).
+router.get('/form-kashfiyot', formKashfiyot);
 // Ad → lid → sifatli lid → sotuv → pul, bitta jadvalda
 router.get('/funnel', funnel);
 // Demo ma'lumot bormi — UI ogohlantirish chizig'i uchun

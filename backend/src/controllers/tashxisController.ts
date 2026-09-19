@@ -19,6 +19,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../db/pool';
 import { normalizeName } from '../services/leadMatcher';
+import { formlarniKashfEt } from '../services/formKashfiyot';
 import { xatoQayd } from '../utils/xatolar';
 
 /** Postgres COUNT/SUM matn qaytaradi — raqamga o'girish majburiy. */
@@ -255,5 +256,30 @@ export async function atribusiyaTashxis(req: Request, res: Response): Promise<vo
   } catch (err) {
     xatoQayd(err, { joy: 'atribusiya-tashxis', workspaceId });
     res.status(500).json({ error: 'Tashxis bajarilmadi' });
+  }
+}
+
+/**
+ * ---- GET /api/dashboard/form-kashfiyot ----
+ *
+ * B yo'li tajribasi: Instant Form → reklama xaritasi qurilishi mumkinmi.
+ * FAQAT O'QIYDI. Natija saqlanmaydi — qaror odamniki (§3.5).
+ */
+export async function formKashfiyot(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    res.json(await formlarniKashfEt(workspaceId));
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 400) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    xatoQayd(err, { joy: 'form-kashfiyot', workspaceId });
+    res.status(500).json({ error: 'Kashfiyot bajarilmadi' });
   }
 }
