@@ -72,3 +72,32 @@ export function roasTone(v: unknown): 'ok' | 'warn' | 'bad' {
   if (r >= 2) return 'warn';
   return 'bad';
 }
+
+/**
+ * `null` — "hisoblab bo'lmadi", `0` — "nol". Ikkisi bir xil ko'rinmasligi
+ * kerak, shuning uchun null'da "—" chiqadi.
+ *
+ * `formatMoney` buni qila olmaydi: u `n()` orqali o'tadi va null'ni
+ * nolga aylantiradi. Kartochkalarda aynan shu farq muhim — "$0 daromad"
+ * ni ko'rgan operator kampaniyani o'chiradi.
+ */
+export function formatMoneyOrDash(
+  v: unknown,
+  code: string | null | undefined,
+  digits = 0
+): string {
+  if (v === null || v === undefined || v === '') return '—';
+  return formatMoney(v, code, digits);
+}
+
+/** Foiz, lekin null — "—". */
+export function formatPercentOrDash(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  return formatPercent(v);
+}
+
+/** Kunlar, lekin null — "—". */
+export function formatDaysOrDash(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  return formatDays(v);
+}

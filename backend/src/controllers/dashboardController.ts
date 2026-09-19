@@ -271,15 +271,16 @@ function entitySelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null
  */
 function totalsSelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null = null): string {
   /**
-   * KUNLIK REJIMDA `COALESCE(..., 0)` ISHLATILMAYDI.
+   * ⚠ KUNLIK REJIMDA `COALESCE(..., 0)` ISHLATILMAYDI.
    *
    * Qator darajasida sotuv/daromad `null` qaytadi (kunlik jadvalda yo'q).
-   * Jami qatorida ularni `COALESCE(SUM(...), 0)` bilan yig'sak, `null`
-   * jimgina `0` ga aylanadi va ekranda "daromad $0" chiqadi.
+   * Agar jami qatorida ularni `COALESCE(SUM(...), 0)` bilan yig'sak,
+   * `null` jimgina `0` ga aylanadi va ekranda "daromad $0" chiqadi.
    *
-   * "$0" = "reklama pul keltirmadi". "—" = "hisoblab bo'lmadi".
+   * "$0" = "reklama pul keltirmadi" degani. "—" = "hisoblab bo'lmadi".
    * Ikkisi bir xil ko'rinsa, operator birinchi ma'noni o'qiydi va
-   * ishlayotgan kampaniyani o'chirib yuborishi mumkin.
+   * ishlayotgan kampaniyani o'chirib yuborishi mumkin. Bu loyihadagi
+   * eng qat'iy qoidalardan biri: `null` hech qachon `0` ga aylantirilmaydi.
    */
   const nol = (ifoda: string) => (o ? 'NULL::numeric' : `COALESCE(${ifoda}, 0)`);
   const hisob = (ifoda: string) => (o ? 'NULL::numeric' : ifoda);
@@ -314,6 +315,7 @@ export async function overview(req: Request, res: Response): Promise<void> {
     return;
   }
   const range = parseRange(req);
+  const o = kunOraliq(req);
 
   const key = overviewCacheKey(workspaceId, range.from, range.to);
   const cached = await cacheGet(key);
@@ -324,11 +326,27 @@ export async function overview(req: Request, res: Response): Promise<void> {
 
   const prev = previousRange(range);
   try {
-    const spendQ = pool.query(
-      `SELECT COALESCE(SUM(spend),0) AS spend, COALESCE(SUM(clicks),0) AS clicks
-         FROM campaigns WHERE workspace_id = $1`,
-      [workspaceId]
-    );
+    /**
+     * Xarajat va klik: sana tanlangan bo'lsa KUNLIK jadvaldan.
+     *
+     * Kartochkalar va jadval bir ekranda turadi — ular bir xil davrni
+     * ko'rsatishi shart. Jadval "bugun $14" deb, kartochka "$47 536"
+     * deb tursa, foydalanuvchi qaysi biriga ishonishni bilmaydi va
+     * ikkalasiga ham ishonmay qo'yadi.
+     */
+    const spendQ = o
+      ? pool.query(
+          `SELECT COALESCE(SUM(spend),0) AS spend, COALESCE(SUM(clicks),0) AS clicks
+             FROM ad_insights_daily
+            WHERE workspace_id = $1
+              AND kun BETWEEN DATE '${o.from}' AND DATE '${o.to}'`,
+          [workspaceId]
+        )
+      : pool.query(
+          `SELECT COALESCE(SUM(spend),0) AS spend, COALESCE(SUM(clicks),0) AS clicks
+             FROM campaigns WHERE workspace_id = $1`,
+          [workspaceId]
+        );
     /**
      * Daromad va lidlar SANA BO'YICHA FILTRLANMAYDI.
      *
@@ -394,22 +412,49 @@ export async function overview(req: Request, res: Response): Promise<void> {
     const prevRevenue = num(growthR.rows[0].oldin);
     const guard = await loadCurrencyGuard(workspaceId);
 
+    /**
+     * ⚠ SANA TANLANGANDA CRM KO'RSATKICHLARI `null`.
+     *
+     * `amountSpent` endi tanlangan kunlarniki. Daromad, sotuv va lid
+     * soni esa BUTUN DAVR uchun — ular `leads` jadvalidan keladi va
+     * hozircha reklamaga bog'lanmagan (atribusiya 0%).
+     *
+     * Ikkisini bo'lish — "bugungi $14 xarajat ⟋ 3 yillik 21 ta sotuv"
+     * — ma'nosiz raqam beradi va u ekranda ishonchli ko'rinadi. Aynan
+     * shu xato valyutada ~12 600 barobar shishish bergan edi; vaqt
+     * o'lchovida u yanada jimroq, chunki natija "aql bovar qiladigan"
+     * bo'lib chiqadi.
+     *
+     * Shuning uchun sana rejimida ular hisoblanmaydi. Kartochkada `—`
+     * chiqadi va sabab `vaqt.izoh` da boradi.
+     */
     const payload = {
       amountSpent,
-      revenue,
+      revenue: o ? null : revenue,
       currency: currencyMeta(guard),
       // Xarajat CRM valyutasiga o'girilib bo'linadi. Kurs yo'q bo'lsa
       // null — 0 emas: 0 "reklama pul keltirmadi", null "hisoblab
       // bo'lmaydi" degani.
-      roas: (() => {
-        const spend = spendInCrmCurrency(amountSpent, guard);
-        if (spend === null) return null;
-        return spend > 0 ? revenue / spend : 0;
-      })(),
-      cac: wonCount > 0 ? amountSpent / wonCount : 0,
-      conversionRate: totalLeads > 0 ? (wonCount / totalLeads) * 100 : 0,
-      dealTime: num(wonR.rows[0].deal_time),
-      arpl: totalLeads > 0 ? revenue / totalLeads : 0,
+      roas: o
+        ? null
+        : (() => {
+            const spend = spendInCrmCurrency(amountSpent, guard);
+            if (spend === null) return null;
+            return spend > 0 ? revenue / spend : 0;
+          })(),
+      cac: o ? null : wonCount > 0 ? amountSpent / wonCount : 0,
+      conversionRate: o ? null : totalLeads > 0 ? (wonCount / totalLeads) * 100 : 0,
+      dealTime: o ? null : num(wonR.rows[0].deal_time),
+      arpl: o ? null : totalLeads > 0 ? revenue / totalLeads : 0,
+      vaqt: {
+        rejim: o ? ('kunlik' as const) : ('butun_davr' as const),
+        from: o?.from ?? null,
+        to: o?.to ?? null,
+        qamrov: await kunlikQamrov(workspaceId),
+        izoh: o
+          ? "Xarajat — tanlangan kunlar bo'yicha. Daromad, ROAS, CAC va ARPL CRM'dan keladi va hali reklamaga bog'lanmagan, shuning uchun bu oraliq uchun hisoblanmaydi."
+          : 'Butun davr.',
+      },
       // Oxirgi 30 kun ↔ oldingi 30 kun. "revenue" (butun davr) bilan
       // bog'liq emas — bu trend ko'rsatkichi.
       revenueGrowth:

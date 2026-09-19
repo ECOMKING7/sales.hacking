@@ -14,7 +14,14 @@ import ColumnsButton from '../components/dashboard/ColumnsButton';
 import BreakdownButton from '../components/dashboard/BreakdownButton';
 import { loadVisibleColumns, saveVisibleColumns } from '../components/dashboard/columns';
 import { PresetId, rangeForPreset, kunlikOraliq } from '../utils/dateRanges';
-import { formatMoney, formatPercent, formatRoas, formatDays, n } from '../utils/format';
+import {
+  formatMoney,
+  formatMoneyOrDash,
+  formatPercentOrDash,
+  formatRoas,
+  formatDaysOrDash,
+  n,
+} from '../utils/format';
 import { Button, Input, cn } from '../components/ui';
 
 type Model = 'first_click' | 'last_click';
@@ -107,7 +114,11 @@ export default function DashboardPage() {
 
   const d = overview.data;
   const loading = overview.isLoading;
-  const metaPct = d && d.revenue > 0 ? Math.round((d.revenueBySource.metaAds / d.revenue) * 100) : 0;
+  // `revenue` sana rejimida null bo'ladi — bo'lishdan oldin tekshiriladi.
+  const metaPct =
+    d && d.revenue !== null && d.revenue > 0
+      ? Math.round((d.revenueBySource.metaAds / d.revenue) * 100)
+      : 0;
 
   /**
    * Ikki valyuta, ikki manba. Chalkashtirmaslik uchun har raqam qaysi
@@ -130,8 +141,8 @@ export default function DashboardPage() {
     { title: 'Amount Spent', value: formatMoney(d?.amountSpent, fbVal) },
     {
       title: 'Revenue',
-      value: formatMoney(d?.revenue, crmVal),
-      subtitle: `${metaPct}% from Meta Ads`,
+      value: formatMoneyOrDash(d?.revenue, crmVal),
+      subtitle: kun ? d?.vaqt?.izoh : `${metaPct}% from Meta Ads`,
     },
     {
       title: 'ROAS',
@@ -142,14 +153,14 @@ export default function DashboardPage() {
       hero: true,
     },
     // CAC = xarajat / sotuv → xarajat valyutasida.
-    { title: 'CAC', value: formatMoney(d?.cac, fbVal) },
-    { title: 'Conversion Rate', value: formatPercent(d?.conversionRate) },
-    { title: 'Deal Time', value: formatDays(d?.dealTime) },
+    { title: 'CAC', value: formatMoneyOrDash(d?.cac, fbVal) },
+    { title: 'Conversion Rate', value: formatPercentOrDash(d?.conversionRate) },
+    { title: 'Deal Time', value: formatDaysOrDash(d?.dealTime) },
     // ARPL = daromad / lid → daromad valyutasida. Bu yerda `$` turgan edi.
-    { title: 'ARPL', value: formatMoney(d?.arpl, crmVal) },
+    { title: 'ARPL', value: formatMoneyOrDash(d?.arpl, crmVal) },
     {
       title: 'Revenue Growth',
-      value: formatPercent(d?.revenueGrowth),
+      value: formatPercentOrDash(d?.revenueGrowth),
       // Yagona sanaga bog'liq katak: tanlangan oraliq ↔ undan oldingi
       // teng oraliq. Qolgan kataklar butun davr.
       subtitle: `tanlangan oraliq vs oldingi`,

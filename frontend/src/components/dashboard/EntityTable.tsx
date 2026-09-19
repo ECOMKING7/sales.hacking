@@ -81,6 +81,26 @@ function CreativeTile({ url, type }: { url?: string | null; type?: string | null
 }
 
 /**
+ * Hisoblab bo'lmagan katak.
+ *
+ * NEGA ALOHIDA FUNKSIYA: `formatMoney(null, ...)` → `$0.00`, chunki `n()`
+ * null'ni nolga aylantiradi. Ekranda `$0.00` "reklama pul sarflamadi"
+ * degani, `0 call` esa "natija bo'lmadi". Ikkalasi ham YOLG'ON — kunlik
+ * rejimda bu ustunlar umuman hisoblanmagan.
+ *
+ * Bu backenddagi `null` ni `0` ga aylantirmaslik qoidasining ekran
+ * tomonidagi davomi. Backend `null` yuboradi, UI uni ko'rsatishi kerak.
+ */
+function yoq() {
+  return <span className="text-ink-3">—</span>;
+}
+
+/** Qiymat umuman yo'qmi (null yoki undefined). Nol — yo'q emas. */
+function bosh(v: unknown): boolean {
+  return v === null || v === undefined;
+}
+
+/**
  * `fbVal` / `crmVal` — qaysi ustun qaysi valyutada.
  * Xarajat tomoni (spend, cpc, cpm, cost-per-*) reklama akkaunti valyutasida,
  * revenue esa CRM valyutasida. Ilgari ikkalasi ham `$` bilan chiqardi va
@@ -133,28 +153,29 @@ function renderCell(
     case 'frequency':
       return <span className="text-ink-3">—</span>;
     case 'results':
+      if (bosh(row.results)) return yoq();
       // Raqamning yonida natija turi turadi: "542 lead" — aks holda turli
       // maqsadli kampaniyalar ustunida "542" nimani anglatishi noma'lum.
       return (
         <span className="whitespace-nowrap">
-          {formatNumber(row.results ?? 0)}
+          {formatNumber(row.results)}
           {row.resultType && (
             <span className="ml-1 text-xs font-normal text-ink-3">{row.resultType}</span>
           )}
         </span>
       );
     case 'costPerResult':
-      return formatMoney(row.costPerResult, fbVal, 2);
+      return bosh(row.costPerResult) ? yoq() : formatMoney(row.costPerResult, fbVal, 2);
     case 'leads':
       return formatNumber(row.leads);
     case 'costPerLead':
       return formatMoney(row.costPerLead, fbVal, 2);
     case 'purchases':
-      return formatNumber(row.purchases);
+      return bosh(row.purchases) ? yoq() : formatNumber(row.purchases);
     case 'costPerPurchase':
-      return formatMoney(row.costPerPurchase, fbVal, 2);
+      return bosh(row.costPerPurchase) ? yoq() : formatMoney(row.costPerPurchase, fbVal, 2);
     case 'revenue':
-      return formatMoney(row.revenue, crmVal);
+      return bosh(row.revenue) ? yoq() : formatMoney(row.revenue, crmVal);
     case 'roas':
       // null = hisoblanmadi (valyuta mos emas). Rang berilmaydi: "—" ni
       // qizil qilish "yomon ROAS" degan yolg'on signal bo'lardi.
@@ -256,6 +277,7 @@ function renderTotal(
     case 'impressions':
       return formatNumber(t.impressions);
     case 'results':
+      if (bosh(t.results)) return yoq();
       return (
         <span className="whitespace-nowrap">
           {formatNumber(t.results)}
@@ -267,17 +289,17 @@ function renderTotal(
         </span>
       );
     case 'costPerResult':
-      return formatMoney(t.costPerResult, fbVal, 2);
+      return bosh(t.costPerResult) ? yoq() : formatMoney(t.costPerResult, fbVal, 2);
     case 'leads':
       return formatNumber(t.leads);
     case 'costPerLead':
       return formatMoney(t.costPerLead, fbVal, 2);
     case 'purchases':
-      return formatNumber(t.purchases);
+      return bosh(t.purchases) ? yoq() : formatNumber(t.purchases);
     case 'costPerPurchase':
-      return formatMoney(t.costPerPurchase, fbVal, 2);
+      return bosh(t.costPerPurchase) ? yoq() : formatMoney(t.costPerPurchase, fbVal, 2);
     case 'revenue':
-      return formatMoney(t.revenue, crmVal);
+      return bosh(t.revenue) ? yoq() : formatMoney(t.revenue, crmVal);
     case 'roas':
       if (t.roas === null || t.roas === undefined) {
         return <span className="text-ink-3">—</span>;

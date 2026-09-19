@@ -140,14 +140,26 @@ export const metaCapiApi = {
 // ---- Dashboard ----
 export interface DashboardOverview {
   amountSpent: number;
-  revenue: number;
-  /** null — valyutalar mos emas, hisoblab bo'lmadi (0 bilan aralashtirmang). */
+  /**
+   * null — hisoblab bo'lmadi. Sana tanlanganda CRM ko'rsatkichlari shunday:
+   * xarajat tanlangan kunlarniki, daromad esa butun davrniki — ikkisini
+   * bo'lish ma'nosiz raqam beradi. 0 bilan aralashtirmang.
+   */
+  revenue: number | null;
+  /** null — valyutalar mos emas yoki sana rejimi. 0 bilan aralashtirmang. */
   roas: number | null;
   currency?: CurrencyState;
-  cac: number;
-  conversionRate: number;
-  dealTime: number;
-  arpl: number;
+  cac: number | null;
+  conversionRate: number | null;
+  dealTime: number | null;
+  arpl: number | null;
+  vaqt?: {
+    rejim: 'kunlik' | 'butun_davr';
+    from: string | null;
+    to: string | null;
+    qamrov: { start: string | null; end: string | null };
+    izoh: string;
+  };
   revenueGrowth: number;
   revenueBySource: { metaAds: number; direct: number; igOrganic: number; fbOrganic: number };
   /** Raqamlar qamragan davr (FB insights date_start/date_stop). */
