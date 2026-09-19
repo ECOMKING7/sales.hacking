@@ -496,11 +496,33 @@ export default function EntityTable({
       <VaqtNote state={query.data?.vaqt} className="mx-4 mb-2 rounded-md" />
       <CurrencyNote state={currency} className="mx-4 mb-2 rounded-md" />
 
-      <TableWrap className="rounded-none border-0">
+      {/*
+        JADVAL O'Z QUTISIDA AYLANADI — Ads Manager naqshi.
+
+        Muammo: ilgari sahifaning o'zi aylanardi. Jadval oxiriga
+        yetganda aylantirish SAHIFAGA "o'tib ketardi" (scroll chaining)
+        va butun ekran pastga tushardi — sarlavha, sana tanlagich va
+        kartochkalar ko'rinmay qolardi. Foydalanuvchi qatorni o'qiyotib
+        qaysi ustunda ekanini yo'qotadi.
+
+        Uch qism:
+          overflow-auto       — o'z aylantiruvchisi (vertikal + gorizontal)
+          overscroll-contain  — chekkaga yetganda sahifa QIMIRLAMAYDI
+          sticky              — sarlavha tepada, "Jami" pastda qotib turadi
+
+        Balandlik: ekrandan tepadagi asboblar joyi ayriladi. `min-h`
+        kichik ekranda jadval yo'q bo'lib ketmasligi uchun.
+      */}
+      <TableWrap
+        className={cn(
+          'rounded-none border-0',
+          'max-h-[calc(100vh-300px)] min-h-[280px] overflow-auto overscroll-contain'
+        )}
+      >
         <Table>
           <thead>
             <tr>
-              <Th className="w-10">
+              <Th className="sticky top-0 z-30 w-10">
                 <Checkbox
                   checked={allChecked}
                   indeterminate={someChecked && !allChecked}
@@ -519,6 +541,9 @@ export default function EntityTable({
                       isSorted ? (order === 'desc' ? 'descending' : 'ascending') : undefined
                     }
                     className={cn(
+                      // Sarlavha qatori qotib turadi — 40 ta qatorni
+                      // aylantirganda "bu ustun nima edi?" savoli tug'ilmasin.
+                      'sticky top-0 z-20',
                       c.sortKey && 'cursor-pointer select-none hover:text-ink-2',
                       isSorted && 'text-accent'
                     )}
@@ -611,12 +636,16 @@ export default function EntityTable({
               bo'yicha hisoblaydi. */}
           {showTotals && totals && (
             <tfoot>
-              <tr className="border-t-[1.5px] border-line bg-surface-2 font-semibold text-ink">
-                <td className="px-3 py-2.5" />
+              <tr className="font-semibold text-ink">
+                {/* `sticky` `tr` ga emas, KATAKLARGA qo'yiladi — brauzerlar
+                    `tr` ning sticky'sini ishonchli qo'llamaydi. Fon ham shu
+                    yerda: shaffof bo'lsa ostidagi qatorlar ko'rinib qoladi. */}
+                <td className="sticky bottom-0 z-20 border-t-[1.5px] border-line bg-surface-2 px-3 py-2.5" />
                 {cols.map((c, i) => (
                   <td
                     key={c.key}
                     className={cn(
+                      'sticky bottom-0 z-20 border-t-[1.5px] border-line bg-surface-2',
                       'px-3 py-2.5 text-sm tabular-nums',
                       c.align === 'right' ? 'text-right' : 'text-left'
                     )}
