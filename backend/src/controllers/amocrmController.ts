@@ -7,6 +7,7 @@ import {
   exchangeCodeForTokens,
   getPipelines,
   saveCredentials,
+  amoGetPath,
 } from '../services/amocrmService';
 import { discoverLeadFields, type MaydonTahlili } from '../services/amocrmFields';
 
@@ -561,5 +562,95 @@ export async function saveLeadIdField(req: Request, res: Response): Promise<void
     });
   } catch (err) {
     res.status(500).json({ error: 'Saqlanmadi' });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GET /api/workspace/amocrm-webhooks
+
+   "Webhook ishlayaptimi?" degan savolga SOXTA LID YARATMASDAN javob.
+
+   Ilgari buni tekshirishning yagona yo'li test lid yaratish edi. Lekin
+   u uch narsani ifloslantiradi: mijozning haqiqiy statistikasi, Meta'ga
+   ketadigan hodisalar oqimi, va keyin tozalash ishi. Bularning hammasi
+   bitta GET so'rov bilan hal bo'ladi.
+
+   amoCRM `/api/v4/webhooks` obunalar ro'yxatini qaytaradi. Uchta narsa
+   ko'rinadi:
+     1. Webhook UMUMAN bormi
+     2. Manzili BIZNING serverga ishora qilyaptimi (boshqa integratsiya
+        webhook'i ham shu ro'yxatda bo'lishi mumkin)
+     3. Kerakli hodisalarga obuna bo'lganmi (`add_lead`, `status_lead`)
+
+   FAQAT O'QIYDI (§4.3). Hech narsa yozmaydi, o'chirmaydi, ulamaydi.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+interface AmoWebhook {
+  id?: number;
+  destination?: string;
+  settings?: string[];
+  disabled?: boolean;
+  created_at?: number;
+  updated_at?: number;
+}
+
+/** Bizning webhook manzilimizni tanish — domendan qat'i nazar. */
+function bizniki(destination: string): boolean {
+  return /\/api\/webhooks\/amocrm/i.test(destination);
+}
+
+export async function listWebhooks(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const javob = await amoGetPath<{ _embedded?: { webhooks?: AmoWebhook[] } }>(
+      req.user.workspaceId,
+      '/api/v4/webhooks'
+    );
+    const xom = javob._embedded?.webhooks ?? [];
+
+    const royxat = xom.map((w) => {
+      const dest = w.destination ?? '';
+      return {
+        id: w.id ?? null,
+        // Manzil to'liq ko'rsatiladi: ichida maxfiy narsa yo'q, lekin
+        // `?secret=` bo'lsa maskalanadi (§4.2).
+        manzil: dest.replace(/([?&](secret|token)=)[^&]+/gi, '$1***'),
+        bizniki: bizniki(dest),
+        hodisalar: w.settings ?? [],
+        ochirilgan: Boolean(w.disabled),
+      };
+    });
+
+    const bizniki_lar = royxat.filter((w) => w.bizniki && !w.ochirilgan);
+    const kerakli = ['add_lead', 'status_lead'];
+    const yetishmayotgan = kerakli.filter(
+      (h) => !bizniki_lar.some((w) => w.hodisalar.includes(h))
+    );
+
+    let xulosa: string;
+    if (royxat.length === 0) {
+      xulosa =
+        "amoCRM'da BIRORTA webhook yo'q. Ya'ni lid tushganda ham, etap o'zgarganda ham bizga hech narsa kelmaydi — CAPI ishlamaydi.";
+    } else if (bizniki_lar.length === 0) {
+      xulosa = `${royxat.length} ta webhook bor, lekin BIZNIKI YO'Q (yoki o'chirilgan). Mavjudlari boshqa integratsiyalarniki.`;
+    } else if (yetishmayotgan.length > 0) {
+      xulosa = `Bizning webhook bor, lekin shu hodisalarga obuna emas: ${yetishmayotgan.join(', ')}. Obuna bo'lmagan hodisa umuman kelmaydi.`;
+    } else {
+      xulosa =
+        "Bizning webhook bor va kerakli hodisalarga obuna. Demak yangi lid kelganda CAPI ishga tushishi kerak.";
+    }
+
+    res.json({ jami: royxat.length, bizniki: bizniki_lar.length, yetishmayotgan, xulosa, webhooklar: royxat });
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 400 || e.status === 403) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    console.error('amocrm webhooks error:', e.message);
+    res.status(500).json({ error: "Webhook ro'yxatini o'qib bo'lmadi" });
   }
 }

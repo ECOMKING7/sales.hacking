@@ -16,6 +16,7 @@ import {
   listPipelines as amocrmListPipelines,
   savePipeline as amocrmSavePipeline,
   listFields as amocrmListFields,
+  listWebhooks as amocrmListWebhooks,
   saveLeadIdField as amocrmSaveLeadIdField,
 } from '../controllers/amocrmController';
 import {
@@ -42,6 +43,8 @@ router.post('/amocrm-pipeline', verifyToken, amocrmSavePipeline);
 // Maydon tahlili: Meta Lead ID qaysi maydonda (faqat o'qish) + tanlovni saqlash
 router.get('/amocrm-fields', verifyToken, amocrmListFields);
 router.post('/amocrm-lead-id-field', verifyToken, amocrmSaveLeadIdField);
+// Webhook obunalari — soxta lid yaratmasdan tekshirish uchun (faqat o'qish)
+router.get('/amocrm-webhooks', verifyToken, amocrmListWebhooks);
 
 // Meta Conversions API (token bu yerdan o'tmaydi — faqat .env da, §4.1)
 router.get('/meta-capi', verifyToken, metaCapiStatus);
