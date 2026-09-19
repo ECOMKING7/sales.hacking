@@ -104,6 +104,94 @@
   }
 }
 
+@layer components {
+  /* ═══════════════ HALQA — yonib turgan qirra ═══════════════
+
+     Ikki qatlam, ikki vazifa:
+
+       ::before — QIRRA. Butun ramka past yorug'lik bilan yonib turadi,
+                  ustidan esa bitta yorqin yoy AYLANIB yuradi.
+       ::after  — ICHKI YORUG'LIK. Orbning cho'zilgan nusxasi: tepada
+                  havorang, o'rtada binafsha, pastda och ko'k.
+
+     Nega `z-index: -1`: element o'z stacking kontekstini yaratadi
+     (`isolate`), shu sababli manfiy z-index ELEMENT FONIDAN YUQORI,
+     lekin kontentdan PAST chiziladi. Ya'ni ikonkalar yorug'lik ostida
+     qolmaydi va hech bir bolaga `relative z-10` qo'shish shart emas.
+
+     Qirra `mask-composite` bilan kesiladi: konus gradient butun
+     to'rtburchakni to'ldiradi, keyin ichki qismi o'chiriladi va faqat
+     1.5px ramka qoladi. `padding` — aynan shu ramka qalinligi. */
+  .halqa {
+    isolation: isolate;
+    /* Tashqi yorug'lik — qirradan tashqariga chiqadigan yumshoq nur.
+       Psevdo-elementlar ikkalasi ham band, shuning uchun `box-shadow`. */
+    box-shadow: 1px 0 26px -10px rgb(var(--edge) / 0.55);
+  }
+
+  .halqa::before,
+  .halqa::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .halqa::before {
+    /* 2px — 1.5px da yoy ko'rinmay qoldi (skrinshotda tekshirildi). */
+    padding: 2px;
+    /* ⚠ Konus gradient BURCHAK bo'yicha taqsimlanadi, uzunlik bo'yicha
+       emas. Rail 62×700 — ya'ni uzun yon qirralar burchakning atigi
+       ~10° ini egallaydi, qisqa tepa va past esa qolgan hammasini.
+       Shuning uchun tor yoy yon tomondan bir zumda "otilib" o'tadi.
+
+       Yechim: yoy KENG (≈150°) va asos yorug'lik baland (0.34) —
+       shunda butun qirra yonib turadi, yoy esa uning ustidan
+       kuchayib o'tadi. Tor va o'tkir yoy bu shaklda ishlamaydi. */
+    background: conic-gradient(
+      from var(--halqa-burchak, 0deg),
+      rgb(var(--edge) / 0.34) 0deg,
+      rgb(var(--edge) / 0.34) 120deg,
+      rgb(var(--edge) / 0.95) 175deg,
+      rgb(var(--halo) / 1) 205deg,
+      rgb(var(--edge) / 0.95) 235deg,
+      rgb(var(--edge) / 0.34) 290deg,
+      rgb(var(--edge) / 0.34) 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: halqa-aylanish 7s linear infinite;
+  }
+
+  .halqa::after {
+    background:
+      radial-gradient(125% 20% at 50% 2%, rgb(var(--edge) / 0.34) 0%, rgb(var(--edge) / 0) 72%),
+      radial-gradient(135% 16% at 50% 44%, rgb(var(--halo) / 0.22) 0%, rgb(var(--halo) / 0) 74%),
+      radial-gradient(125% 20% at 50% 99%, rgb(var(--tint) / 0.5) 0%, rgb(var(--tint) / 0) 72%);
+  }
+
+  /* Harakat sezgirligi: yoy to'xtaydi, lekin qirra va ichki yorug'lik
+     qoladi — bezak yo'qolmaydi, faqat aylanish to'xtaydi. */
+  @media (prefers-reduced-motion: reduce) {
+    .halqa::before {
+      animation: none;
+      background: linear-gradient(
+        180deg,
+        rgb(var(--edge) / 0.7),
+        rgb(var(--halo) / 0.5) 45%,
+        rgb(var(--edge) / 0.22)
+      );
+    }
+  }
+}
+
 @layer utilities {
   /* Pulsatsiyani harakat sezgirligi yoqilganda to'xtatamiz */
   @media (prefers-reduced-motion: reduce) {
@@ -118,5 +206,29 @@
     *::after {
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Burchakni animatsiya qilish uchun brauzer uni RANG EMAS, BURCHAK
+   deb bilishi kerak. `@property` bo'lmasa CSS o'zgaruvchisi matn
+   sifatida qaraladi va oraliq qiymatlar hisoblanmaydi — animatsiya
+   sakrab ketadi yoki umuman ishlamaydi.
+
+   Qo'llab-quvvatlamaydigan brauzerda yoy qimirlamaydi, lekin qirra
+   baribir yonib turadi (0deg holatida) — buzilmaydi, sodda bo'ladi.
+
+   `@layer` ICHIDA emas: Tailwind qatlamlarini qayta tartiblaganda
+   at-rule tushib qolishi mumkin.
+   ═══════════════════════════════════════════════════════════════ */
+@property --halqa-burchak {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes halqa-aylanish {
+  to {
+    --halqa-burchak: 360deg;
   }
 }

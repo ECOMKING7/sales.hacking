@@ -151,8 +151,16 @@ export default function Layout() {
       {/* ── Ikon-rail: 62px desktop, mobilda 240px overlay ── */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-line bg-surface-2',
-          'transition-transform duration-200 md:static md:w-[62px] md:translate-x-0',
+          // `border-r` olib tashlandi: qirrani endi `.halqa` chizadi.
+          // Ikkalasi qolsa kulrang chiziq yonayotgan yoy ustiga tushardi.
+          'halqa fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-surface-2',
+          // `md:static` EMAS, `md:relative`: yonib turgan qirra
+          // `position: absolute` psevdo-element bilan chiziladi va unga
+          // joylashtiruvchi ota kerak. `static` bo'lsa psevdo butun
+          // oynaga nisbatan joylashadi — desktopda halqa railning emas,
+          // ekranning qirrasida paydo bo'lardi. Layout uchun farqi yo'q:
+          // `relative` ham oqimda qoladi.
+          'transition-transform duration-200 md:relative md:w-[62px] md:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
