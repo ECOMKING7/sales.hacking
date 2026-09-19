@@ -7,7 +7,8 @@ import { DateRange } from '../services/facebookAdsService';
 import { fbUsage } from '../services/fbRateLimit';
 import { ensureFreshFxRates } from '../services/fxRates';
 import { importChunk } from '../services/amocrmImport';
-import { xatoQayd } from '../utils/xatolar';
+import { runInBackground } from '../utils/background';
+import { xatoQayd, xatolarniYubor } from '../utils/xatolar';
 
 const triggerSchema = z
   .object({
@@ -145,50 +146,111 @@ export async function cronSync(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  /**
+   * IKKI REJIM — chaqiruvchining kuta oladigan vaqtiga qarab.
+   *
+   * `?wait=1` — ish tugaguncha kutiladi, javobda to'liq natija.
+   *   Kim uchun: GitHub Actions (curl --max-time 280), qo'lda tekshirish.
+   *
+   * Sukut — 202 darhol qaytadi, ish fonda tugaydi.
+   *   Kim uchun: cron-job.org. Uning BEPUL tarifida timeout MAKSIMUM
+   *   30 soniya, bizning sinxron esa 156 soniya (o'lchangan). Ya'ni
+   *   u har safar "timeout" deb belgilardi — ish aslida tugagan bo'lsa ham.
+   *   Har 30 daqiqada yolg'on qizil status — bu ogohlantirishni o'rgatib
+   *   yuboradi: odam ularni o'qimay qo'yadi va HAQIQIY nosozlikni
+   *   o'tkazib yuboradi. Shuning uchun javob tez qaytadi.
+   *
+   * Natija qayerda ko'rinadi: `sync_logs` jadvali, `GET /api/sync/status`
+   * va xato bo'lsa Sentry. Javobning o'zi natija emas — faqat "qabul qilindi".
+   */
+  const kutish = req.query.wait === '1';
+
+  if (kutish) {
+    const natija = await hammaniSinxronla();
+    res.status(200).json({ success: true, ...natija });
+    return;
+  }
+
+  const boshlandi = Date.now();
+  runInBackground(
+    hammaniSinxronla().then(async (n) => {
+      console.log(
+        `cron: fon sinxroni tugadi — ${n.workspaces} akkaunt, ${n.failed} xato, ${n.durationMs}ms`
+      );
+      if (n.failed > 0) await xatolarniYubor(1500);
+      return n;
+    }),
+    'sync-cron'
+  );
+
+  res.status(202).json({
+    accepted: true,
+    mode: 'background',
+    note: "Natija sync_logs va GET /api/sync/status da. To'liq javob uchun ?wait=1",
+    queuedInMs: Date.now() - boshlandi,
+  });
+}
+
+/**
+ * Hamma faol akkauntni ketma-ket sinxronlaydi.
+ *
+ * ⚠ MASSHTAB CHEGARASI: ketma-ket ishlaydi. 1 akkaunt ≈ 156s (o'lchangan),
+ * Vercel funksiyasining chegarasi 300s. Ya'ni IKKINCHI akkaunt qo'shilishi
+ * bilan funksiya yarmida uziladi — jim, xatosiz, hech kim bilmaydi.
+ * Qarorlar jurnalida ochiq muammo sifatida yozilgan; ikkinchi mijozdan
+ * oldin navbat yoki vaqt byudjeti kerak.
+ */
+async function hammaniSinxronla(): Promise<{
+  workspaces: number;
+  failed: number;
+  durationMs: number;
+  pool: ReturnType<typeof poolStats>;
+  fbUsage: ReturnType<typeof fbUsage>;
+  results: Array<{ workspaceId: string; ok: boolean; error?: string }>;
+}> {
   const startedAt = Date.now();
   const results: Array<{ workspaceId: string; ok: boolean; error?: string }> = [];
 
   // Serverless'da ichki cron yo'q, shuning uchun kurs ham shu tetikdan
   // yangilanadi. Kurs yangi bo'lsa tashqi so'rov yuborilmaydi.
-  await ensureFreshFxRates();
-
   try {
-    const { rows } = await pool.query<{ id: string }>(
-      `SELECT w.id
-         FROM workspaces w
-         JOIN users u ON u.id = w.owner_id
-        WHERE u.fb_access_token IS NOT NULL
-          AND w.fb_ad_account_id IS NOT NULL`
-    );
-
-    for (const ws of rows) {
-      // Bitta workspace'dagi xato qolganlarini to'xtatmaydi.
-      try {
-        await enqueueSync(ws.id);
-        results.push({ workspaceId: ws.id, ok: true });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        xatoQayd(err, { joy: 'sync-cron', workspaceId: ws.id });
-        results.push({ workspaceId: ws.id, ok: false, error: message });
-      }
-    }
-
-    const failed = results.filter((r) => !r.ok).length;
-    res.status(200).json({
-      success: true,
-      workspaces: results.length,
-      failed,
-      durationMs: Date.now() - startedAt,
-      pool: poolStats(),
-      // Facebook aniq chaqiruvlar sonini bermaydi — limitning necha foizi
-      // ishlatilganini beradi. Bloklangan bo'lsa regainMinutes to'ladi.
-      fbUsage: fbUsage(),
-      results,
-    });
+    await ensureFreshFxRates();
   } catch (err) {
-    xatoQayd(err, { joy: 'sync-cron' });
-    res.status(500).json({ error: 'Cron sync failed', durationMs: Date.now() - startedAt });
+    // Kurs yangilanmasa sinxron baribir davom etadi — ROAS bloklanadi,
+    // lekin xarajat va lid raqamlari to'g'ri qoladi.
+    xatoQayd(err, { joy: 'sync-cron', qoshimcha: { bosqich: 'fx' } });
   }
+
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT w.id
+       FROM workspaces w
+       JOIN users u ON u.id = w.owner_id
+      WHERE u.fb_access_token IS NOT NULL
+        AND w.fb_ad_account_id IS NOT NULL`
+  );
+
+  for (const ws of rows) {
+    // Bitta workspace'dagi xato qolganlarini to'xtatmaydi.
+    try {
+      await enqueueSync(ws.id);
+      results.push({ workspaceId: ws.id, ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      xatoQayd(err, { joy: 'sync-cron', workspaceId: ws.id });
+      results.push({ workspaceId: ws.id, ok: false, error: message });
+    }
+  }
+
+  return {
+    workspaces: results.length,
+    failed: results.filter((r) => !r.ok).length,
+    durationMs: Date.now() - startedAt,
+    pool: poolStats(),
+    // Facebook aniq chaqiruvlar sonini bermaydi — limitning necha foizi
+    // ishlatilganini beradi. Bloklangan bo'lsa regainMinutes to'ladi.
+    fbUsage: fbUsage(),
+    results,
+  };
 }
 
 

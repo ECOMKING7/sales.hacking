@@ -18,7 +18,7 @@ jobs:
           SECRET: "${{ secrets.CRON_SECRET }}"
         run: |
           kod=$(curl -sS -o javob.json -w '%{http_code}' \
-            -X POST "$API/api/sync/cron" \
+            -X POST "$API/api/sync/cron?wait=1" \
             -H "X-Cron-Secret: $SECRET" \
             --max-time 280)
           echo "HTTP $kod"
