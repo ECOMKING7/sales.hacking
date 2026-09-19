@@ -59,15 +59,18 @@ export default function LeadIdField() {
         ...r,
         voronkalar: r.voronkalar ?? [],
         nomzodlar: r.nomzodlar ?? [],
+        takroriyNomzodlar: r.takroriyNomzodlar ?? [],
         maydonlar: r.maydonlar ?? [],
         kontaktNomzodlari: r.kontaktNomzodlari ?? [],
         liniyaNomzodlari: r.liniyaNomzodlari ?? [],
         reklamaLiniyalari: r.reklamaLiniyalari ?? [],
         nomdaTopildi: r.nomdaTopildi ?? 0,
         nomNoyob: r.nomNoyob ?? 0,
+        nomTakroriy: r.nomTakroriy ?? false,
         nomNamunalar: r.nomNamunalar ?? [],
         tegdaTopildi: r.tegdaTopildi ?? 0,
         tegNoyob: r.tegNoyob ?? 0,
+        tegTakroriy: r.tegTakroriy ?? false,
         tegNamunalar: r.tegNamunalar ?? [],
         tegMatnlari: r.tegMatnlari ?? [],
         nomMatnlari: r.nomMatnlari ?? [],
@@ -224,6 +227,11 @@ export default function LeadIdField() {
                   <span className="text-ink-2">Lid nomida:</span> {data.nomdaTopildi} ta
                   lidda, shundan <span className="font-medium">{data.nomNoyob} ta noyob</span>.
                   Misol: <span className="font-mono">{data.nomNamunalar.join(', ') || '—'}</span>
+                  {data.nomTakroriy && (
+                    <span className="ml-1 font-medium text-warn">
+                      ⚠ takrorlanadi — Lead ID emas
+                    </span>
+                  )}
                 </p>
               )}
               {data.tegdaTopildi > 0 && (
@@ -231,6 +239,11 @@ export default function LeadIdField() {
                   <span className="text-ink-2">Tegda:</span> {data.tegdaTopildi} ta lidda,
                   shundan <span className="font-medium">{data.tegNoyob} ta noyob</span>.
                   Misol: <span className="font-mono">{data.tegNamunalar.join(', ') || '—'}</span>
+                  {data.tegTakroriy && (
+                    <span className="ml-1 font-medium text-warn">
+                      ⚠ takrorlanadi — Lead ID emas
+                    </span>
+                  )}
                 </p>
               )}
               {/* ID lar Facebook jadvallarimizga mos keldimi — taxmin emas,
@@ -336,6 +349,15 @@ export default function LeadIdField() {
                   ))}
                 </optgroup>
               )}
+              {data.takroriyNomzodlar.length > 0 && (
+                <optgroup label="⚠ Shakli mos, lekin qiymati takrorlanadi">
+                  {data.takroriyNomzodlar.map((f) => (
+                    <option key={`t-${f.field_id}`} value={f.field_id}>
+                      {yorliq(f)} — noyoblik {f.noyoblik}%
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               <optgroup label="Barcha maydonlar">
                 {data.maydonlar.map((f) => (
                   <option key={f.field_id} value={f.field_id}>
@@ -356,6 +378,21 @@ export default function LeadIdField() {
                 telefon va email orqali ketadi.
               </p>
             )}
+
+            {(() => {
+              const t = data.takroriyNomzodlar.find((f) => f.field_id === tanlov);
+              if (!t || manba !== 'field') return null;
+              return (
+                <p className="mt-2 border-[1.5px] border-warn/40 bg-warn/5 px-3 py-2 text-xs leading-relaxed text-ink-2">
+                  ⚠ <span className="font-medium text-ink">"{t.field_name}"</span> —{' '}
+                  {t.toldirilgan} ta lidda atigi {t.noyob} xil qiymat (noyoblik{' '}
+                  {t.noyoblik}%). Meta Lead ID har lidda YAGONA bo'ladi.
+                  Takrorlanadigan qiymat — odatda forma yoki reklama ID si; u
+                  CAPI'da hech narsani moslamaydi va <span className="font-medium">xato
+                  ham bermaydi</span>. Server bu tanlovni tasdiqsiz qabul qilmaydi.
+                </p>
+              );
+            })()}
 
             {tanlov && (
               <p className="mt-2 font-mono text-xs text-ink-3">

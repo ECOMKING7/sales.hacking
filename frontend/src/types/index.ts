@@ -272,6 +272,13 @@ export interface FieldRow {
   noyobQiymatlar: string[];
   /** 0–100. */
   ishonch: number;
+  /**
+   * Noyob qiymatlar ulushi, 0–100. Lead ID da ≈100, forma ID da past.
+   * Shakl bilan birga — ikkinchi va hal qiluvchi tekshiruv.
+   */
+  noyoblik: number;
+  /** `true` — qiymatlar takrorlanadi, ya'ni har lidga tegishli ID emas. */
+  takroriy: boolean;
   namunalar: string[];
 }
 
@@ -305,6 +312,12 @@ export interface FieldReport {
   tekshirilganLid: number;
   voronkalar: FieldPipelineRow[];
   nomzodlar: FieldRow[];
+  /**
+   * Shakli mos, lekin qiymati takrorlanadi — ehtimol forma/reklama ID si.
+   * Nomzod emas, lekin ko'rsatiladi: sababsiz yo'qolgan maydon
+   * "kod topmadi" deb tushuniladi.
+   */
+  takroriyNomzodlar: FieldRow[];
   maydonlar: FieldRow[];
   /** Kontakt maydonlarida topilgan nomzodlar. */
   kontaktNomzodlari: FieldRow[];
@@ -316,9 +329,13 @@ export interface FieldReport {
   nomdaTopildi: number;
   /** Noyob qiymatlar soni — Lead ID mi yoki forma/ad ID si, shundan bilinadi. */
   nomNoyob: number;
+  /** `true` — nomdagi sonlar takrorlanadi, ya'ni Lead ID emas. */
+  nomTakroriy: boolean;
   nomNamunalar: string[];
   tegdaTopildi: number;
   tegNoyob: number;
+  /** `true` — teglardagi sonlar takrorlanadi. */
+  tegTakroriy: boolean;
   tegNamunalar: string[];
   /** Teglarning to'liq matni — ichida reklama nomi bo'lishi mumkin. */
   tegMatnlari: string[];

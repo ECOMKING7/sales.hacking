@@ -601,3 +601,46 @@ test("tegdan raqam: qisqa son forma ID emas", async () => {
   assert.equal(tegdanRaqam('yangi mijoz'), null);
   assert.equal(tegdanRaqam('teg 12345'), null, '5 xona — kam');
 });
+
+/* ═══════════════ 10. Takroriylik testi — Lead ID vs Forma ID ═══════════════
+
+   REAL HODISA (19.09.2026, FurniGlass): amoCRM teglarida 8 ta qiymat
+   bor edi va ularning hammasi Facebook FORMA ID lari bo'lib chiqdi
+   (8/8 mos). Shakl bo'yicha ular Lead ID dan farq qilmaydi — ikkalasi
+   ham 15–17 xonali son.
+
+   Agar shu maydon Lead ID deb tanlansa: import "muvaffaqiyatli" tugaydi,
+   `fb_lead_id` to'ladi, CAPI ishga tushadi va HECH NARSA moslamaydi.
+   Xato chiqmaydi. Shuning uchun test. */
+
+test("takroriylik: forma ID taqsimoti rad etiladi", async () => {
+  const { takroriyMi } = await import('../amocrmFields');
+  // FurniGlass: 15 659 lidda 8 xil qiymat.
+  assert.equal(takroriyMi(15659, 8), true);
+  // 1 000 lidda 40 xil — hali ham forma/reklama ID si.
+  assert.equal(takroriyMi(1000, 40), true);
+});
+
+test("takroriylik: haqiqiy Lead ID o'tadi", async () => {
+  const { takroriyMi } = await import('../amocrmFields');
+  // Har lidda boshqa.
+  assert.equal(takroriyMi(100, 100), false);
+  // Dublikat lid bor — 94% noyob, baribir o'tishi kerak.
+  assert.equal(takroriyMi(100, 94), false);
+});
+
+test('takroriylik: chegara 90%', async () => {
+  const { takroriyMi } = await import('../amocrmFields');
+  assert.equal(takroriyMi(100, 90), false, '90% — o\'tadi');
+  assert.equal(takroriyMi(100, 89), true, '89% — o\'tmaydi');
+});
+
+test("takroriylik: kichik namunada hukm chiqarilmaydi", async () => {
+  const { takroriyMi } = await import('../amocrmFields');
+  // 4 ta lidda 1 xil qiymat — statistik ma'nosi yo'q. "Takroriy" deb
+  // belgilash yangi akkauntda to'g'ri maydonni rad etardi.
+  assert.equal(takroriyMi(4, 1), false);
+  assert.equal(takroriyMi(0, 0), false);
+  // 5 tadan boshlab hukm bor.
+  assert.equal(takroriyMi(5, 1), true);
+});

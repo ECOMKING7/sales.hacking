@@ -8,7 +8,7 @@ import {
   getPipelines,
   saveCredentials,
 } from '../services/amocrmService';
-import { discoverLeadFields } from '../services/amocrmFields';
+import { discoverLeadFields, type MaydonTahlili } from '../services/amocrmFields';
 
 function frontendUrl(): string {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -445,7 +445,50 @@ const leadIdFieldSchema = z.object({
     .max(50)
     .optional()
     .transform((v) => (v ? v.map((x) => x.replace(/\D/g, '')).filter(Boolean) : undefined)),
+  /**
+   * Takroriy maydonni ATAYLAB tanlash uchun. Bu bayroqsiz server
+   * takroriy maydonni qabul qilmaydi (409 qaytaradi).
+   */
+  takroriyniTasdiqlayman: z.boolean().optional(),
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SAQLASH PAYTIDAGI HIMOYA
+
+   Tahlil sahifasi nomzodlarni to'g'ri ajratadi, lekin u FAQAT KO'RSATADI.
+   Bu endpointga esa istalgan `fieldId` yuborilishi mumkin — eski
+   ekrandan, boshqa havoladan, yoki shunchaki API orqali.
+
+   Bir marta noto'g'ri saqlansa oqibat jim bo'ladi: `leads.fb_lead_id`
+   ga forma ID yoziladi, import "muvaffaqiyatli" tugaydi, CAPI esa
+   hech narsani moslamaydi. Xato chiqmaydi — shuning uchun to'siq
+   aynan SAQLASHDA turishi kerak, ko'rsatishda emas.
+
+   Tekshiruv arzon: tahlil allaqachon hisoblangan bo'ladi va bu yerda
+   faqat tanlangan maydon qaraladi.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** Tanlov takroriy manbani ko'rsatyaptimi — sabab matni yoki null. */
+function takroriyTanlov(
+  tahlil: MaydonTahlili,
+  manba: 'field' | 'name' | 'tag' | null,
+  fieldId: string | null
+): string | null {
+  if (manba === 'name') {
+    return tahlil.nomTakroriy
+      ? `Lid NOMIDAGI sonlar takrorlanadi: ${tahlil.nomdaTopildi} ta lidda atigi ${tahlil.nomNoyob} xil qiymat. Bu har lidga tegishli Lead ID emas — ehtimol forma yoki reklama ID si.`
+      : null;
+  }
+  if (manba === 'tag') {
+    return tahlil.tegTakroriy
+      ? `TEGLARDAGI sonlar takrorlanadi: ${tahlil.tegdaTopildi} ta lidda atigi ${tahlil.tegNoyob} xil qiymat. Bu Lead ID emas — ehtimol forma ID si.`
+      : null;
+  }
+  if (!fieldId) return null;
+  const m = tahlil.takroriyNomzodlar.find((x) => x.field_id === fieldId);
+  if (!m) return null;
+  return `"${m.field_name}" maydonidagi qiymatlar takrorlanadi: ${m.toldirilgan} ta lidda atigi ${m.noyob} xil qiymat (noyoblik ${m.noyoblik}%). Lead ID har lidda boshqa bo'lishi kerak.`;
+}
 
 export async function saveLeadIdField(req: Request, res: Response): Promise<void> {
   if (!req.user?.workspaceId) {
@@ -458,6 +501,37 @@ export async function saveLeadIdField(req: Request, res: Response): Promise<void
     return;
   }
   try {
+    /* Takroriylik to'sig'i. Faqat Lead ID tanlanayotganda ishlaydi —
+       liniya maydoni yoki reklama liniyalari yangilanayotgan bo'lsa
+       (fieldId va source tegilmagan) bekorga API so'rov qilinmaydi. */
+    const leadIdTegildi =
+      parsed.data.fieldId !== null || parsed.data.source !== undefined;
+
+    if (leadIdTegildi && !parsed.data.takroriyniTasdiqlayman) {
+      let sabab: string | null = null;
+      try {
+        const tahlil = await discoverLeadFields(req.user.workspaceId);
+        sabab = takroriyTanlov(
+          tahlil,
+          parsed.data.source ?? null,
+          parsed.data.fieldId
+        );
+      } catch {
+        // Tahlil qilib bo'lmasa saqlashni BLOKLAMAYMIZ: amoCRM vaqtincha
+        // javob bermasligi sozlamani o'zgartirishga to'siq bo'lmasligi
+        // kerak. To'siq — noto'g'ri tanlovga qarshi, uzilishga qarshi emas.
+      }
+      if (sabab) {
+        res.status(409).json({
+          error: 'takroriy_maydon',
+          xabar: sabab,
+          maslahat:
+            "Meta Lead ID har lidda YAGONA bo'ladi. Takrorlanadigan qiymat — odatda forma yoki reklama ID si; u CAPI'da hech narsani moslamaydi va xato ham bermaydi. Boshqa maydon tanlang yoki ataylab davom etmoqchi bo'lsangiz `takroriyniTasdiqlayman: true` yuboring.",
+        });
+        return;
+      }
+    }
+
     const result = await pool.query(
       `UPDATE workspaces
           SET amocrm_lead_id_field = $1,

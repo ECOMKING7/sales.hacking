@@ -128,6 +128,16 @@ export interface MaydonHisoboti {
   noyobQiymatlar: string[];
   /** 0–100. `toldirilgan` nolga teng bo'lsa 0. */
   ishonch: number;
+  /**
+   * Noyob qiymatlar ulushi, 0–100. Lead ID da ≈100, forma ID da past.
+   * Shakl bilan birga — bu ikkinchi va HAL QILUVCHI tekshiruv.
+   */
+  noyoblik: number;
+  /**
+   * `true` — qiymatlar takrorlanadi, ya'ni bu har lidga tegishli
+   * identifikator emas (ehtimol forma yoki reklama ID si).
+   */
+  takroriy: boolean;
   /** Ikkita misol — tanlaganda odam ko'rib tasdiqlashi uchun. */
   namunalar: string[];
 }
@@ -164,6 +174,12 @@ export interface MaydonTahlili {
   voronkalar: VoronkaHisoboti[];
   /** Meta Lead ID ni saqlayotgan bo'lishi mumkin bo'lgan LID maydonlari. */
   nomzodlar: MaydonHisoboti[];
+  /**
+   * Shakli mos, lekin qiymatlari TAKRORLANADI — ehtimol forma yoki
+   * reklama ID si. Nomzod emas, lekin ko'rsatiladi: sababsiz yo'qolgan
+   * maydon "kod topmadi" deb tushuniladi.
+   */
+  takroriyNomzodlar: MaydonHisoboti[];
   /** Barcha lid maydonlari — nomzod topilmasa odam o'zi qarab tanlashi uchun. */
   maydonlar: MaydonHisoboti[];
   /** Kontakt maydonlaridagi nomzodlar (integratsiya u yerga yozgan bo'lishi mumkin). */
@@ -190,11 +206,20 @@ export interface MaydonTahlili {
    * identifikatorni Meta'ga yuborish demak.
    */
   nomNoyob: number;
+  /** `true` — nomdagi sonlar takrorlanadi, ya'ni Lead ID emas. */
+  nomTakroriy: boolean;
   /** Ko'z bilan tekshirish uchun uchta misol. */
   nomNamunalar: string[];
   /** Teglar ichida uchragan lidlar soni. */
   tegdaTopildi: number;
   tegNoyob: number;
+  /**
+   * `true` — teglardagi sonlar takrorlanadi.
+   *
+   * FurniGlass'da aynan shunday: 8 ta qiymat butun bazada. O'lchandi va
+   * ular Facebook forma ID lari ekani tasdiqlandi (8/8 mos).
+   */
+  tegTakroriy: boolean;
   tegNamunalar: string[];
   /** Teglarning to'liq matni — ichida reklama NOMI bo'lishi mumkin. */
   tegMatnlari: string[];
@@ -276,6 +301,10 @@ function maydonlarniSana(
         noyob: 0,
         noyobQiymatlar: [],
         ishonch: 0,
+        // Takroriylik `ishonchBilan()` da hisoblanadi — bu yerda
+        // hali bitta qiymat ko'rilgan, xulosa chiqarib bo'lmaydi.
+        noyoblik: 0,
+        takroriy: false,
         namunalar: [],
       };
       hisob.set(id, qator);
@@ -303,17 +332,80 @@ function maydonlarniSana(
   return topildi;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   TAKRORIYLIK TESTI — noto'g'ri identifikatorni tanlashning yagona to'sig'i
+
+   19.09.2026 da o'lchandi va isbotlandi: FurniGlass amoCRM teglarida
+   turgan 8 ta qiymat Facebook'ning **forma ID** lari bilan 8/8 mos keldi.
+   Ya'ni teglar Lead ID emas, FORMA ID saqlaydi.
+
+   Shaklga qarab ajratib bo'lmaydi — ikkalasi ham 15–17 xonali son:
+     Lead ID   1657533052655958
+     Forma ID  1394587378208816
+
+   Farq bitta va u SHAKLDA emas, TAQSIMOTDA:
+     Lead ID   — har lidda boshqa   → noyob ≈ to'ldirilgan
+     Forma ID  — qayta ishlatiladi  → noyob << to'ldirilgan
+                 (8 ta qiymat 15 659 lidda)
+
+   Shuning uchun nomzod shartida shakl YETARLI EMAS. Takroriy maydon
+   tanlansa `leads.fb_lead_id` ga forma ID yoziladi va Meta CAPI
+   mosligi JIM ishlamaydi — xato chiqmaydi, shunchaki hech narsa
+   moslashmaydi.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Noyob qiymatlar ulushi shundan past bo'lsa — maydon takroriy.
+ *
+ * Nega 0.9 va 1.0 emas: real ma'lumotda dublikat lid bo'ladi (bir odam
+ * ikki marta forma to'ldiradi), shuning uchun 100% noyoblik talab qilish
+ * to'g'ri maydonni ham rad etardi. 0.9 — dublikatga joy qoldiradi,
+ * lekin 8/15659 kabi taqsimotni o'tkazmaydi.
+ */
+const ENG_KAM_NOYOBLIK = 0.9;
+
+/**
+ * Maydon qiymatlari takrorlanadimi.
+ *
+ * Toza funksiya — testdan o'tadi va boshqa joydan ham chaqiriladi.
+ * `toldirilgan` juda kam bo'lsa xulosa chiqarilmaydi: 2 ta qiymatdan
+ * "takroriy" ham, "noyob" ham deb bo'lmaydi.
+ */
+export function takroriyMi(toldirilgan: number, noyob: number): boolean {
+  if (toldirilgan < 5) return false; // namuna kichik — hukm yo'q
+  return noyob / toldirilgan < ENG_KAM_NOYOBLIK;
+}
+
 function ishonchBilan(hisob: Map<string, MaydonHisoboti>): MaydonHisoboti[] {
   const royxat = [...hisob.values()].map((m) => ({
     ...m,
     ishonch: m.toldirilgan > 0 ? Math.round((m.metaShaklida / m.toldirilgan) * 100) : 0,
+    noyoblik: m.toldirilgan > 0 ? Math.round((m.noyob / m.toldirilgan) * 100) : 0,
+    takroriy: takroriyMi(m.toldirilgan, m.noyob),
   }));
   royxat.sort((a, b) => b.metaShaklida - a.metaShaklida || b.toldirilgan - a.toldirilgan);
   return royxat;
 }
 
-function nomzodlarni(royxat: MaydonHisoboti[]): MaydonHisoboti[] {
+/** Shakli mos — lekin hali takroriylik tekshirilmagan. */
+function shakliMos(royxat: MaydonHisoboti[]): MaydonHisoboti[] {
   return royxat.filter((m) => m.toldirilgan > 0 && m.metaShaklida / m.toldirilgan >= ENG_KAM_ULUSH);
+}
+
+/** Haqiqiy nomzodlar: shakli MOS va qiymatlari TAKRORLANMAYDI. */
+function nomzodlarni(royxat: MaydonHisoboti[]): MaydonHisoboti[] {
+  return shakliMos(royxat).filter((m) => !m.takroriy);
+}
+
+/**
+ * Shakli mos, lekin takroriy — ya'ni ehtimol forma / reklama ID si.
+ *
+ * Bular YASHIRILMAYDI. Yashirilsa odam "nega mening maydonim
+ * ro'yxatda yo'q?" deb o'ylaydi va sababini bilmaydi. Ko'rsatiladi,
+ * lekin sababi bilan va tanlash uchun aniq tasdiq talab qilinadi.
+ */
+function takroriyNomzodlarni(royxat: MaydonHisoboti[]): MaydonHisoboti[] {
+  return shakliMos(royxat).filter((m) => m.takroriy);
 }
 
 /**
@@ -477,6 +569,8 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
       noyob: 0,
       noyobQiymatlar: [],
       ishonch: 0,
+      noyoblik: 0,
+      takroriy: false,
       namunalar: [],
     });
   }
@@ -510,6 +604,10 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
     tekshirilganLid,
     voronkalar: voronkaHisob,
     nomzodlar: nomzodlarni(maydonlar),
+    takroriyNomzodlar: [
+      ...takroriyNomzodlarni(maydonlar),
+      ...takroriyNomzodlarni(kontaktMaydonlari),
+    ],
     maydonlar,
     kontaktNomzodlari: nomzodlarni(kontaktMaydonlari),
     liniyaNomzodlari,
@@ -517,10 +615,12 @@ export async function discoverLeadFields(workspaceId: string): Promise<MaydonTah
     reklamaLiniyalari: [],
     nomdaTopildi,
     nomNoyob: nomQiymatlar.size,
+    nomTakroriy: takroriyMi(nomdaTopildi, nomQiymatlar.size),
     nomNamunalar: [...nomQiymatlar].slice(0, 3),
     nomMatnlari: [...nomMatnlar],
     tegdaTopildi,
     tegNoyob: tegQiymatlar.size,
+    tegTakroriy: takroriyMi(tegdaTopildi, tegQiymatlar.size),
     tegNamunalar: [...tegQiymatlar].slice(0, 3),
     tegMatnlari: [...tegMatnlar],
     idMosligi: {
