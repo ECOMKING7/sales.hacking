@@ -10,6 +10,7 @@ import {
   amoGetPath,
 } from '../services/amocrmService';
 import { discoverLeadFields, type MaydonTahlili } from '../services/amocrmFields';
+import { bizniki, hostAjrat } from '../services/webhookIdentity';
 
 function frontendUrl(): string {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -594,11 +595,6 @@ interface AmoWebhook {
   updated_at?: number;
 }
 
-/** Bizning webhook manzilimizni tanish — domendan qat'i nazar. */
-function bizniki(destination: string): boolean {
-  return /\/api\/webhooks\/amocrm/i.test(destination);
-}
-
 export async function listWebhooks(req: Request, res: Response): Promise<void> {
   if (!req.user?.workspaceId) {
     res.status(401).json({ error: 'Unauthorized' });
@@ -610,6 +606,7 @@ export async function listWebhooks(req: Request, res: Response): Promise<void> {
       '/api/v4/webhooks'
     );
     const xom = javob._embedded?.webhooks ?? [];
+    const bizningHost = hostAjrat(apiBaseUrl(req));
 
     const royxat = xom.map((w) => {
       const dest = w.destination ?? '';
@@ -618,7 +615,7 @@ export async function listWebhooks(req: Request, res: Response): Promise<void> {
         // Manzil to'liq ko'rsatiladi: ichida maxfiy narsa yo'q, lekin
         // `?secret=` bo'lsa maskalanadi (§4.2).
         manzil: dest.replace(/([?&](secret|token)=)[^&]+/gi, '$1***'),
-        bizniki: bizniki(dest),
+        bizniki: bizniki(dest, bizningHost),
         hodisalar: w.settings ?? [],
         ochirilgan: Boolean(w.disabled),
       };
