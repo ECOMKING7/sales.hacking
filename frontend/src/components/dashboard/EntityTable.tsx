@@ -340,6 +340,28 @@ interface Props {
   kunTo: string | null;
 }
 
+/**
+ * Ustun sarlavhasining tooltipi — "nega bu yerda —?" savoliga javob.
+ *
+ * Ilgari bu izoh jadval tepasida doimiy chiziq bo'lib turardi. Doimiy
+ * matn o'qilmaydi: uchinchi marta ko'rgandan keyin ko'z uni o'tkazib
+ * yuboradi. Ustun sarlavhasida esa u AYNAN kerak bo'lgan paytda,
+ * aynan bo'sh ustunning ustida chiqadi.
+ *
+ * `null` qaytsa `title` qo'yilmaydi — bo'sh tooltip hech narsa demaydi.
+ */
+const KUNLIK_YOQ = new Set(['purchases', 'costPerPurchase', 'revenue', 'roas']);
+
+function ustunIzoh(key: string, kunlik: boolean): string | undefined {
+  if (kunlik && KUNLIK_YOQ.has(key)) {
+    return "Bu ustun kunlik jadvalda yo'q — sotuv va daromad CRM'dan, sotuv yopilgan sana bo'yicha keladi. Shuning uchun tanlangan oraliqda \"—\". Sana tanlagichida \"Butun davr\" ni tanlang.";
+  }
+  if (kunlik && (key === 'spend' || key === 'results' || key === 'leads' || key === 'clicks' || key === 'impressions')) {
+    return 'Tanlangan kunlar bo\'yicha, Facebook ma\'lumoti.';
+  }
+  return undefined;
+}
+
 export default function EntityTable({
   view,
   campaignIds,
@@ -429,6 +451,7 @@ export default function EntityTable({
   const showTotals = totals !== null && rows.length > 0;
 
   const cols = ALL_COLUMNS.filter((c) => c.always || visibleColumns.includes(c.key));
+  const kunlikRejim = query.data?.vaqt?.rejim === 'kunlik';
   const entityLabel = view === 'campaigns' ? 'campaigns' : view === 'adsets' ? 'ad sets' : 'ads';
 
   const toggleSort = (key?: string) => {
@@ -491,10 +514,13 @@ export default function EntityTable({
         </div>
       )}
 
-      {/* Valyuta qatori — jadval ustida: ROAS ustuni qaysi asosda
-          chiqqani (yoki nega bo'shligi) raqamlardan oldin ko'rinsin. */}
-      <VaqtNote state={query.data?.vaqt} className="mx-4 mb-2 rounded-md" />
-      <CurrencyNote state={currency} className="mx-4 mb-2 rounded-md" />
+      {/* Jadval tepasidagi izohlar — FAQAT OGOHLANTIRISH holatida.
+          Oddiy izohlar olib tashlandi: oraliq sana tanlagichida,
+          kurs esa ROAS kartochkasida allaqachon yozilgan. Doimiy
+          takrorlangan matn o'qilmay qoladi va ogohlantirish ham
+          shu bilan birga ko'rinmay ketadi. */}
+      <VaqtNote state={query.data?.vaqt} faqatOgoh className="mx-4 mb-2 rounded-md" />
+      <CurrencyNote state={currency} faqatOgoh className="mx-4 mb-2 rounded-md" />
 
       {/*
         JADVAL O'Z QUTISIDA AYLANADI — Ads Manager naqshi.
@@ -536,6 +562,10 @@ export default function EntityTable({
                   <Th
                     key={c.key}
                     numeric={c.align === 'right'}
+                    /* "—" ning sababi shu yerda. Ilgari jadval tepasida
+                       doimiy chiziq bo'lib turardi; endi aynan bo'sh
+                       ustunning sarlavhasida — kerak bo'lganda. */
+                    title={ustunIzoh(c.key, kunlikRejim)}
                     onClick={() => toggleSort(c.sortKey)}
                     aria-sort={
                       isSorted ? (order === 'desc' ? 'descending' : 'ascending') : undefined

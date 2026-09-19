@@ -22,11 +22,24 @@ function fmtRate(v: number | null): string {
 export default function CurrencyNote({
   state,
   className = '',
+  faqatOgoh = false,
 }: {
   state?: CurrencyState;
   className?: string;
+  /**
+   * Faqat 3-holat (kurs yo'q, ROAS bo'sh) chiqadi.
+   *
+   * Nega: 2-holatdagi kurs izohi ROAS kartochkasining ostida allaqachon
+   * yozilgan ("1 USD = 11,833.37 UZS, cbu.uz"). Uni jadval tepasida
+   * ikkinchi marta takrorlash — bir xil gapni ikki joyda o'qish.
+   *
+   * 3-holat esa takrorlanmaydi va qolishi SHART: ROAS ustuni bo'sh
+   * bo'lsa, sababsiz u "nol daromad" deb o'qiladi.
+   */
+  faqatOgoh?: boolean;
 }) {
   if (!state || !state.mismatch) return null;
+  if (faqatOgoh && state.converted) return null;
 
   // Kurs topilmagan: raqam yo'q, sabab aytiladi.
   if (!state.converted) {

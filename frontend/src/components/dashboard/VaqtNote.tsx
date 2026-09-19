@@ -32,9 +32,23 @@ function uz(d: string | null): string {
 export default function VaqtNote({
   state,
   className,
+  faqatOgoh = false,
 }: {
   state?: VaqtHolati;
   className?: string;
+  /**
+   * Faqat OGOHLANTIRISH holatida chiqadi, oddiy izoh chiqmaydi.
+   *
+   * Nega kerak: jadval tepasida ikkita doimiy chiziq turardi va ular
+   * har doim bir xil matnni takrorlardi — o'qilmay qolgan izoh shovqin.
+   * Oraliq allaqachon sana tanlagichida yozilgan, "—" ning sababi esa
+   * ustun sarlavhasining tooltipida.
+   *
+   * Lekin OGOHLANTIRISH qolishi shart: tanlangan sana kunlik tarixdan
+   * oldin bo'lsa jadval bo'm-bo'sh chiqadi va sababsiz bu "ma'lumot
+   * yo'q" deb o'qiladi — aslida "hali yuklanmagan".
+   */
+  faqatOgoh?: boolean;
 }) {
   if (!state) return null;
 
@@ -49,6 +63,26 @@ export default function VaqtNote({
     kunlik &&
     state.from !== null &&
     (state.qamrov.start === null || state.from < state.qamrov.start);
+
+  if (faqatOgoh && !tashqarida) return null;
+
+  if (faqatOgoh) {
+    return (
+      <div
+        className={cn(
+          'flex items-start gap-2 border-[1.5px] border-warn/40 bg-warn/5 px-3 py-2 text-xs text-ink-2',
+          className
+        )}
+      >
+        <Info aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-none text-warn" />
+        <span>
+          Tanlangan boshlanish sanasi ({uz(state.from)}) kunlik tarixdan oldin — kunlik tarix{' '}
+          <span className="font-medium tabular-nums">{uz(state.qamrov.start)}</span> dan boshlanadi.
+          Undan oldingi kunlar uchun raqam <span className="font-medium">yo'q</span>, nol emas.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
