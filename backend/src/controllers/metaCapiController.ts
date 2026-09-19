@@ -18,7 +18,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { encrypt } from '../utils/encryption';
-import { sendCapiTest } from '../services/metaCapi';
+import { sendCapiTest, tokenTashxisi } from '../services/metaCapi';
 
 interface CapiStatusRow {
   meta_dataset_id: string | null;
@@ -106,6 +106,9 @@ export async function status(req: Request, res: Response): Promise<void> {
       phoneCountryCode: ws?.phone_country_code ?? '998',
       /** Token .env da bormi — qiymati emas, faqat bor/yo'q. */
       tokenConfigured: tokenPresent(ws?.secret_key ?? null, ws?.meta_capi_token ?? null),
+      // Token QIYMATI emas, SHAKLI — "Cannot parse access token" xatosining
+      // sababini nusxalash xatosidan ajratish uchun (§4.1 buzilmaydi).
+      tokenTashxis: await tokenTashxisi(req.user.workspaceId),
       secretKey: ws?.secret_key ?? null,
       /** Bosqichlar uchun Meta hodisa nomlari (§3.1 — kodda emas). */
       eventNames: {

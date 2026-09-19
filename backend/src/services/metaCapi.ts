@@ -493,3 +493,96 @@ export async function sendCapiTest(
     };
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TOKEN TASHXISI
+
+   `Invalid OAuth access token - Cannot parse access token` xatosi ikki
+   xil sababdan kelib chiqadi va ikkalasining yechimi BOSHQA:
+
+     1. Foydalanuvchi tokenni to'liq nusxalamagan / ichiga bo'sh joy
+        tushgan  → qayta yopishtirish kerak
+     2. Bazadagi shifr ochilmayapti va kod `META_CAPI_TOKEN` env
+        o'zgaruvchisiga tushib ketgan (u eski yoki bo'sh)
+        → qayta yopishtirish HECH NARSA BERMAYDI, sabab boshqa joyda
+
+   Ikkisini ajratmasdan turib "yana urinib ko'ring" deyish — foydalanuvchini
+   aylantirib qo'yish. Shuning uchun bu funksiya tokenning QIYMATINI emas,
+   SHAKLINI qaytaradi (§4.1 buzilmaydi):
+
+     - qaysi manbadan olindi
+     - uzunligi
+     - Meta formatiga o'xshaydimi (hamma Meta tokeni "EAA" bilan boshlanadi)
+     - chetlarida bo'sh joy bormi
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export interface TokenTashxisi {
+  manba: 'baza' | 'env' | 'yoq';
+  uzunlik: number;
+  /** Meta tokenlari "EAA" bilan boshlanadi. false — bu token emas. */
+  meta_shaklida: boolean;
+  /** Chetlarida bo'sh joy / qator uzilishi bormi — nusxalash xatosi. */
+  bosh_joy_bor: boolean;
+  /** Baza qiymati bor, lekin shifr ochilmadi — ENCRYPTION_KEY o'zgargan. */
+  shifr_ochilmadi: boolean;
+  izoh: string;
+}
+
+export async function tokenTashxisi(workspaceId: string): Promise<TokenTashxisi> {
+  const { rows } = await pool.query<{ secret_key: string | null; meta_capi_token: string | null }>(
+    `SELECT secret_key, meta_capi_token FROM workspaces WHERE id = $1`,
+    [workspaceId]
+  );
+  const ws = rows[0];
+
+  let bazadan: string | null = null;
+  let shifrOchilmadi = false;
+  if (ws?.meta_capi_token) {
+    try {
+      bazadan = decrypt(ws.meta_capi_token) || null;
+      if (!bazadan) shifrOchilmadi = true;
+    } catch {
+      shifrOchilmadi = true;
+    }
+  }
+
+  let manba: TokenTashxisi['manba'] = 'yoq';
+  let token: string | null = null;
+  if (bazadan) {
+    manba = 'baza';
+    token = bazadan;
+  } else {
+    const suffix = (ws?.secret_key ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '_');
+    const env = (suffix && process.env[`META_CAPI_TOKEN__${suffix}`]) || process.env.META_CAPI_TOKEN;
+    if (env) {
+      manba = 'env';
+      token = env;
+    }
+  }
+
+  const uzunlik = token ? token.length : 0;
+  const metaShaklida = Boolean(token && /^EAA/.test(token));
+  const boshJoy = Boolean(token && token !== token.trim());
+
+  let izoh: string;
+  if (shifrOchilmadi) {
+    izoh =
+      "Bazadagi token SHIFRI OCHILMADI (ENCRYPTION_KEY o'zgargan bo'lishi mumkin). Tokenni qayta yopishtirish yordam bermaydi — avval kalit tekshirilsin.";
+  } else if (manba === 'yoq') {
+    izoh = 'Token umuman yo\'q.';
+  } else if (manba === 'env') {
+    izoh =
+      "Token BAZADAN emas, .env dan olinyapti. Ya'ni formaga kiritgan tokeningiz ishlatilmayapti — Vercel'dagi META_CAPI_TOKEN uni bosib ketgan.";
+  } else if (!metaShaklida) {
+    izoh =
+      "Token 'EAA' bilan boshlanmaydi — bu Meta access token emas (ehtimol boshqa qiymat nusxalangan).";
+  } else if (boshJoy) {
+    izoh = "Token chetlarida bo'sh joy bor — nusxalashda ortiqcha belgi tushgan.";
+  } else if (uzunlik < 100) {
+    izoh = `Token juda qisqa (${uzunlik} belgi). Meta tokenlari odatda 150–250 belgi — nusxalash to'liq bo'lmagan.`;
+  } else {
+    izoh = `Token shakli to'g'ri ko'rinadi (${uzunlik} belgi, EAA bilan boshlanadi). Muammo shaklda emas — ruxsat yoki muddatda bo'lishi mumkin.`;
+  }
+
+  return { manba, uzunlik, meta_shaklida: metaShaklida, bosh_joy_bor: boshJoy, shifr_ochilmadi: shifrOchilmadi, izoh };
+}
