@@ -81,9 +81,11 @@ async function entityPayload(
   rows: Array<Record<string, unknown>>,
   totals: Record<string, unknown>,
   page: number,
-  limit: number
+  limit: number,
+  o: KunOraliq | null = null
 ) {
   const guard = await loadCurrencyGuard(workspaceId);
+  const qamrov = await kunlikQamrov(workspaceId);
   return {
     data: applyRoasAll(rows, guard),
     page,
@@ -91,11 +93,140 @@ async function entityPayload(
     total: num(totals.rowCount),
     totals: applyRoas(totals, guard),
     currency: currencyMeta(guard),
+    /**
+     * Raqamlar qaysi rejimda hisoblangani. UI shu bloksiz foydalanuvchiga
+     * "bu raqam qaysi davrniki?" degan savolga javob bera olmaydi — va
+     * aynan shu savolga javob yo'qligi sana tanlagichni ishlamaydigan
+     * qilib ko'rsatardi.
+     */
+    vaqt: {
+      rejim: o ? 'kunlik' : 'butun_davr',
+      from: o?.from ?? null,
+      to: o?.to ?? null,
+      qamrov,
+      izoh: o
+        ? 'Xarajat, klik, ko\'rsatish va lid — tanlangan kunlar bo\'yicha. Sotuv, daromad va ROAS kunlik jadvalda yo\'q, shuning uchun "—".'
+        : 'Butun davr. Sana tanlansa xarajat va lid o\'sha kunlar bo\'yicha hisoblanadi.',
+    },
   };
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SANA REJIMI — tanlagich nihoyat ishlaydigan joy
+
+   Ikki manba, ikki ma'no:
+
+     ads.spend                → BUTUN DAVR (date_preset=maximum)
+     ad_insights_daily.spend  → ANIQ KUN
+
+   Foydalanuvchi oraliq tanlasa ikkinchisidan o'qiymiz. Tanlamasa —
+   birinchisidan, ya'ni eski xulq saqlanadi.
+
+   ⚠ HAMMA USTUN SANA BO'YICHA FILTRLANMAYDI. `results`, `cost_per_result`,
+   `revenue`, `roas`, `purchases_count` — bular yo maqsadga bog'liq
+   hisoblangan, yo CRM tomonidan (`leads.won_at`) keladi va kunlik jadvalda
+   yo'q. Ularni "0" qilib ko'rsatish yoki butun davr raqamini qoldirish —
+   ikkalasi ham YOLG'ON bo'lardi: birinchisi "pul kelmadi" deydi,
+   ikkinchisi tanlangan oraliqqa boshqa davrning pulini yozadi.
+
+   Shuning uchun ular `null` qaytadi va sabab `vaqt.izoh` da boradi —
+   bu valyuta qo'riqchisidagi bilan bir xil naqsh: hisoblab bo'lmasa
+   raqam emas, "—" chiqadi.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** Faqat `YYYY-MM-DD`. Boshqa hech narsa SQL ga tushmaydi. */
+const KUN_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+interface KunOraliq {
+  from: string;
+  to: string;
+}
+
+/**
+ * Foydalanuvchi ANIQ oraliq berdimi.
+ *
+ * `parseRange` dan farqi: u har doim oraliq qaytaradi (standart 30 kun),
+ * bu esa faqat so'rovda `from`/`to` bo'lsa. Ya'ni "tanlanmagan" va
+ * "oxirgi 30 kun tanlangan" farqlanadi — birinchisi butun davr degani.
+ */
+function kunOraliq(req: Request): KunOraliq | null {
+  const f = String(req.query.from ?? '').slice(0, 10);
+  const t = String(req.query.to ?? '').slice(0, 10);
+  if (!KUN_RE.test(f) || !KUN_RE.test(t)) return null;
+  if (f > t) return null;
+  return { from: f, to: t };
+}
+
+/** Kunlik jadval qaysi oraliqni qamragan. */
+async function kunlikQamrov(
+  workspaceId: string
+): Promise<{ start: string | null; end: string | null }> {
+  const { rows } = await pool.query<{ s: string | null; e: string | null }>(
+    `SELECT daily_backfill_start::text AS s, daily_backfill_end::text AS e
+       FROM workspaces WHERE id = $1`,
+    [workspaceId]
+  );
+  return { start: rows[0]?.s ?? null, end: rows[0]?.e ?? null };
+}
+
+/**
+ * Kunlik manba — `FROM` o'rniga qo'yiladigan hosila jadval.
+ *
+ * Sana qiymatlari SQL ga MATN sifatida qo'yiladi, parametr emas: bu
+ * funksiya har uch daraja uchun bitta matn quradi va parametr raqamlari
+ * chaqiruvchilarda turlicha. Xavfsiz, chunki `KUN_RE` dan o'tmagan
+ * qiymat bu yergacha yetib kelmaydi — boshqa hech qanday matn
+ * qo'shilmaydi.
+ *
+ * `$1` — workspace_id, u tashqi so'rovdan meros qoladi.
+ */
+function kunlikManba(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq): string {
+  const qism = `
+      SELECT %KEY% AS bog,
+             SUM(i.spend)        AS spend,
+             SUM(i.clicks)       AS clicks,
+             SUM(i.impressions)  AS impressions,
+             SUM(i.leads_count)  AS leads_count,
+             SUM(i.fb_purchases) AS fb_purchases,
+             SUM(i.fb_revenue)   AS fb_revenue
+        FROM ad_insights_daily i
+        %JOIN%
+       WHERE i.workspace_id = $1
+         AND i.kun BETWEEN DATE '${o.from}' AND DATE '${o.to}'
+       GROUP BY %KEY%`;
+
+  const kunlik =
+    table === 'ads'
+      ? qism.replace(/%KEY%/g, 'i.ad_id').replace('%JOIN%', '')
+      : qism
+          .replace(/%KEY%/g, table === 'adsets' ? 'a.adset_id' : 'a.campaign_id')
+          .replace('%JOIN%', 'JOIN ads a ON a.id = i.ad_id');
+
+  const qoshimcha =
+    table === 'ads' ? ', e.thumbnail_url, e.creative_type, e.adset_id, e.campaign_id' : '';
+  const ota = table === 'adsets' ? ', e.campaign_id' : '';
+
+  return `(
+    SELECT e.id, e.name, e.status, e.workspace_id, e.objective, e.result_type${qoshimcha}${ota},
+           COALESCE(d.spend, 0)        AS spend,
+           COALESCE(d.clicks, 0)       AS clicks,
+           COALESCE(d.impressions, 0)  AS impressions,
+           COALESCE(d.leads_count, 0)  AS leads_count,
+           COALESCE(d.fb_revenue, 0)   AS fb_revenue,
+           -- Kunlik jadvalda yo'q → taxmin qilinmaydi, null qaytadi.
+           NULL::numeric AS purchases_count,
+           NULL::numeric AS results,
+           NULL::numeric AS cost_per_result,
+           NULL::numeric AS revenue,
+           NULL::numeric AS roas
+      FROM ${table} e
+      LEFT JOIN (${kunlik}) d ON d.bog = e.id
+  ) AS ${table}`;
+}
+
 // Shared SELECT for campaign/adset/ad list rows.
-function entitySelect(table: 'campaigns' | 'adsets' | 'ads'): string {
+function entitySelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null = null): string {
   const extra =
     table === 'ads'
       ? ', thumbnail_url AS "thumbnailUrl", creative_type AS "creativeType"'
@@ -123,7 +254,7 @@ function entitySelect(table: 'campaigns' | 'adsets' | 'ads'): string {
            -- revenue esa CRM haqiqati. Ikkalasi yonma-yon tursin —
            -- farqi tafovut metrikasi bo'ladi (§7).
            fb_revenue                              AS "fbRevenue"${extra}
-    FROM ${table}`;
+    FROM ${o ? kunlikManba(table, o) : table}`;
 }
 
 /**
@@ -138,7 +269,7 @@ function entitySelect(table: 'campaigns' | 'adsets' | 'ads'): string {
  * Aralash bo'lsa (lid + qo'ng'iroq + sotuv) — null, chunki "642 nima?" degan
  * savolga javob yo'q. UI bunda "natija" deb umumiy yozadi.
  */
-function totalsSelect(table: 'campaigns' | 'adsets' | 'ads'): string {
+function totalsSelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null = null): string {
   return `
     SELECT COUNT(*)                                   AS "rowCount",
            COALESCE(SUM(spend), 0)                    AS spend,
@@ -158,7 +289,7 @@ function totalsSelect(table: 'campaigns' | 'adsets' | 'ads'): string {
            SUM(revenue) / NULLIF(SUM(spend), 0)             AS roas,
            CASE WHEN COUNT(DISTINCT result_type) = 1
                 THEN MIN(result_type) END              AS "resultType"
-    FROM ${table}`;
+    FROM ${o ? kunlikManba(table, o) : table}`;
 }
 
 // ---------- GET /api/dashboard/overview ----------
@@ -309,6 +440,7 @@ export async function campaigns(req: Request, res: Response): Promise<void> {
   const sortCol = ENTITY_SORTS[sortKey] ?? 'spend';
   const order = String(req.query.order ?? 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
+  const o = kunOraliq(req);
   const params: unknown[] = [workspaceId];
   let where = 'WHERE workspace_id = $1';
   if (req.query.status) {
@@ -319,7 +451,7 @@ export async function campaigns(req: Request, res: Response): Promise<void> {
 
   try {
     const rows = await pool.query(
-      `${entitySelect('campaigns')} ${where}
+      `${entitySelect('campaigns', o)} ${where}
         ORDER BY ${sortCol} ${order} NULLS LAST
         LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
@@ -327,11 +459,11 @@ export async function campaigns(req: Request, res: Response): Promise<void> {
     // Jami qator butun ro'yxat bo'yicha hisoblanadi, ko'rinib turgan sahifa
     // bo'yicha emas — 2-sahifaga o'tganda "jami" o'zgarib ketmasligi kerak.
     const totalR = await pool.query(
-      `${totalsSelect('campaigns')} ${where}`,
+      `${totalsSelect('campaigns', o)} ${where}`,
       params.slice(0, params.length - 2)
     );
     const t = totalR.rows[0];
-    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit));
+    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit, o));
   } catch (err) {
     console.error('campaigns error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to load campaigns' });
@@ -377,6 +509,7 @@ async function listEntities(
     return;
   }
   const { limit, offset, page } = paginate(req);
+  const o = kunOraliq(req);
   const sortCol = ENTITY_SORTS[String(req.query.sort ?? 'spend')] ?? 'spend';
   const order = String(req.query.order ?? 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
@@ -396,14 +529,14 @@ async function listEntities(
 
   try {
     const rows = await pool.query(
-      `${entitySelect(table)} ${where}
+      `${entitySelect(table, o)} ${where}
         ORDER BY ${sortCol} ${order} NULLS LAST
         LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
       listParams
     );
-    const totalR = await pool.query(`${totalsSelect(table)} ${where}`, params);
+    const totalR = await pool.query(`${totalsSelect(table, o)} ${where}`, params);
     const t = totalR.rows[0];
-    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit));
+    res.json(await entityPayload(workspaceId, rows.rows, t, page, limit, o));
   } catch (err) {
     console.error(`${table} error:`, (err as Error).message);
     res.status(500).json({ error: `Failed to load ${table}` });

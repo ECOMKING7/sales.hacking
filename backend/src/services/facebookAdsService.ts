@@ -3,6 +3,7 @@ import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
 import { GRAPH_URL as GRAPH } from '../config/graph';
 import { recordUsage, usageSummary } from './fbRateLimit';
+import { oxirgiKunlarniYangila } from './kunlikInsights';
 
 const MAX_RETRIES = 3;
 // campaign_id/adset_id/ad_id must be requested explicitly — Facebook does not
@@ -909,6 +910,13 @@ export async function syncWorkspace(
   );
   const adsetMap = await syncAdSets(workspaceId, actId, token, range, campaignMap, adsets);
   const adCount = await syncAds(workspaceId, actId, token, range, adsetMap, campaignMap);
+
+  // Kunlik jadval — sana tanlagich shu yerdan o'qiydi. Faqat oxirgi
+  // kunlar: eski kunlar o'zgarmaydi, ularni har 30 daqiqada qayta
+  // so'rash behuda. Yiqilsa sinxron to'xtamaydi (ichida catch bor).
+  // Adlar YOZILGANIDAN KEYIN chaqiriladi: yangi reklama bazada
+  // bo'lmasa uning kunlik qatori "notanish" bo'lib tashlanardi.
+  await oxirgiKunlarniYangila(workspaceId);
 
   await pool.query(`UPDATE workspaces SET updated_at = now() WHERE id = $1`, [workspaceId]);
 

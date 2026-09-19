@@ -7,6 +7,7 @@ import { DateRange } from '../services/facebookAdsService';
 import { fbUsage } from '../services/fbRateLimit';
 import { ensureFreshFxRates } from '../services/fxRates';
 import { importChunk } from '../services/amocrmImport';
+import { bolakniYukla } from '../services/kunlikInsights';
 import { runInBackground } from '../utils/background';
 import { xatoQayd, xatolarniYubor } from '../utils/xatolar';
 
@@ -314,5 +315,57 @@ export async function amocrmImport(req: Request, res: Response): Promise<void> {
       qoshimcha: { sahifa: req.body?.page, kunlar: req.body?.days },
     });
     res.status(500).json({ error: 'Import bajarilmadi' });
+  }
+}
+
+
+/**
+ * ---- POST /api/sync/kunlik-backfill ----
+ * Kunlik tarixni BO'LAKLAB to'ldiradi (30 kun har chaqiruvda).
+ *
+ * NEGA BO'LAKLAB: `time_increment=1` bilan Facebook har reklama uchun
+ * har kunga alohida qator qaytaradi. 1 600 reklama x 90 kun = 144 000
+ * qator — bitta so'rovga sig'maydi va funksiya 300 soniyada uziladi.
+ *
+ * Chaqiruvchi javobdagi `keyingi_until` ni olib qayta chaqiradi va
+ * shu tarzda orqaga qarab oxirigacha aylantiradi. Har bo'lak
+ * idempotent (UPSERT), ya'ni qayta yuklash xavfsiz.
+ *
+ * Body: { until?: "YYYY-MM-DD", days?: 1..90 }
+ *   until berilmasa — bugundan boshlanadi.
+ */
+export async function kunlikBackfill(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const schema = z.object({
+    until: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'until YYYY-MM-DD shaklida bo\'lishi kerak')
+      .optional(),
+    days: z.number().int().min(1).max(90).optional(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+
+  const until = parsed.data.until ?? new Date().toISOString().slice(0, 10);
+
+  try {
+    const natija = await bolakniYukla(workspaceId, until, parsed.data.days);
+    res.json({ success: true, ...natija });
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 400) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    xatoQayd(err, { joy: 'kunlik-backfill', workspaceId, qoshimcha: { until } });
+    res.status(500).json({ error: 'Kunlik backfill bajarilmadi' });
   }
 }
