@@ -93,3 +93,33 @@ export function formatRangeLabel(range: DateRange): string {
   const end = new Date(new Date(range.to).getTime() - DAY); // show inclusive end
   return `${fmt(range.from)} – ${fmt(end.toISOString())}`;
 }
+
+/**
+ * Lokal sana matni: "2026-09-19".
+ *
+ * ⚠ `toISOString().slice(0,10)` ISHLATILMAYDI. U UTC ga o'giradi, Toshkent
+ * esa UTC+5 — mahalliy yarim tun UTC da oldingi kunning 19:00 i. Ya'ni
+ * "bugun" deb tanlangan kun serverga KECHA bo'lib ketardi. Bir kunlik
+ * siljish eng yomon xato turi: raqam ishonchli ko'rinadi, lekin boshqa
+ * kunniki.
+ */
+export function kunMatn(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+/**
+ * Oraliqni backend kutayotgan shaklga o'giradi: ikkala chekka ham KIRADI.
+ *
+ * `DateRange.to` — eksklyuziv yuqori chegara (bugun uchun ertangi yarim
+ * tun). Backenddagi `kun BETWEEN from AND to` esa inklyuziv. Shu farq
+ * hisobga olinmasa "kecha" so'rovi bugunni ham qamrab olardi.
+ */
+export function kunlikOraliq(r: DateRange): { from: string; to: string } {
+  return {
+    from: kunMatn(new Date(r.from)),
+    to: kunMatn(new Date(new Date(r.to).getTime() - 1)),
+  };
+}

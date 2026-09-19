@@ -13,7 +13,7 @@ import DateRangePicker from '../components/dashboard/DateRangePicker';
 import ColumnsButton from '../components/dashboard/ColumnsButton';
 import BreakdownButton from '../components/dashboard/BreakdownButton';
 import { loadVisibleColumns, saveVisibleColumns } from '../components/dashboard/columns';
-import { PresetId, rangeForPreset } from '../utils/dateRanges';
+import { PresetId, rangeForPreset, kunlikOraliq } from '../utils/dateRanges';
 import { formatMoney, formatPercent, formatRoas, formatDays, n } from '../utils/format';
 import { Button, Input, cn } from '../components/ui';
 
@@ -118,6 +118,13 @@ export default function DashboardPage() {
    */
   const fbVal = d?.currency?.fb ?? null;
   const crmVal = d?.currency?.crm ?? null;
+
+  /**
+   * "Maximum" — sana filtri YO'Q degani, 37 oylik oraliq emas.
+   * Shuning uchun u holda backendga sana yuborilmaydi va u eski
+   * (butun davr) ustunlaridan o'qiydi.
+   */
+  const kun = preset === 'maximum' ? null : kunlikOraliq(range);
 
   const cards: KpiSpec[] = [
     { title: 'Amount Spent', value: formatMoney(d?.amountSpent, fbVal) },
@@ -402,6 +409,8 @@ export default function DashboardPage() {
         onSelectAllMatching={selectAllMatching}
         onClearSelection={() => clearSelection(view)}
         onDrill={handleDrill}
+        kunFrom={kun?.from ?? null}
+        kunTo={kun?.to ?? null}
       />
 
       {/* ── Donut + Top Performers below ── */}

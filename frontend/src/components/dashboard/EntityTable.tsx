@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Checkbox from './Checkbox';
 import CurrencyNote from '../CurrencyNote';
+import VaqtNote from './VaqtNote';
 import { dashboardApi } from '../../services/api';
 import type { EntityRow, EntityTotals } from '../../types';
 import {
@@ -309,6 +310,12 @@ interface Props {
   onSelectAllMatching: () => void | Promise<void>;
   onClearSelection: () => void;
   onDrill: (sel: { id: string; name: string }) => void;
+  /**
+   * Tanlangan kunlar (`YYYY-MM-DD`). null — sana filtri yo'q, butun davr.
+   * Ikkalasi birga keladi yoki umuman kelmaydi.
+   */
+  kunFrom: string | null;
+  kunTo: string | null;
 }
 
 export default function EntityTable({
@@ -324,6 +331,8 @@ export default function EntityTable({
   onSelectAllMatching,
   onClearSelection,
   onDrill,
+  kunFrom,
+  kunTo,
 }: Props) {
   const [sort, setSort] = useState('spend');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
@@ -340,13 +349,19 @@ export default function EntityTable({
     order,
     limit: String(LIMIT),
     page: String(page),
+    // Sana faqat tanlangan bo'lsa yuboriladi. Bo'sh yuborilsa backend
+    // "butun davr" rejimida qoladi — bu ataylab: "hech narsa tanlanmagan"
+    // va "oxirgi 30 kun tanlangan" bir xil bo'lib qolmasligi kerak.
+    ...(kunFrom && kunTo ? { from: kunFrom, to: kunTo } : {}),
   };
 
   const campaignKey = campaignIds.join(',');
   const adsetKey = adsetIds.join(',');
 
   const query = useQuery({
-    queryKey: ['entities', view, campaignKey, adsetKey, sort, order, page],
+    // Sana kalitga KIRADI: aks holda oraliq o'zgartirilganda React Query
+    // eski javobni qaytaraveradi va jadval o'zgarmaydi.
+    queryKey: ['entities', view, campaignKey, adsetKey, sort, order, page, kunFrom, kunTo],
     queryFn: () => {
       // Eng aniq filtr yutadi: ad set tanlangan bo'lsa kampaniya filtri
       // ortiqcha va backend ham shu tartibni qo'llaydi.
@@ -456,6 +471,7 @@ export default function EntityTable({
 
       {/* Valyuta qatori — jadval ustida: ROAS ustuni qaysi asosda
           chiqqani (yoki nega bo'shligi) raqamlardan oldin ko'rinsin. */}
+      <VaqtNote state={query.data?.vaqt} className="mx-4 mb-2 rounded-md" />
       <CurrencyNote state={currency} className="mx-4 mb-2 rounded-md" />
 
       <TableWrap className="rounded-none border-0">

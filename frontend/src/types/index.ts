@@ -177,6 +177,18 @@ export interface Paginated<T> {
   total: number;
   totals?: EntityTotals;
   currency?: CurrencyState;
+  /**
+   * Raqamlar qaysi davr va qaysi manbadan. `kunlik` — `ad_insights_daily`
+   * dan, tanlangan kunlar bo'yicha; `butun_davr` — eski ustunlardan.
+   * Usiz UI "bu raqam qaysi davrniki?" degan savolga javob bera olmaydi.
+   */
+  vaqt?: {
+    rejim: 'kunlik' | 'butun_davr';
+    from: string | null;
+    to: string | null;
+    qamrov: { start: string | null; end: string | null };
+    izoh: string;
+  };
 }
 
 export interface WonDeal {
