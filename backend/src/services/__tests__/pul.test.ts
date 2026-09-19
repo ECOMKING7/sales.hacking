@@ -573,3 +573,31 @@ test('lead id manbasi: telefon raqami nomda bo\'lsa olinmaydi', async () => {
   // telefon raqami lead_id sifatida hech qachon ketmaydi.
   assert.equal(leadIdniOl({ name: 'Mijoz 998901234567' }, 'name', null), null);
 });
+
+/* ═══════════════ 9. Teg → forma ID (B yo'li kaliti) ═══════════════
+
+   REAL HODISA: FB tomonda forma ID `1394587378208816`, amoCRM tegida
+   esa `fb1394587378208816`. Birinchi versiya to'g'ridan-to'g'ri
+   solishtirdi va `kesishma: 0` qaytardi — "CRM tomonida kalit yo'q"
+   degan XATO xulosa, aslida 8 tadan 7 tasi mos edi.
+
+   Bitta prefiks butun yo'lni "o'lik" deb ko'rsatdi. Shuning uchun test. */
+
+test("tegdan raqam: prefiksli teg toza ID ga tushadi", async () => {
+  const { tegdanRaqam } = await import('../formKashfiyot');
+  assert.equal(tegdanRaqam('fb1394587378208816'), '1394587378208816');
+  assert.equal(tegdanRaqam('1394587378208816'), '1394587378208816');
+  assert.equal(tegdanRaqam('FB-1394587378208816'), '1394587378208816');
+});
+
+test("tegdan raqam: bir nechta son bo'lsa eng uzuni olinadi", async () => {
+  const { tegdanRaqam } = await import('../formKashfiyot');
+  // "2024" qisqa — u sana, forma ID emas.
+  assert.equal(tegdanRaqam('forma_202401_1394587378208816'), '1394587378208816');
+});
+
+test("tegdan raqam: qisqa son forma ID emas", async () => {
+  const { tegdanRaqam } = await import('../formKashfiyot');
+  assert.equal(tegdanRaqam('yangi mijoz'), null);
+  assert.equal(tegdanRaqam('teg 12345'), null, '5 xona — kam');
+});

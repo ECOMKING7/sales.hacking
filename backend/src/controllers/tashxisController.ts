@@ -271,8 +271,16 @@ export async function formKashfiyot(req: Request, res: Response): Promise<void> 
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
+  /**
+   * Namuna hajmi. Standart 300 — tez javob. `?namuna=2000` butun akkauntni
+   * skanerlaydi, lekin 1 600 reklama ≈ 33 sahifa so'rov: Vercel 300 soniyada
+   * uzib qo'yishi mumkin. TEKSHIRILISHI KERAK: real vaqt o'lchanmagan.
+   */
+  const xom = Number(req.query.namuna);
+  const namuna = Number.isFinite(xom) ? Math.min(Math.max(Math.trunc(xom), 50), 3000) : undefined;
+
   try {
-    res.json(await formlarniKashfEt(workspaceId));
+    res.json(await formlarniKashfEt(workspaceId, namuna));
   } catch (err) {
     const e = err as Error & { status?: number };
     if (e.status === 400) {

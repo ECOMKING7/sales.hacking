@@ -69,6 +69,30 @@ export function formIdlarniTop(obj: unknown, chiqish = new Set<string>()): Set<s
   return chiqish;
 }
 
+/**
+ * Teg matnidan forma ID'ga o'xshash raqamni ajratadi.
+ *
+ * NEGA KERAK: amoCRM teglari toza raqam emas — integratsiya prefiks qo'shadi:
+ *
+ *     FB tomonda:  1394587378208816
+ *     CRM tegida:  fb1394587378208816      ← "fb" prefiks
+ *
+ * Birinchi versiya teglarni to'g'ridan-to'g'ri solishtirdi va `kesishma: 0`
+ * qaytardi — "CRM tomonida kalit yo'q" degan XATO xulosa. Aslida 8 tadan
+ * 7 tasi mos kelardi. Bu mening xatom edi, ma'lumotniki emas.
+ *
+ * Shuning uchun ikkala tomon ham raqamga keltiriladi: tegdagi eng uzun
+ * raqamlar ketma-ketligi olinadi va faqat u solishtiriladi.
+ *
+ * `null` — tegda forma ID bo'la oladigan raqam yo'q (6+ xona).
+ */
+export function tegdanRaqam(matn: string): string | null {
+  const parchalar = matn.match(/\d{6,}/g);
+  if (!parchalar || parchalar.length === 0) return null;
+  // Eng uzuni — forma ID 15–17 xonali, qolgan raqamlar (sana, versiya) qisqa.
+  return parchalar.reduce((a, b) => (b.length > a.length ? b : a));
+}
+
 export interface FormNatija {
   /** `object_story_spec` o'qildimi. false bo'lsa B yo'li shu ruxsat bilan yopiq. */
   oqildi: boolean;
@@ -113,9 +137,14 @@ export interface FormNatija {
    * SOLISHTIRILADI. Taxmin emas — kesishma sanaladi.
    */
   crm_tekshiruv: {
+    /** CRM dan olingan teg matnlari soni (xom). */
     crm_teg_qiymatlari: number;
+    /** Ulardan forma ID bo'la oladigan raqam ajratilganlari. */
+    raqamli_teglar: number;
     kesishma: number;
     kesishgan_idlar: string[];
+    /** "fb1394587378208816 → 1394587378208816" ko'rinishida namuna. */
+    namuna_teglar: string[];
     xulosa: string;
   };
 }
@@ -130,7 +159,10 @@ interface AdCreative {
  *
  * Hech narsa yozmaydi. Natija faqat qaytariladi — qaror odamniki.
  */
-export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija> {
+export async function formlarniKashfEt(
+  workspaceId: string,
+  namunaSoni = NAMUNA
+): Promise<FormNatija> {
   const wsRes = await pool.query<{
     fb_ad_account_id: string | null;
     fb_access_token: string | null;
@@ -167,8 +199,10 @@ export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija>
     },
     crm_tekshiruv: {
       crm_teg_qiymatlari: 0,
+      raqamli_teglar: 0,
       kesishma: 0,
       kesishgan_idlar: [],
+      namuna_teglar: [],
       xulosa: 'tekshirilmadi',
     },
   };
@@ -185,7 +219,7 @@ export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija>
         limit: 50,
       },
       token,
-      NAMUNA
+      namunaSoni
     );
   } catch (e) {
     // Ruxsat yetmasa yoki FB 500 bersa — bu ham NATIJA. "Ishlamadi" deb
@@ -195,7 +229,7 @@ export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija>
   }
 
   bosh.oqildi = true;
-  const namuna = adlar.slice(0, NAMUNA);
+  const namuna = adlar.slice(0, namunaSoni);
   bosh.tekshirilgan_reklama = namuna.length;
 
   /** form_id → shu formani ishlatgan reklamalar */
@@ -289,14 +323,31 @@ export async function formlarniKashfEt(workspaceId: string): Promise<FormNatija>
   /* ── HAL QILUVCHI: CRM tomonida shu forma ID'lari bormi ─────────────── */
   try {
     const crm = await discoverLeadFields(workspaceId);
-    const tegQiymatlar = new Set<string>(crm.tegMatnlari ?? []);
-    bosh.crm_tekshiruv.crm_teg_qiymatlari = tegQiymatlar.size;
-    const kesishgan = [...xarita.keys()].filter((f) => tegQiymatlar.has(f));
+    const tegMatnlari = crm.tegMatnlari ?? [];
+
+    // Teg → raqam. Prefiksli ("fb139…") va toza ("139…") teg bir xil
+    // raqamga tushadi, shuning uchun solishtirish prefiksdan mustaqil.
+    const tegRaqamlar = new Map<string, string>(); // raqam → asl teg
+    for (const t of tegMatnlari) {
+      const r = tegdanRaqam(t);
+      if (r) tegRaqamlar.set(r, t);
+    }
+
+    bosh.crm_tekshiruv.crm_teg_qiymatlari = tegMatnlari.length;
+    bosh.crm_tekshiruv.raqamli_teglar = tegRaqamlar.size;
+
+    const kesishgan = [...xarita.keys()].filter((f) => tegRaqamlar.has(f));
     bosh.crm_tekshiruv.kesishma = kesishgan.length;
     bosh.crm_tekshiruv.kesishgan_idlar = kesishgan.slice(0, 20);
+    bosh.crm_tekshiruv.namuna_teglar = [...tegRaqamlar.entries()]
+      .slice(0, 10)
+      .map(([raqam, teg]) => (raqam === teg ? teg : `${teg} → ${raqam}`));
+
+    const foiz =
+      tegRaqamlar.size > 0 ? Math.round((kesishgan.length / tegRaqamlar.size) * 1000) / 10 : 0;
     bosh.crm_tekshiruv.xulosa =
       kesishgan.length > 0
-        ? `CRM teglarida ${kesishgan.length} ta forma ID topildi — B yo'li uchun kalit BOR`
+        ? `CRM teglarida ${kesishgan.length} / ${tegRaqamlar.size} ta forma ID mos keldi (${foiz}%) — B yo'li uchun kalit BOR`
         : "CRM teglarida birorta forma ID topilmadi — B yo'li uchun CRM tomonida kalit YO'Q";
   } catch (e) {
     bosh.crm_tekshiruv.xulosa = `CRM tekshiruvi bajarilmadi: ${(e as Error).message}`;
