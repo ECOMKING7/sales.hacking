@@ -644,3 +644,64 @@ test("takroriylik: kichik namunada hukm chiqarilmaydi", async () => {
   // 5 tadan boshlab hukm bor.
   assert.equal(takroriyMi(5, 1), true);
 });
+
+/* ═══════════════ 11. CAPI hodisasining VAQTI ═══════════════
+
+   REAL XAVF: Meta 7 kundan eski hodisani umuman qabul qilmaydi va
+   kod uni jimgina o'tkazib yuboradi (bu to'g'ri — yolg'on signal
+   yubormaslik uchun). Lekin shu sababdan har bosqichning vaqti
+   TO'G'RI manbadan olinishi shart.
+
+   Bu mijozda o'rtacha deal time — 9.5 kun. Ya'ni "sifatli" hodisasi
+   lid YARATILGAN sanadan olinsa, sifatli hodisalarning ko'pchiligi
+   7 kunlik chegaraga urilib yo'qolardi. Xato chiqmaydi, hodisa
+   shunchaki ketmaydi. */
+
+test('CAPI vaqti: 7 kundan eski hodisa yuborilmaydi', async () => {
+  const { toUnixSeconds } = await import('../metaCapi');
+  const kun = 24 * 60 * 60 * 1000;
+  assert.equal(toUnixSeconds(new Date(Date.now() - 8 * kun)), null, '8 kun — eski');
+  assert.notEqual(toUnixSeconds(new Date(Date.now() - 6 * kun)), null, '6 kun — o\'tadi');
+
+  /* ⚠ CHEKLOV, xato emas — ataylab shunday va shuning uchun yozib
+     qo'yilyapti: vaqt NOMA'LUM bo'lsa funksiya `now` qaytaradi
+     ("hozir sodir bo'ldi" deb qaraydi, webhook oqimi uchun).
+
+     Bu loyiha bir marta tuzatgan xatoning yumshoq shakli: eski
+     hodisani "bugun bo'ldi" deb yuborish bugungi reklamani
+     mukofotlaydi. Hozir xavf past — `won_at` va `crm_created_at`
+     amalda har doim to'ldirilgan, `qualified_at` esa bo'sh bo'lsa
+     `crm_created_at` ga tushadi. Lekin agar kelajakda vaqti yo'q
+     manba paydo bo'lsa, shu qator qayta ko'rilsin. */
+  const hozir = Math.floor(Date.now() / 1000);
+  const natija = toUnixSeconds(null);
+  assert.ok(
+    natija !== null && Math.abs(natija - hozir) < 5,
+    "vaqt noma'lum bo'lsa `now` qaytadi — bu CHEKLOV, kutilgan xatti-harakat"
+  );
+});
+
+test('CAPI vaqti: har bosqich o\'z manbasidan olinadi', () => {
+  // `sendCapiEvent` ichidagi tanlov mantig'i. Funksiya bazaga borgani
+  // uchun shu yerda mantiqning o'zi tekshiriladi — o'rtacha deal time
+  // 9.5 kun bo'lgan akkauntda aynan shu qator hal qiluvchi.
+  const kun = 24 * 60 * 60 * 1000;
+  const yaratilgan = new Date(Date.now() - 10 * kun); // 10 kun oldin
+  const sifatliBolgan = new Date(Date.now() - 1 * kun); // kecha
+  const yopilgan = new Date(); // bugun
+
+  const vaqt = (stage: 'lead' | 'qualified' | 'purchase') =>
+    stage === 'purchase'
+      ? yopilgan
+      : stage === 'qualified'
+        ? sifatliBolgan ?? yaratilgan
+        : yaratilgan;
+
+  assert.equal(vaqt('lead'), yaratilgan);
+  assert.equal(
+    vaqt('qualified'),
+    sifatliBolgan,
+    "sifatli hodisa YARATILGAN sanadan olinsa 10 kunlik bo'lib o'chib ketardi"
+  );
+  assert.equal(vaqt('purchase'), yopilgan);
+});

@@ -135,6 +135,23 @@ export const metaCapiApi = {
     api
       .post<{ success: boolean; warning: string | null }>('/api/workspace/meta-capi', payload)
       .then((r) => r.data),
+
+  /**
+   * Sinov hodisasi. Hech narsani saqlamaydi — Meta'ga bitta hodisa
+   * yuboradi va javobini aynan qaytaradi. `testEventCode` Events
+   * Manager > Test Events tabidan olinadi; usiz hodisa haqiqiy
+   * statistikaga tushib ketardi.
+   */
+  test: (testEventCode: string, stage?: 'lead' | 'qualified' | 'purchase') =>
+    api
+      .post<{
+        yuborildi: boolean;
+        javob: string;
+        event_name: string;
+        dataset_id: string;
+        test_event_code: string;
+      }>('/api/workspace/meta-capi/test', { testEventCode, stage })
+      .then((r) => r.data),
 };
 
 // ---- Dashboard ----

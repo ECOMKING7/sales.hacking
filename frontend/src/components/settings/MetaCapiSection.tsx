@@ -20,6 +20,28 @@ export default function MetaCapiSection() {
   const [warning, setWarning] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  /* Sinov hodisasi. Sozlama emas — saqlanmaydi, faqat shu seansda yashaydi. */
+  const [testKod, setTestKod] = useState('');
+  const [testBusy, setTestBusy] = useState(false);
+  const [testJavob, setTestJavob] = useState<{ ok: boolean; matn: string } | null>(null);
+
+  const sinov = async () => {
+    setTestBusy(true);
+    setTestJavob(null);
+    try {
+      const r = await metaCapiApi.test(testKod.trim());
+      setTestJavob({
+        ok: r.yuborildi,
+        matn: r.yuborildi
+          ? `"${r.event_name}" yuborildi. Events Manager > Test Events da ko'rinishi kerak. Meta javobi: ${r.javob}`
+          : `Yuborilmadi. Meta sababi: ${r.javob}`,
+      });
+    } catch (err) {
+      setTestJavob({ ok: false, matn: errMsg(err, 'Sinov bajarilmadi') });
+    } finally {
+      setTestBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setError('');
@@ -290,6 +312,59 @@ export default function MetaCapiSection() {
               </Button>
             </div>
           </CardFooterRow>
+
+          {/* ── Sinov ──
+              Birinchi haqiqiy hodisa real lid etap o'zgartirgandagina
+              ketadi — soatlar yoki kunlar keyin. Va CAPI xatolari JIM:
+              hodisa ketmasa hech kim bilmaydi. Shuning uchun shu tugma
+              bor: hozir yuboradi va Meta nima deganini aynan ko'rsatadi. */}
+          <div className="border-t border-line pt-4">
+            <label className={LABEL} htmlFor="capi-test-code">
+              Sinov hodisasi
+            </label>
+            <p className="mb-2 text-xs leading-relaxed text-ink-3">
+              Events Manager → Dataset → <span className="text-ink-2">Test Events</span>{' '}
+              tabidagi kodni kiriting (masalan <span className="font-mono">TEST12345</span>).
+              Hodisa faqat o'sha tabda ko'rinadi, haqiqiy statistikaga{' '}
+              <span className="font-medium">tushmaydi</span> va dedup jadvaliga
+              yozilmaydi.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id="capi-test-code"
+                value={testKod}
+                onChange={(e) => setTestKod(e.target.value)}
+                placeholder="TEST12345"
+                className="w-44 font-mono"
+              />
+              <Button
+                variant="secondary"
+                onClick={() => void sinov()}
+                loading={testBusy}
+                disabled={testBusy || testKod.trim().length < 4 || !status?.enabled}
+              >
+                Sinov yuborish
+              </Button>
+              {!status?.enabled && (
+                <span className="text-xs text-ink-3">
+                  Avval CAPI yoqilishi kerak
+                </span>
+              )}
+            </div>
+
+            {testJavob && (
+              <p
+                className={cn(
+                  'mt-2 break-words border-[1.5px] px-3 py-2 text-xs leading-relaxed',
+                  testJavob.ok
+                    ? 'border-ok/40 bg-ok/5 text-ink-2'
+                    : 'border-bad/40 bg-bad/5 text-ink-2'
+                )}
+              >
+                {testJavob.matn}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </Card>

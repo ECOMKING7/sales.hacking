@@ -72,6 +72,18 @@ export interface CapiLead {
   fb_lead_id: string | null;
   revenue: string | number | null;
   crm_created_at: Date | string | null;
+  /**
+   * Lid SIFATLI etapga yetgan payt.
+   *
+   * ⚠ Bu `crm_created_at` dan ALOHIDA bo'lishi SHART. Ilgari sifatli
+   * hodisaning vaqti lid YARATILGAN sanadan olinardi va bu jim
+   * yo'qotishga olib kelardi: bu mijozda o'rtacha deal time 9.5 kun,
+   * ya'ni 10 kun oldin kelgan lid bugun sifatli bo'lsa, hodisa
+   * "10 kunlik" deb belgilanib, Meta'ning 7 kunlik chegarasiga
+   * urilib o'chib ketardi. Sifatli hodisalarning KO'PCHILIGI shunday
+   * yo'qolardi — xato chiqmasdan.
+   */
+  qualified_at: Date | string | null;
   won_at: Date | string | null;
 }
 
@@ -237,7 +249,23 @@ export async function sendCapiEvent(
 
     // Vaqtni DEDUP QATORIDAN OLDIN tekshiramiz: eski hodisa uchun
     // qator yozib qo'ysak, u keyin qayta yuborishni ham to'sib qo'yardi.
-    const occurredAt = stage === 'purchase' ? lead.won_at : lead.crm_created_at;
+    /* Har bosqich O'Z vaqtiga ega. Hodisa QACHON sodir bo'lgani
+       muhim: Meta uni shu vaqtga bog'lab atribusiya qiladi va
+       7 kundan eskisini umuman qabul qilmaydi.
+
+         lead      → lid CRM'ga tushgan payt
+         qualified → sifatli etapga YETGAN payt (yaratilgan payt emas)
+         purchase  → sotuv yopilgan payt
+
+       `qualified_at` bo'sh bo'lsa (eski yozuv, migratsiyadan oldingi)
+       yaratilgan sanaga tushamiz — noto'g'ri, lekin yo'qdan yaxshi;
+       7 kunlik chegara baribir eskisini o'tkazmaydi. */
+    const occurredAt =
+      stage === 'purchase'
+        ? lead.won_at
+        : stage === 'qualified'
+          ? lead.qualified_at ?? lead.crm_created_at
+          : lead.crm_created_at;
     const eventTime = toUnixSeconds(occurredAt);
     if (eventTime === null) {
       console.warn(
@@ -355,10 +383,113 @@ export async function loadCapiLead(
 ): Promise<CapiLead | null> {
   const { rows } = await pool.query<CapiLead>(
     `SELECT id, crm_lead_id, phone_hash, email_hash, fbclid, fb_lead_id,
-            revenue, crm_created_at, won_at
+            revenue, crm_created_at, qualified_at, won_at
        FROM leads
       WHERE workspace_id = $1 AND id = $2`,
     [workspaceId, leadId]
   );
   return rows[0] ?? null;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TEST YUBORISH
+
+   NEGA KERAK: CAPI yoqilgandan keyin birinchi haqiqiy hodisa real lid
+   etap o'zgartirgandagina ketadi — ya'ni soatlar yoki kunlar keyin.
+   Shu vaqtgacha "token to'g'rimi, dataset to'g'rimi, ruxsat yetadimi"
+   degan savollarga javob yo'q. Va CAPI xatolari JIM: hodisa ketmasa
+   hech kim bilmaydi.
+
+   Shuning uchun bitta tugma: hozir yuboradi, Meta nima deganini
+   aynan qaytaradi.
+
+   Uchta narsa ataylab boshqacha:
+     1. `test_event_code` — hodisa Events Manager'ning **Test Events**
+        tabida ko'rinadi va haqiqiy statistikaga TUSHMAYDI.
+     2. `capi_events` ga qator YOZILMAYDI — test dedup'ni band qilib,
+        keyingi haqiqiy hodisani to'sib qo'ymasligi kerak.
+     3. Foydalanuvchi ma'lumoti — o'ylab topilgan. Real mijoz
+        ma'lumoti test uchun Meta'ga yuborilmaydi.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export interface CapiTestNatija {
+  yuborildi: boolean;
+  /** Meta qaytargan javob yoki xato sababi (token maskalangan). */
+  javob: string;
+  /** Aynan qaysi nom bilan ketdi — sozlamadagi nom. */
+  event_name: string;
+  dataset_id: string;
+  test_event_code: string;
+}
+
+/**
+ * Bitta sinov hodisasini yuboradi.
+ *
+ * `testCode` — Events Manager → Test Events tabidagi kod (`TEST12345`).
+ * Usiz hodisa haqiqiy statistikaga tushardi, shuning uchun MAJBURIY.
+ */
+export async function sendCapiTest(
+  workspaceId: string,
+  testCode: string,
+  stage: CapiStage = 'lead'
+): Promise<CapiTestNatija> {
+  const cfg = await loadCapiConfig(workspaceId);
+  if (!cfg) {
+    throw Object.assign(
+      new Error(
+        "CAPI sozlanmagan yoki o'chirilgan: dataset ID, token va 'yoqilgan' bayrog'i uchalasi ham kerak"
+      ),
+      { status: 400 }
+    );
+  }
+
+  const eventName = cfg.eventNames[stage];
+  // SHA-256 — Meta talabi. Qiymat o'ylab topilgan raqam, real emas.
+  const { createHash } = await import('node:crypto');
+  const soxtaTelefon = '998000000000';
+  const ph = createHash('sha256').update(soxtaTelefon).digest('hex');
+
+  const event: Record<string, unknown> = {
+    event_name: eventName,
+    event_time: Math.floor(Date.now() / 1000),
+    event_id: `test:${Date.now()}`,
+    action_source: cfg.actionSource,
+    user_data: { ph: [ph] },
+    custom_data: {
+      event_source: 'crm',
+      lead_event_source: cfg.leadEventSource,
+      // Sinov ekani Meta tomonida ham ko'rinib tursin.
+      test: 'attribution-platform',
+    },
+  };
+  if (stage === 'purchase') {
+    (event.custom_data as Record<string, unknown>).value = 1;
+    (event.custom_data as Record<string, unknown>).currency = cfg.currency;
+  }
+
+  try {
+    const r = await axios.post(
+      `${GRAPH_URL}/${cfg.datasetId}/events`,
+      { data: [event], test_event_code: testCode, access_token: cfg.token },
+      { timeout: 10_000 }
+    );
+    return {
+      yuborildi: true,
+      javob: JSON.stringify(r.data).slice(0, 500),
+      event_name: eventName,
+      dataset_id: cfg.datasetId,
+      test_event_code: testCode,
+    };
+  } catch (err) {
+    const ax = err as AxiosError<{ error?: { message?: string } }>;
+    const sabab = ax.response?.data?.error?.message ?? (err as Error).message;
+    return {
+      yuborildi: false,
+      // Token URL'da emas, tanada ketadi — lekin baribir kesamiz.
+      javob: String(sabab).slice(0, 500),
+      event_name: eventName,
+      dataset_id: cfg.datasetId,
+      test_event_code: testCode,
+    };
+  }
 }

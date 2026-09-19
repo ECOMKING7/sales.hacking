@@ -18,6 +18,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { encrypt } from '../utils/encryption';
+import { sendCapiTest } from '../services/metaCapi';
 
 interface CapiStatusRow {
   meta_dataset_id: string | null;
@@ -226,5 +227,53 @@ export async function save(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('meta capi save error:', (err as Error).message);
     res.status(500).json({ error: 'Failed to save Meta CAPI settings' });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   POST /api/workspace/meta-capi/test
+
+   Sozlamani SAQLAMAYDI, hech narsani o'zgartirmaydi. Bitta sinov
+   hodisasini Meta'ga yuboradi va javobni aynan qaytaradi.
+
+   `test_event_code` MAJBURIY: usiz hodisa Events Manager'ning haqiqiy
+   statistikasiga tushardi va keyin uni o'chirib bo'lmasdi.
+   ═══════════════════════════════════════════════════════════════════════ */
+const testSchema = z.object({
+  /** Events Manager → Test Events tabidagi kod, masalan `TEST12345`. */
+  testEventCode: z
+    .string()
+    .trim()
+    .min(4, 'Test kodi juda qisqa')
+    .max(64)
+    .regex(/^[A-Za-z0-9_-]+$/, 'Test kodida faqat harf, raqam, _ va - bo\'ladi'),
+  stage: z.enum(['lead', 'qualified', 'purchase']).optional(),
+});
+
+export async function test(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const parsed = testSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+  try {
+    const natija = await sendCapiTest(
+      req.user.workspaceId,
+      parsed.data.testEventCode,
+      parsed.data.stage ?? 'lead'
+    );
+    res.json(natija);
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 400) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    console.error('meta capi test error:', e.message);
+    res.status(500).json({ error: 'Sinov hodisasini yuborib bo\'lmadi' });
   }
 }

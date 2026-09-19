@@ -21,6 +21,7 @@ import {
 import {
   status as metaCapiStatus,
   save as metaCapiSave,
+  test as metaCapiTest,
 } from '../controllers/metaCapiController';
 import { verifyToken } from '../middleware/auth';
 
@@ -45,6 +46,8 @@ router.post('/amocrm-lead-id-field', verifyToken, amocrmSaveLeadIdField);
 // Meta Conversions API (token bu yerdan o'tmaydi — faqat .env da, §4.1)
 router.get('/meta-capi', verifyToken, metaCapiStatus);
 router.post('/meta-capi', verifyToken, metaCapiSave);
+// Sinov hodisasi — Events Manager > Test Events da ko'rinadi, statistikaga tushmaydi
+router.post('/meta-capi/test', verifyToken, metaCapiTest);
 
 // Workspace management
 router.get('/list', verifyToken, listWorkspaces);
