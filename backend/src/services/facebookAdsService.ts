@@ -365,6 +365,29 @@ function isHardAccountLimit(err: AxiosError): boolean {
 }
 
 /**
+ * Facebook tomonidagi VAQTINCHALIK nosozlik — qayta urinish o'rinli.
+ *
+ * `code 2` — Meta hujjatida aynan shunday ta'riflangan: "Temporary issue due
+ * to downtime. Wait and retry the operation." Ko'pincha `subcode 1504044`
+ * bilan keladi (hujjatlashtirilmagan).
+ *
+ * NEGA QO'SHILDI: 2026-09-19 da o'lchandi — 7 ta sinxrondan 2 tasi shu xato
+ * bilan yiqildi. Har yiqilishda ~50 ta API chaqiruvi va 67 soniya ish
+ * BEKOR ketardi, chunki fbGet faqat rate-limit kodlarini (4/17/32/613)
+ * qayta urinardi. Bitta chaqiruvni 1–4 soniyadan keyin takrorlash arzon.
+ *
+ * ⚠ TEKSHIRILISHI KERAK: agar xato o'sha chaqiruvda DOIMIY takrorlansa
+ * (3 urinish ham yiqilsa), sabab vaqtinchalik emas — token yoki ruxsat.
+ * Log'da uchala urinish ham ko'rinadi.
+ */
+function isTransient(err: AxiosError): boolean {
+  if (fbErrorCode(err) === 2) return true;
+  const status = err.response?.status;
+  // Graph API'ning o'z 500/502/503/504'i — bizning so'rovimiz aybdor emas.
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+/**
  * Axios'ning "Request failed with status code 500" xabari hech narsa aytmaydi —
  * sababni faqat Facebook'ning javob tanasi biladi. Shuni o'qiladigan matnga
  * aylantiramiz, aks holda sync xatosi tashxis qo'yib bo'lmaydigan bo'lib qoladi.
@@ -418,9 +441,17 @@ async function fbGet<T = unknown>(
       // FB limit sarlavhalarini xato javobda ham yuboradi — aynan o'shanda
       // ular eng kerak.
       recordUsage(err.response?.headers as unknown as Record<string, unknown>);
-      // Fail fast on the ad-account hard limit — don't burn time retrying.
-      if (isRateLimit(err) && !isHardAccountLimit(err) && attempt < MAX_RETRIES) {
+      // Ikki sabab qayta urinishga arziydi:
+      //   1. rate limit — LEKIN ad-account qattiq limiti (17) emas: uning
+      //      sovish muddati uzun, urinish faqat uzaytiradi.
+      //   2. Facebook tomonidagi vaqtinchalik nosozlik (code 2, HTTP 5xx).
+      const qaytaUrinsaBoladi =
+        (isRateLimit(err) && !isHardAccountLimit(err)) || isTransient(err);
+      if (qaytaUrinsaBoladi && attempt < MAX_RETRIES) {
         const backoff = 2 ** attempt * 1000; // 1s, 2s, 4s
+        console.warn(
+          `FB: qayta urinish ${attempt + 1}/${MAX_RETRIES} (${backoff}ms) — ${path} — ${fbErrorMessage(err)}`
+        );
         await sleep(backoff);
         attempt += 1;
         continue;
