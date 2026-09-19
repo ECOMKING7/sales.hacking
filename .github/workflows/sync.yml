@@ -2,7 +2,10 @@ name: sinxron
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    # Soatiga 1. GitHub jadvali KAFOLATLANMAGAN — o'lchov: */15 so'ralganda
+    # amalda 115-155 daqiqada bir marta ishladi. Asosiy trigger — cron-job.org,
+    # bu zaxira.
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -12,7 +15,7 @@ jobs:
       - name: Facebook sinxroni
         env:
           API: https://sales-hacking-api.vercel.app
-          SECRET: ${{ secrets.CRON_SECRET }}
+          SECRET: "${{ secrets.CRON_SECRET }}"
         run: |
           kod=$(curl -sS -o javob.json -w '%{http_code}' \
             -X POST "$API/api/sync/cron" \
