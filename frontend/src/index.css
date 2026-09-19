@@ -36,6 +36,66 @@
   }
 }
 
+@layer components {
+  /* ═══════════════ SHISHA — Liquid Glass ═══════════════
+
+     Uch qatlam, aynan shu tartibda:
+
+       1. YUZA       — yarim shaffof rang (--shisha-qatlam boshqaradi)
+       2. XIRALIK    — orqadagi kontent blur + saturate
+       3. QIRRA/JILO — yuqorida yorug'lik chizig'i, chetida sinish
+
+     Uchinchisi eng muhimi. Blur va shaffoflikning o'zi "matoviy oyna"
+     beradi; SHISHA ekanini bildiradigan narsa — qirradagi yorug'lik.
+     Apple buni "specular highlight" deydi.
+
+     Hammasi `box-shadow` ichida: psevdo-element ishlatilsa u matnning
+     ustiga chiqib qolishi va z-index bilan ovora qilishi mumkin edi. */
+  .shisha {
+    background-color: rgb(var(--shisha) / var(--shisha-qatlam));
+    backdrop-filter: blur(var(--shisha-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--shisha-blur)) saturate(180%);
+    box-shadow:
+      inset 0 1px 0 0 rgb(var(--shisha-jilo) / var(--shisha-jilo-kuch)),
+      inset 0 0 0 1px rgb(var(--shisha-qirra) / var(--shisha-qirra-kuch)),
+      var(--shisha-soya);
+  }
+
+  /* Apple'ning "completely clear" holati — yuza deyarli yo'q,
+     faqat xiralik va qirra qoladi. */
+  .shisha-tiniq {
+    --shisha-qatlam: 0.16;
+    --shisha-blur: 30px;
+  }
+
+  /* Ichkariga botgan yo'lak (segmented control tagi). Shisha EMAS —
+     u shishaning ORQASI, shuning uchun blur ham, jilo ham yo'q. */
+  .shisha-yolak {
+    background-color: rgb(var(--shisha-qirra) / 0.05);
+    box-shadow: inset 0 1px 2px 0 rgb(var(--shisha-qirra) / 0.07);
+  }
+
+  /* backdrop-filter yo'q brauzerda (eski Firefox) shaffof panel
+     o'qib bo'lmaydigan bo'ladi — qattiq fonga tushamiz. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .shisha,
+    .shisha-tiniq {
+      background-color: rgb(var(--shisha) / 0.94);
+    }
+  }
+
+  /* Tizimda "shaffoflikni kamaytirish" yoqilgan bo'lsa — hurmat qilamiz.
+     Apple'ning o'zida ham aynan shu sozlama bor. */
+  @media (prefers-reduced-transparency: reduce) {
+    .shisha,
+    .shisha-tiniq {
+      background-color: rgb(var(--shisha) / 0.97);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+}
+
 @layer utilities {
   /* Pulsatsiyani harakat sezgirligi yoqilganda to'xtatamiz */
   @media (prefers-reduced-motion: reduce) {

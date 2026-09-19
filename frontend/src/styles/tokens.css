@@ -46,6 +46,35 @@
   --warn: 194 116 10;
   --bad: 220 47 69;
 
+  /* ── SHISHA (Liquid Glass) ──────────────────────────────────────
+     Apple 2025 da Liquid Glass ni chiqardi, 2026 (WWDC) da esa eng
+     ko'p so'ralgan narsani qo'shdi: SHAFFOFLIK DARAJASI SLAYDERI —
+     "fully opaque → completely clear".
+
+     Bizda ham xuddi shu: butun effekt BITTA sondan boshqariladi.
+     `--shisha-qatlam` — yuzaning qalinligi:
+
+        1.00 → oddiy qattiq panel (shaffoflik yo'q)
+        0.72 → standart (matn ustidan o'qilishi kafolatlanadi)
+        0.16 → "tiniq" rejim (Apple'ning 100% clear'i)
+
+     Boshqa hech joyda shishaning rangi yozilmaydi.
+
+     ⚠ MUHIM CHEKLOV: shisha ORQASIDA nimadir bo'lsagina ko'rinadi.
+     Oq fon ustidagi oq shisha — shunchaki oq. Shuning uchun panel
+     `sticky` qilingan: jadval uning TAGIDAN suriladi va aynan shunda
+     effekt ishlaydi. Bu bezak emas, shartning o'zi. */
+  --shisha: 255 255 255;
+  --shisha-qatlam: 0.72;
+  --shisha-blur: 26px;
+  /* Yuqori qirradagi yorug'lik chizig'i — shishaga qalinlik beradi. */
+  --shisha-jilo: 255 255 255;
+  --shisha-jilo-kuch: 0.85;
+  /* Qirra: yorug'lik shishaning chetida sinadi (refraction). */
+  --shisha-qirra: 11 18 32;
+  --shisha-qirra-kuch: 0.10;
+  --shisha-soya: 0 10px 30px -14px rgb(11 18 32 / 0.30);
+
   /* ── glow ── */
   --glow-xs: 0 0 0 3px rgb(var(--edge) / 0.16);
   --glow-sm: 0 0 0 4px rgb(var(--edge) / 0.20), 0 4px 16px -6px rgb(var(--accent) / 0.30);
@@ -83,6 +112,16 @@
     --warn: 245 165 36;
     --bad: 244 88 110;
 
+    /* Qorong'ida shisha QORA bo'ladi, oq emas — oq shisha qora fonda
+       tuman bo'lib ko'rinadi va matn kontrasti yo'qoladi. */
+    --shisha: 16 23 31;
+    --shisha-qatlam: 0.74;
+    --shisha-jilo: 255 255 255;
+    --shisha-jilo-kuch: 0.12;
+    --shisha-qirra: 255 255 255;
+    --shisha-qirra-kuch: 0.10;
+    --shisha-soya: 0 12px 34px -14px rgb(0 0 0 / 0.75);
+
     --glow-xs: 0 0 0 1px rgb(var(--edge) / 0.28), 0 0 10px -3px rgb(var(--edge) / 0.40);
     --glow-sm: 0 0 0 1px rgb(var(--edge) / 0.40), 0 0 18px -4px rgb(var(--edge) / 0.55);
     --glow-md: 0 0 0 1px rgb(var(--edge) / 0.55), 0 0 34px -6px rgb(var(--edge) / 0.70);
@@ -118,6 +157,16 @@
   --ok: 23 192 98;
   --warn: 245 165 36;
   --bad: 244 88 110;
+
+  /* Qorong'ida shisha QORA bo'ladi, oq emas — oq shisha qora fonda
+     tuman bo'lib ko'rinadi va matn kontrasti yo'qoladi. */
+  --shisha: 16 23 31;
+  --shisha-qatlam: 0.74;
+  --shisha-jilo: 255 255 255;
+  --shisha-jilo-kuch: 0.12;
+  --shisha-qirra: 255 255 255;
+  --shisha-qirra-kuch: 0.10;
+  --shisha-soya: 0 12px 34px -14px rgb(0 0 0 / 0.75);
 
   --glow-xs: 0 0 0 1px rgb(var(--edge) / 0.28), 0 0 10px -3px rgb(var(--edge) / 0.40);
   --glow-sm: 0 0 0 1px rgb(var(--edge) / 0.40), 0 0 18px -4px rgb(var(--edge) / 0.55);

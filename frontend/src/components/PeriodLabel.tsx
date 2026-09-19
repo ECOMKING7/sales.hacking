@@ -1,10 +1,15 @@
 /**
- * Raqamlar qaysi davrni qamrayotgani.
+ * Facebook'da ma'lumot qaysi sanadan boshlanishi.
  *
- * NEGA KERAK: jadvaldagi xarajat, natija, lid va daromad — hammasi
- * BUTUN DAVR uchun (sync `date_preset=maximum` bilan ishlaydi). Sana
- * yozilmasa foydalanuvchi buni "shu oyning raqami" deb o'qiydi va
- * xarajatni bir necha barobar kam baholaydi.
+ * ⚠ YORLIQ O'ZGARDI: ilgari "Butun davr" deb yozardi, chunki jadval
+ * haqiqatan butun tarixni ko'rsatardi. Endi sana tanlagichi ishlaydi
+ * (`ad_insights_daily`) va jadval tanlangan oraliqni beradi — shunday
+ * ekan "Butun davr" yonida "Sep 19 – Sep 19" turishi QARAMA-QARSHI
+ * ikki gap bo'lardi va foydalanuvchi qaysi biriga ishonishni bilmasdi.
+ *
+ * Endi bu chiziq boshqa savolga javob beradi: "umuman qaysi sanadan
+ * boshlab ma'lumot bor?" Tanlangan oraliq esa jadval tepasida
+ * (VaqtNote) yoziladi.
  *
  * Sana Facebook aytgan `date_start`/`date_stop` dan keladi — taxmin
  * emas. Facebook 37 oydan eskisini bermaydi, shuning uchun akkaunt
@@ -41,7 +46,7 @@ export default function PeriodLabel({ window: win }: { window?: PeriodWindow }) 
       title="Facebook 37 oydan eskisini bermaydi. Akkaunt undan oldin ochilgan bo'lsa boshlanish sanasi shu chegara."
     >
       <CalendarRange aria-hidden className="h-3.5 w-3.5" />
-      Butun davr:{' '}
+      Ma'lumot qamrovi:{' '}
       <span className="font-medium tabular-nums text-ink-2">
         {uz(win.start)} → {uz(win.end)}
       </span>

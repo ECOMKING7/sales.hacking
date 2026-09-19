@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Search, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  AppWindow,
+  Folder,
+  LayoutGrid,
+  Search,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { dashboardApi, facebookApi, amocrmApi } from '../services/api';
 import KpiCard from '../components/KpiCard';
 import PeriodLabel from '../components/PeriodLabel';
@@ -41,22 +49,31 @@ const PILLS: Array<{ id: QuickFilter; label: string }> = [
   { id: 'delivery', label: 'Had delivery' },
 ];
 
-const VIEW_TABS: Array<{ id: View; label: string }> = [
-  { id: 'campaigns', label: 'Campaigns' },
-  { id: 'adsets', label: 'Ad sets' },
-  { id: 'ads', label: 'Ads' },
+const VIEW_TABS: Array<{ id: View; label: string; Icon: LucideIcon }> = [
+  { id: 'campaigns', label: 'Campaigns', Icon: Folder },
+  { id: 'adsets', label: 'Ad sets', Icon: LayoutGrid },
+  { id: 'ads', label: 'Ads', Icon: AppWindow },
 ];
 
-/** Tanlagich chipi — tanlangani havorang, tanlanmagani neytral. */
-const chip = (active: boolean, disabled = false) =>
+/* ═══════════════ Segmented control (Ads Manager naqshi) ═══════════════
+
+   Ilgari har tugma o'z ramkasi bilan alohida turardi va toolbar
+   ikkita notekis qatorga sinib ketardi. Ads Manager'da esa bir
+   guruh tugma BITTA botgan yo'lak ichida yashaydi va faqat tanlangani
+   ko'tarilib turadi — ko'z bir zumda "bular bitta tanlov" deb o'qiydi.
+
+   Bizda ko'tarilgan element SHISHA: tagidagi yo'lak va undan ham
+   pastdagi kontent ko'rinib turadi. */
+
+/** Botgan yo'lak — ichidagi tugmalar uchun fon. */
+const YOLAK = 'shisha-yolak inline-flex items-center gap-1 rounded-md p-1';
+
+/** Yo'lak ichidagi bitta tugma. */
+const yolakTugma = (active: boolean) =>
   cn(
-    'rounded-sm border-[1.5px] px-3 py-1.5 text-sm font-semibold',
-    'transition-[box-shadow,background-color,border-color,color] duration-200',
-    active
-      ? 'border-edge bg-tint text-accent'
-      : disabled
-        ? 'cursor-not-allowed border-line text-ink-3'
-        : 'border-line text-ink-2 hover:text-accent'
+    'inline-flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm font-semibold',
+    'transition-[background-color,color,box-shadow] duration-200',
+    active ? 'shisha text-accent' : 'text-ink-2 hover:text-accent'
   );
 
 export default function DashboardPage() {
@@ -267,78 +284,36 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Toolbar ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="mr-2">
-          <h1 className="text-xl font-bold text-ink">Dashboard</h1>
-          {/* Raqamlar butun davrni qamraydi — sana yozilmasa
-              foydalanuvchi buni "shu oy" deb o'qiydi. */}
-          <PeriodLabel window={d?.window} />
-        </div>
-        <AdAccountSelector />
+      {/* ═══════════════ TOOLBAR ═══════════════
 
-        {/* Yorliqlar + tanlov chiplari (Ads Manager naqshi).
-            Yorliq hech qachon bloklanmaydi: hech narsa tanlanmagan bo'lsa
-            shu darajaning hammasi ko'rinadi. */}
-        <div className="inline-flex flex-wrap items-center gap-1.5">
-          {VIEW_TABS.map((t) => {
-            const sel = t.id === 'campaigns' ? selCampaigns : t.id === 'adsets' ? selAdsets : null;
-            return (
-              <div key={t.id} className="inline-flex items-center">
-                <button
-                  onClick={() => setView(t.id)}
-                  aria-pressed={view === t.id}
-                  className={cn(chip(view === t.id), sel && sel.size > 0 && 'rounded-r-none')}
-                >
-                  {t.label}
-                </button>
-                {sel && sel.size > 0 && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-r-sm border-[1.5px] border-l-0 border-edge bg-tint px-2 py-1.5 text-sm font-semibold text-accent"
-                    title={[...sel.values()].join(', ')}
-                  >
-                    <span className="max-w-[10rem] truncate">{tabChipLabel(sel)}</span>
-                    <button
-                      onClick={() => clearSelection(t.id)}
-                      aria-label={`${t.label} tanlovini tozalash`}
-                      className="rounded-[3px] text-accent/70 hover:text-accent"
-                    >
-                      <X aria-hidden className="h-3.5 w-3.5" />
-                    </button>
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+          Ikki qator, har birining o'z vazifasi bor:
 
-        {/* Search */}
-        <div className="w-48">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name…"
-            aria-label="Search by name"
-            icon={<Search className="h-4 w-4" />}
-          />
-        </div>
+            1-qator — QAYSI ma'lumot: akkaunt, sana, ustunlar
+            2-qator — QANDAY ko'rish: daraja, filtr, qidiruv, model
 
-        <div className="ml-auto flex items-center gap-2">
-          {/* ⚠ Sana tanlagichi hozircha FAQAT "Revenue Growth" ga ta'sir
-              qiladi. Xarajat, natija va daromad butun davr bo'yicha
-              keladi, chunki `campaigns.spend` vaqt bo'yicha bo'linmagan
-              (bitta ustun, oxirgi sync qiymati).
+          Ilgari hammasi bitta `flex-wrap` da edi va ekran kengligiga
+          qarab tasodifiy joyga sinardi — skrinshotda aynan shu ko'rinadi.
 
-              Tanlagich olib tashlanmadi: o'sish ko'rsatkichi unga
-              tayanadi. Lekin hech narsani filtrlamayotgan boshqaruv —
-              jim yolg'on, shuning uchun yorliq ochiq yozib qo'yilgan.
-              To'liq yechim: kunlik buketlar (ad_insights_daily). */}
-          <span
-            className="hidden text-xs text-ink-3 sm:inline"
-            title="Xarajat va daromad butun davr bo'yicha. Sana oralig'i faqat o'sish ko'rsatkichiga ta'sir qiladi."
-          >
-            sana → faqat o'sish
-          </span>
+          Panel `sticky`: jadval uning TAGIDAN suriladi. Shisha effekti
+          ishlashi uchun shart — orqasida hech narsa bo'lmasa, shisha
+          shunchaki oq to'rtburchak.
+
+          `-mx-4 px-4` — panel Layout paddingini kesib o'tib, chetdan
+          chetgacha cho'ziladi (Apple'da ham panel ekran qirrasiga
+          tegib turadi). */}
+      <div
+        className={cn(
+          'shisha sticky top-0 z-30 -mx-4 space-y-2.5 px-4 py-3 md:-mx-8 md:px-8',
+          'rounded-none'
+        )}
+      >
+        {/* ── 1-qator: sarlavha | manba va davr ── */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="mr-auto">
+            <h1 className="text-xl font-bold text-ink">Dashboard</h1>
+            <PeriodLabel window={d?.window} />
+          </div>
+          <AdAccountSelector />
           <DateRangePicker
             value={range}
             preset={preset}
@@ -350,35 +325,92 @@ export default function DashboardPage() {
           <ColumnsButton visible={columns} onChange={updateColumns} />
           <BreakdownButton />
         </div>
-      </div>
 
-      {/* ── Quick-filter pills + attribution model ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        {PILLS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => setFilter(p.id)}
-            aria-pressed={filter === p.id}
-            className={chip(filter === p.id)}
-          >
-            {p.label}
-          </button>
-        ))}
-        <Button variant="ghost" size="sm">
-          + See more
-        </Button>
+        {/* ── 2-qator: daraja | filtr | qidiruv | model ── */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Daraja. Yorliq hech qachon bloklanmaydi: hech narsa
+              tanlanmagan bo'lsa shu darajaning hammasi ko'rinadi. */}
+          <div className={YOLAK}>
+            {VIEW_TABS.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => setView(id)}
+                aria-pressed={view === id}
+                className={yolakTugma(view === id)}
+              >
+                <Icon aria-hidden className="h-4 w-4 flex-none" />
+                {label}
+              </button>
+            ))}
+          </div>
 
-        <div className="ml-auto inline-flex items-center gap-1.5">
-          {(['first_click', 'last_click'] as Model[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setModel(m)}
-              aria-pressed={model === m}
-              className={chip(model === m)}
-            >
-              {m === 'first_click' ? 'First click' : 'Last click'}
-            </button>
-          ))}
+          {/* Tanlov chiplari — yo'lakdan TASHQARIDA.
+              Ilgari ular yorliqqa yopishib turardi va yorliq kengligi
+              tanlangan kampaniya nomiga qarab sakrardi. */}
+          {VIEW_TABS.map(({ id, label }) => {
+            const sel = id === 'campaigns' ? selCampaigns : id === 'adsets' ? selAdsets : null;
+            if (!sel || sel.size === 0) return null;
+            return (
+              <span
+                key={`chip-${id}`}
+                className="inline-flex items-center gap-1 rounded-sm border-[1.5px] border-edge bg-tint px-2 py-1.5 text-sm font-semibold text-accent"
+                title={[...sel.values()].join(', ')}
+              >
+                <span className="max-w-[10rem] truncate">{tabChipLabel(sel)}</span>
+                <button
+                  onClick={() => clearSelection(id)}
+                  aria-label={`${label} tanlovini tozalash`}
+                  className="rounded-[3px] text-accent/70 hover:text-accent"
+                >
+                  <X aria-hidden className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            );
+          })}
+
+          <span aria-hidden className="mx-1 hidden h-6 w-px bg-line-2/70 lg:block" />
+
+          {/* Tezkor filtr */}
+          <div className={YOLAK}>
+            {PILLS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setFilter(p.id)}
+                aria-pressed={filter === p.id}
+                className={yolakTugma(filter === p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <div className="w-48">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name…"
+                aria-label="Search by name"
+                icon={<Search className="h-4 w-4" />}
+              />
+            </div>
+
+            <span aria-hidden className="mx-1 hidden h-6 w-px bg-line-2/70 lg:block" />
+
+            {/* Atribusiya modeli */}
+            <div className={YOLAK}>
+              {(['first_click', 'last_click'] as Model[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setModel(m)}
+                  aria-pressed={model === m}
+                  className={yolakTugma(model === m)}
+                >
+                  {m === 'first_click' ? 'First click' : 'Last click'}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
