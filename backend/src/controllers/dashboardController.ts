@@ -188,6 +188,7 @@ function kunlikManba(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq): strin
              SUM(i.clicks)       AS clicks,
              SUM(i.impressions)  AS impressions,
              SUM(i.leads_count)  AS leads_count,
+             SUM(i.calls_count)  AS calls_count,
              SUM(i.fb_purchases) AS fb_purchases,
              SUM(i.fb_revenue)   AS fb_revenue
         FROM ad_insights_daily i
@@ -214,10 +215,26 @@ function kunlikManba(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq): strin
            COALESCE(d.impressions, 0)  AS impressions,
            COALESCE(d.leads_count, 0)  AS leads_count,
            COALESCE(d.fb_revenue, 0)   AS fb_revenue,
-           -- Kunlik jadvalda yo'q → taxmin qilinmaydi, null qaytadi.
+           /*
+            * "Natija" maqsadga qarab boshqa hodisa. Kunlik jadvalda
+            * uchalasi ham bor, shuning uchun uni to'g'ri tanlay olamiz.
+            * Tanish bo'lmagan tur — NULL, nol emas: "0 natija" va
+            * "natija turi noma'lum" bir xil ko'rinmasligi kerak.
+            */
+           CASE e.result_type
+             WHEN 'lead'     THEN COALESCE(d.leads_count, 0)
+             WHEN 'call'     THEN COALESCE(d.calls_count, 0)
+             WHEN 'purchase' THEN COALESCE(d.fb_purchases, 0)
+           END::numeric AS results,
+           (COALESCE(d.spend, 0) / NULLIF(
+              CASE e.result_type
+                WHEN 'lead'     THEN d.leads_count
+                WHEN 'call'     THEN d.calls_count
+                WHEN 'purchase' THEN d.fb_purchases
+              END, 0))::numeric AS cost_per_result,
+           -- CRM tomoni: reklama kesimida sanaga bog'lab bo'lmaydi
+           -- (atribusiya hali ishlamayapti). Taxmin qilinmaydi.
            NULL::numeric AS purchases_count,
-           NULL::numeric AS results,
-           NULL::numeric AS cost_per_result,
            NULL::numeric AS revenue,
            NULL::numeric AS roas
       FROM ${table} e
@@ -292,7 +309,8 @@ function totalsSelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null
            COALESCE(SUM(impressions), 0)              AS impressions,
            COALESCE(SUM(leads_count), 0)              AS leads,
            ${nol('SUM(purchases_count)')}             AS purchases,
-           ${nol('SUM(results)')}                     AS results,
+           -- natija kunlik rejimda ham hisoblanadi (maqsad bo'yicha)
+           COALESCE(SUM(results), 0)                  AS results,
            ${nol('SUM(revenue)')}                     AS revenue,
            COALESCE(SUM(fb_revenue), 0)               AS "fbRevenue",
            SUM(spend) / NULLIF(SUM(clicks), 0)              AS cpc,
@@ -300,7 +318,7 @@ function totalsSelect(table: 'campaigns' | 'adsets' | 'ads', o: KunOraliq | null
            SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) * 100 AS ctr,
            SUM(spend) / NULLIF(SUM(leads_count), 0)         AS "costPerLead",
            ${hisob('SUM(spend) / NULLIF(SUM(purchases_count), 0)')} AS "costPerPurchase",
-           ${hisob('SUM(spend) / NULLIF(SUM(results), 0)')}         AS "costPerResult",
+           SUM(spend) / NULLIF(SUM(results), 0)             AS "costPerResult",
            ${hisob('SUM(revenue) / NULLIF(SUM(spend), 0)')}         AS roas,
            CASE WHEN COUNT(DISTINCT result_type) = 1
                 THEN MIN(result_type) END              AS "resultType"
@@ -359,14 +377,36 @@ export async function overview(req: Request, res: Response): Promise<void> {
      *
      * Oyna chegarasi javobdagi `window` da aytiladi.
      */
+    /**
+     * CRM tomoni ham AYNAN SHU OYNADA.
+     *
+     * Xarajat endi kunlik jadvaldan keladi, ya'ni tanlangan kunlarniki.
+     * Daromadni butun davr qoldirsak, ROAS va CAC ikki xil oynani
+     * bo'lardi — bu valyuta bug'ining vaqt o'lchovidagi aynan o'zi.
+     * Ikkalasi bir oynada bo'lgani uchun endi hisoblash HALOL.
+     *
+     * `won_at` — sotuv sanasi, `crm_created_at` — lid tushgan sana.
+     * Har ko'rsatkich o'z sanasiga qarab filtrlanadi: sotuv yopilgan
+     * kun bo'yicha, lid esa kelgan kun bo'yicha.
+     *
+     * ⚠ TEKSHIRILISHI KERAK: `won_at` UTC da saqlanadi, kunlik jadval
+     * esa reklama akkauntining vaqt zonasida. Kun chegarasida bir necha
+     * soatlik farq bo'lishi mumkin — kunlik kesimda sezilarli, oylikda
+     * deyarli yo'q.
+     */
+    const wonOyna = o ? `AND won_at >= DATE '${o.from}' AND won_at < DATE '${o.to}' + 1` : '';
+    const lidOyna = o
+      ? `AND crm_created_at >= DATE '${o.from}' AND crm_created_at < DATE '${o.to}' + 1`
+      : '';
+
     const wonQ = pool.query(
       `SELECT COUNT(*) AS won, COALESCE(SUM(revenue),0) AS revenue, AVG(deal_time_days) AS deal_time
          FROM leads
-        WHERE workspace_id = $1 AND status = 'won'`,
+        WHERE workspace_id = $1 AND status = 'won' ${wonOyna}`,
       [workspaceId]
     );
     const totalLeadsQ = pool.query(
-      `SELECT COUNT(*) AS total FROM leads WHERE workspace_id = $1`,
+      `SELECT COUNT(*) AS total FROM leads WHERE workspace_id = $1 ${lidOyna}`,
       [workspaceId]
     );
     /**
@@ -387,7 +427,7 @@ export async function overview(req: Request, res: Response): Promise<void> {
          COALESCE(SUM(revenue) FILTER (WHERE first_click_ad_id IS NOT NULL),0) AS meta,
          COALESCE(SUM(revenue) FILTER (WHERE first_click_ad_id IS NULL),0)     AS direct
        FROM leads
-       WHERE workspace_id = $1 AND status = 'won'`,
+       WHERE workspace_id = $1 AND status = 'won' ${wonOyna}`,
       [workspaceId]
     );
     const windowQ = pool.query<{ fb_window_start: string | null; fb_window_end: string | null }>(
@@ -413,46 +453,33 @@ export async function overview(req: Request, res: Response): Promise<void> {
     const guard = await loadCurrencyGuard(workspaceId);
 
     /**
-     * ⚠ SANA TANLANGANDA CRM KO'RSATKICHLARI `null`.
-     *
-     * `amountSpent` endi tanlangan kunlarniki. Daromad, sotuv va lid
-     * soni esa BUTUN DAVR uchun — ular `leads` jadvalidan keladi va
-     * hozircha reklamaga bog'lanmagan (atribusiya 0%).
-     *
-     * Ikkisini bo'lish — "bugungi $14 xarajat ⟋ 3 yillik 21 ta sotuv"
-     * — ma'nosiz raqam beradi va u ekranda ishonchli ko'rinadi. Aynan
-     * shu xato valyutada ~12 600 barobar shishish bergan edi; vaqt
-     * o'lchovida u yanada jimroq, chunki natija "aql bovar qiladigan"
-     * bo'lib chiqadi.
-     *
-     * Shuning uchun sana rejimida ular hisoblanmaydi. Kartochkada `—`
-     * chiqadi va sabab `vaqt.izoh` da boradi.
+     * Hamma ko'rsatkich BIR OYNADA: xarajat kunlik jadvaldan, daromad va
+     * sotuv `leads` dan, ikkalasi ham tanlangan sanalar bo'yicha.
+     * Shuning uchun ROAS, CAC va ARPL to'g'ri hisoblanadi.
      */
     const payload = {
       amountSpent,
-      revenue: o ? null : revenue,
+      revenue,
       currency: currencyMeta(guard),
       // Xarajat CRM valyutasiga o'girilib bo'linadi. Kurs yo'q bo'lsa
       // null — 0 emas: 0 "reklama pul keltirmadi", null "hisoblab
       // bo'lmaydi" degani.
-      roas: o
-        ? null
-        : (() => {
-            const spend = spendInCrmCurrency(amountSpent, guard);
-            if (spend === null) return null;
-            return spend > 0 ? revenue / spend : 0;
-          })(),
-      cac: o ? null : wonCount > 0 ? amountSpent / wonCount : 0,
-      conversionRate: o ? null : totalLeads > 0 ? (wonCount / totalLeads) * 100 : 0,
-      dealTime: o ? null : num(wonR.rows[0].deal_time),
-      arpl: o ? null : totalLeads > 0 ? revenue / totalLeads : 0,
+      roas: (() => {
+        const spend = spendInCrmCurrency(amountSpent, guard);
+        if (spend === null) return null;
+        return spend > 0 ? revenue / spend : 0;
+      })(),
+      cac: wonCount > 0 ? amountSpent / wonCount : 0,
+      conversionRate: totalLeads > 0 ? (wonCount / totalLeads) * 100 : 0,
+      dealTime: num(wonR.rows[0].deal_time),
+      arpl: totalLeads > 0 ? revenue / totalLeads : 0,
       vaqt: {
         rejim: o ? ('kunlik' as const) : ('butun_davr' as const),
         from: o?.from ?? null,
         to: o?.to ?? null,
         qamrov: await kunlikQamrov(workspaceId),
         izoh: o
-          ? "Xarajat — tanlangan kunlar bo'yicha. Daromad, ROAS, CAC va ARPL CRM'dan keladi va hali reklamaga bog'lanmagan, shuning uchun bu oraliq uchun hisoblanmaydi."
+          ? "Hamma raqam tanlangan kunlar bo'yicha: xarajat Facebook'dan, sotuv va daromad CRM'dan (sotuv yopilgan sana bo'yicha)."
           : 'Butun davr.',
       },
       // Oxirgi 30 kun ↔ oldingi 30 kun. "revenue" (butun davr) bilan

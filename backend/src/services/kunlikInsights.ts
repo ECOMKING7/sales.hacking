@@ -51,6 +51,12 @@ const LEAD_TURLARI = [
   'lead',
 ];
 const SOTUV_TURLARI = ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'];
+/**
+ * Qo'ng'iroq maqsadidagi kampaniyalarda "natija" shu hodisalar.
+ * Ro'yxat `facebookAdsService` dagi CALL_ACTIONS bilan bir xil bo'lishi
+ * SHART — aks holda kunlik va butun davr raqamlari bir-biriga mos kelmaydi.
+ */
+const QONGIROQ_TURLARI = ['click_to_call_native_call_placed', 'onsite_conversion.flow_complete'];
 
 /**
  * Bir hodisani bir necha action_type ostida qaytaradi — QO'SHIB bo'lmaydi.
@@ -160,8 +166,9 @@ export async function bolakniYukla(
   let notanish = 0;
 
   // Bir so'rovda ko'p qator — 500 talik to'plamlarda.
-  const toplam: Array<[string, string, string, number, number, number, number, number, number]> =
-    [];
+  const toplam: Array<
+    [string, string, string, number, number, number, number, number, number, number]
+  > = [];
   for (const q of qatorlar) {
     if (!q.ad_id || !q.date_start) continue;
     const adUuid = adXarita.get(q.ad_id);
@@ -179,6 +186,7 @@ export async function bolakniYukla(
       hodisa(q.actions, LEAD_TURLARI),
       hodisa(q.actions, SOTUV_TURLARI),
       hodisa(q.action_values, SOTUV_TURLARI),
+      hodisa(q.actions, QONGIROQ_TURLARI),
     ]);
   }
 
@@ -188,14 +196,15 @@ export async function bolakniYukla(
     const joylar = bolak
       .map((r, j) => {
         qiymatlar.push(...r);
-        const b = j * 9;
-        return `($${b + 1}::uuid,$${b + 2}::uuid,$${b + 3}::date,$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9})`;
+        const b = j * 10;
+        return `($${b + 1}::uuid,$${b + 2}::uuid,$${b + 3}::date,$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10})`;
       })
       .join(',');
 
     await pool.query(
       `INSERT INTO ad_insights_daily
-         (workspace_id, ad_id, kun, spend, impressions, clicks, leads_count, fb_purchases, fb_revenue)
+         (workspace_id, ad_id, kun, spend, impressions, clicks, leads_count,
+          fb_purchases, fb_revenue, calls_count)
        VALUES ${joylar}
        ON CONFLICT (workspace_id, ad_id, kun) DO UPDATE SET
          spend        = EXCLUDED.spend,
@@ -204,6 +213,7 @@ export async function bolakniYukla(
          leads_count  = EXCLUDED.leads_count,
          fb_purchases = EXCLUDED.fb_purchases,
          fb_revenue   = EXCLUDED.fb_revenue,
+         calls_count  = EXCLUDED.calls_count,
          yangilandi   = now()`,
       qiymatlar
     );
