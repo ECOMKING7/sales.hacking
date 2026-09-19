@@ -284,30 +284,29 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ═══════════════ TOOLBAR ═══════════════
+      {/* ═══════════════ TEPA PANEL ═══════════════
 
-          Ikki qator, har birining o'z vazifasi bor:
+          Faqat MA'LUMOT MANBAI: qaysi reklama akkaunti, qaysi sana,
+          qaysi ustunlar. Ya'ni butun sahifaga ta'sir qiladigan narsa.
 
-            1-qator — QAYSI ma'lumot: akkaunt, sana, ustunlar
-            2-qator — QANDAY ko'rish: daraja, filtr, qidiruv, model
+          Jadvalga tegishli boshqaruv (daraja, filtr, qidiruv, model)
+          bu yerda EMAS — u kartochkalardan keyin, jadvalning ustida.
+          Ilgari ikkalasi bitta panelda edi va qaysi tugma nimaga
+          ta'sir qilishi ko'rinmasdi.
 
-          Ilgari hammasi bitta `flex-wrap` da edi va ekran kengligiga
-          qarab tasodifiy joyga sinardi — skrinshotda aynan shu ko'rinadi.
-
-          Panel `sticky`: jadval uning TAGIDAN suriladi. Shisha effekti
-          ishlashi uchun shart — orqasida hech narsa bo'lmasa, shisha
-          shunchaki oq to'rtburchak.
+          Panel `sticky`: kontent uning TAGIDAN suriladi. Shisha
+          effekti ishlashi uchun shart — orqasida hech narsa bo'lmasa,
+          shisha shunchaki bo'yalgan to'rtburchak.
 
           `-mx-4 px-4` — panel Layout paddingini kesib o'tib, chetdan
           chetgacha cho'ziladi (Apple'da ham panel ekran qirrasiga
           tegib turadi). */}
       <div
         className={cn(
-          'shisha sticky top-0 z-30 -mx-4 space-y-2.5 px-4 py-3 md:-mx-8 md:px-8',
+          'shisha sticky top-0 z-30 -mx-4 px-4 py-3 md:-mx-8 md:px-8',
           'rounded-none'
         )}
       >
-        {/* ── 1-qator: sarlavha | manba va davr ── */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="mr-auto">
             <h1 className="text-xl font-bold text-ink">Dashboard</h1>
@@ -324,93 +323,6 @@ export default function DashboardPage() {
           />
           <ColumnsButton visible={columns} onChange={updateColumns} />
           <BreakdownButton />
-        </div>
-
-        {/* ── 2-qator: daraja | filtr | qidiruv | model ── */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Daraja. Yorliq hech qachon bloklanmaydi: hech narsa
-              tanlanmagan bo'lsa shu darajaning hammasi ko'rinadi. */}
-          <div className={YOLAK}>
-            {VIEW_TABS.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                onClick={() => setView(id)}
-                aria-pressed={view === id}
-                className={yolakTugma(view === id)}
-              >
-                <Icon aria-hidden className="h-4 w-4 flex-none" />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Tanlov chiplari — yo'lakdan TASHQARIDA.
-              Ilgari ular yorliqqa yopishib turardi va yorliq kengligi
-              tanlangan kampaniya nomiga qarab sakrardi. */}
-          {VIEW_TABS.map(({ id, label }) => {
-            const sel = id === 'campaigns' ? selCampaigns : id === 'adsets' ? selAdsets : null;
-            if (!sel || sel.size === 0) return null;
-            return (
-              <span
-                key={`chip-${id}`}
-                className="inline-flex items-center gap-1 rounded-sm border-[1.5px] border-edge bg-tint px-2 py-1.5 text-sm font-semibold text-accent"
-                title={[...sel.values()].join(', ')}
-              >
-                <span className="max-w-[10rem] truncate">{tabChipLabel(sel)}</span>
-                <button
-                  onClick={() => clearSelection(id)}
-                  aria-label={`${label} tanlovini tozalash`}
-                  className="rounded-[3px] text-accent/70 hover:text-accent"
-                >
-                  <X aria-hidden className="h-3.5 w-3.5" />
-                </button>
-              </span>
-            );
-          })}
-
-          <span aria-hidden className="mx-1 hidden h-6 w-px bg-line-2/70 lg:block" />
-
-          {/* Tezkor filtr */}
-          <div className={YOLAK}>
-            {PILLS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setFilter(p.id)}
-                aria-pressed={filter === p.id}
-                className={yolakTugma(filter === p.id)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <div className="w-48">
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name…"
-                aria-label="Search by name"
-                icon={<Search className="h-4 w-4" />}
-              />
-            </div>
-
-            <span aria-hidden className="mx-1 hidden h-6 w-px bg-line-2/70 lg:block" />
-
-            {/* Atribusiya modeli */}
-            <div className={YOLAK}>
-              {(['first_click', 'last_click'] as Model[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setModel(m)}
-                  aria-pressed={model === m}
-                  className={yolakTugma(model === m)}
-                >
-                  {m === 'first_click' ? 'First click' : 'Last click'}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -437,6 +349,109 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      {/* ═══ JADVAL BOSHQARUVI ═══
+
+          Bu qator KPI kartochkalaridan KEYIN turadi va ataylab:
+          u faqat jadvalga ta'sir qiladi — daraja, filtr, qidiruv,
+          atribusiya modeli. Kartochkalar esa sana tanlagichiga
+          bo'ysunadi, bu tugmalarga emas.
+
+          Ilgari u tepadagi panelda edi va "hamma narsani boshqaradi"
+          degan taassurot berardi. Boshqaruv o'zi ta'sir qiladigan
+          narsaning yonida turishi kerak.
+
+          `sticky` EMAS: tepada allaqachon bitta yopishgan panel bor,
+          ikkitasi ustma-ust tushib, ikkinchisi birinchisining tagida
+          ko'rinmay qolardi. Jadvalning o'z sarlavhasi esa o'z
+          qutisida yopishib turadi — qidiruv paytida yo'qolmaydi. */}
+      <div className="shisha rounded-md px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+        {/* Daraja. Yorliq hech qachon bloklanmaydi: hech narsa
+            tanlanmagan bo'lsa shu darajaning hammasi ko'rinadi. */}
+        <div className={YOLAK}>
+          {VIEW_TABS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              aria-pressed={view === id}
+              className={yolakTugma(view === id)}
+            >
+              <Icon aria-hidden className="h-4 w-4 flex-none" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tanlov chiplari — yo'lakdan TASHQARIDA.
+            Ilgari ular yorliqqa yopishib turardi va yorliq kengligi
+            tanlangan kampaniya nomiga qarab sakrardi. */}
+        {VIEW_TABS.map(({ id, label }) => {
+          const sel = id === 'campaigns' ? selCampaigns : id === 'adsets' ? selAdsets : null;
+          if (!sel || sel.size === 0) return null;
+          return (
+            <span
+              key={`chip-${id}`}
+              className="inline-flex items-center gap-1 rounded-sm border-[1.5px] border-edge bg-tint px-2 py-1.5 text-sm font-semibold text-accent"
+              title={[...sel.values()].join(', ')}
+            >
+              <span className="max-w-[10rem] truncate">{tabChipLabel(sel)}</span>
+              <button
+                onClick={() => clearSelection(id)}
+                aria-label={`${label} tanlovini tozalash`}
+                className="rounded-[3px] text-accent/70 hover:text-accent"
+              >
+                <X aria-hidden className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          );
+        })}
+
+        <span aria-hidden className="mx-1 hidden h-6 w-px bg-line-2/70 lg:block" />
+
+        {/* Tezkor filtr */}
+        <div className={YOLAK}>
+          {PILLS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setFilter(p.id)}
+              aria-pressed={filter === p.id}
+              className={yolakTugma(filter === p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="w-48">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name…"
+              aria-label="Search by name"
+              icon={<Search className="h-4 w-4" />}
+            />
+          </div>
+
+          <span aria-hidden className="mx-1 hidden h-6 w-px bg-line-2/70 lg:block" />
+
+          {/* Atribusiya modeli */}
+          <div className={YOLAK}>
+            {(['first_click', 'last_click'] as Model[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setModel(m)}
+                aria-pressed={model === m}
+                className={yolakTugma(model === m)}
+              >
+                {m === 'first_click' ? 'First click' : 'Last click'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      </div>
 
       {/* ── Full-width data table ── */}
       <EntityTable
