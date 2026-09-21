@@ -79,16 +79,62 @@ export async function status(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  /**
+   * `?tarix=N` — oxirgi N ta yurish.
+   *
+   * ⚠ NEGA KERAK: ilgari bu endpoint faqat OXIRGI yurishni qaytarardi.
+   * Oxirgi yurish "success" bo'lsa hammasi joyida ko'rinadi — lekin u
+   * 18 soat oldin bo'lgan bo'lishi mumkin. Cron to'xtaganini bitta
+   * qatordan bilib bo'lmaydi: oraliqni ko'rish kerak.
+   *
+   * Aynan shu sodir bo'ldi: "lastSync: success" turgan holda cron
+   * 18 soat ishlamagan va kunlik jadval ortda qolgan.
+   */
+  const xom = Number(req.query.tarix);
+  const tarixSoni = Number.isFinite(xom) ? Math.min(Math.max(Math.trunc(xom), 1), 50) : 1;
+
   try {
-    const { rows } = await pool.query(
+    const { rows } = await pool.query<{
+      id: string;
+      status: string;
+      message: string | null;
+      synced_at: string;
+    }>(
       `SELECT id, status, message, synced_at
          FROM sync_logs
         WHERE workspace_id = $1
         ORDER BY synced_at DESC
-        LIMIT 1`,
-      [req.user.workspaceId]
+        LIMIT $2`,
+      [req.user.workspaceId, tarixSoni]
     );
-    res.json({ lastSync: rows[0] ?? null });
+
+    if (tarixSoni === 1) {
+      res.json({ lastSync: rows[0] ?? null });
+      return;
+    }
+
+    /* Yurishlar orasidagi tanaffus — daqiqada. Kutilgan qadam 30 daqiqa;
+       undan ancha katta oraliq cron o'tkazib yuborganini bildiradi. */
+    const oraliqlar: number[] = [];
+    for (let i = 0; i < rows.length - 1; i++) {
+      const a = new Date(rows[i].synced_at).getTime();
+      const b = new Date(rows[i + 1].synced_at).getTime();
+      oraliqlar.push(Math.round((a - b) / 60000));
+    }
+
+    const oxirgi = rows[0] ? new Date(rows[0].synced_at).getTime() : null;
+    const yoshDaqiqa = oxirgi ? Math.round((Date.now() - oxirgi) / 60000) : null;
+
+    res.json({
+      lastSync: rows[0] ?? null,
+      /** Oxirgi yurishdan beri o'tgan vaqt — "success" ni yoshi bilan o'qish uchun. */
+      yosh_daqiqa: yoshDaqiqa,
+      /** Yurishlar orasidagi tanaffuslar, daqiqada. Eng yangisidan boshlab. */
+      oraliqlar,
+      eng_uzun_tanaffus: oraliqlar.length ? Math.max(...oraliqlar) : null,
+      xato_soni: rows.filter((r) => r.status !== 'success').length,
+      tarix: rows,
+    });
   } catch (err) {
     console.error('sync status error:', err);
     res.status(500).json({ error: 'Failed to load sync status' });
