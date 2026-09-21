@@ -96,6 +96,16 @@ export interface BolakNatija {
   yozildi: number;
   /** Bizda bo'lmagan reklamaga tegishli qatorlar — sinxron kerak. */
   notanish_reklama: number;
+  /**
+   * Noma'lum reklama ID'laridan namuna (5 tagacha).
+   *
+   * ⚠ Busiz "51 qator keldi, 0 yozildi" degan natija sabab ko'rsatmaydi
+   * va tuzatib bo'lmaydi. Aynan shu holat sodir bo'ldi: kunlik jadval
+   * bo'sh turdi, dashboard esa qamrov bor deb ko'rsatdi.
+   */
+  notanish_namuna: string[];
+  /** Bizdagi `fb_ad_id` li reklamalar soni — solishtirish uchun. */
+  bizdagi_reklama: number;
   /** Oldinga (eskiroq) davom etish uchun. null — tugadi. */
   keyingi_until: string | null;
 }
@@ -164,6 +174,7 @@ export async function bolakniYukla(
 
   let yozildi = 0;
   let notanish = 0;
+  const notanishNamuna = new Set<string>();
 
   // Bir so'rovda ko'p qator — 500 talik to'plamlarda.
   const toplam: Array<
@@ -174,6 +185,7 @@ export async function bolakniYukla(
     const adUuid = adXarita.get(q.ad_id);
     if (!adUuid) {
       notanish += 1;
+      if (notanishNamuna.size < 5) notanishNamuna.add(q.ad_id);
       continue;
     }
     toplam.push([
@@ -220,15 +232,32 @@ export async function bolakniYukla(
     yozildi += bolak.length;
   }
 
-  // Qamrov chegarasini kengaytiramiz. `LEAST/GREATEST` — bo'laklar
-  // tartibsiz kelsa ham chegara to'g'ri qoladi.
-  await pool.query(
-    `UPDATE workspaces
-        SET daily_backfill_start = LEAST(COALESCE(daily_backfill_start, $2::date), $2::date),
-            daily_backfill_end   = GREATEST(COALESCE(daily_backfill_end,   $3::date), $3::date)
-      WHERE id = $1`,
-    [workspaceId, since, until]
-  );
+  /* Qamrov chegarasini kengaytiramiz — LEKIN FAQAT HAQIQATAN YOZILGAN
+     BO'LSA.
+
+     ⚠ Ilgari bu shartsiz bajarilardi va aynan shu jim xatoni yaratdi:
+     Facebook 51 qator qaytardi, hammasi bizda yo'q reklamaga tegishli
+     edi, bazaga 0 qator tushdi — lekin qamrov "23.04 → 22.09" deb
+     yozildi. Dashboard esa qamrovga qarab "bu davr uchun ma'lumot bor"
+     deydi va bo'm-bo'sh jadvaldan 0 chiqaradi. Foydalanuvchi $0 ko'radi
+     va "reklama ishlamadi" deb o'ylaydi.
+
+     Qoida: qamrov — ma'lumot borligining belgisi, urinish belgisi emas. */
+  if (yozildi > 0) {
+    await pool.query(
+      `UPDATE workspaces
+          SET daily_backfill_start = LEAST(COALESCE(daily_backfill_start, $2::date), $2::date),
+              daily_backfill_end   = GREATEST(COALESCE(daily_backfill_end,   $3::date), $3::date)
+        WHERE id = $1`,
+      [workspaceId, since, until]
+    );
+  } else if (qatorlar.length > 0) {
+    console.warn(
+      `kunlik insights [${workspaceId}] ${since}..${until}: ${qatorlar.length} qator keldi, ` +
+        `${notanish} tasi bizda yo'q reklamaga tegishli — qamrov kengaytirilmadi. ` +
+        `Namuna: ${[...notanishNamuna].join(', ')}`
+    );
+  }
 
   // Keyingi (eskiroq) bo'lak: shu oraliqdan bir kun oldin.
   const keyingi = new Date(sinceD);
@@ -240,6 +269,8 @@ export async function bolakniYukla(
     qatorlar: qatorlar.length,
     yozildi,
     notanish_reklama: notanish,
+    notanish_namuna: [...notanishNamuna],
+    bizdagi_reklama: adRows.length,
     keyingi_until: sanaMatn(keyingi),
   };
 }
