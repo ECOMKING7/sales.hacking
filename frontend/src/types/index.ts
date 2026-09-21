@@ -353,3 +353,12 @@ export interface FieldReport {
   };
   tanlangan: string | null;
 }
+
+
+/** Lead Ads bo'limi holati (`GET /api/workspace/lead-ads`). */
+export interface LeadAdsStatus {
+  tokenBor: boolean;
+  lidlar: { jami: number; leadIdBor: number; reklamagaBoglangan: number };
+  yechilgan: { ok: number; reklamaliOk: number; xato: number };
+  oxirgiXato: string | null;
+}

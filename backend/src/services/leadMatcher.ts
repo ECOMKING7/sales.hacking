@@ -30,7 +30,13 @@ import { pool } from '../db/pool';
  */
 type Bajaruvchi = Pick<typeof pool, 'query'>;
 
-export type MatchMethod = 'utm' | 'fbclid' | 'contact';
+/**
+ * `lead_id` — Meta Lead ID orqali topilgan reklama. ENG KUCHLI kalit:
+ * u taxmin emas, Meta'ning o'z javobi. Instant Form lidida boshqa
+ * kalitlarning hech biri ishlamaydi (UTM ham, fbclid ham linkda
+ * keladi, link esa yo'q).
+ */
+export type MatchMethod = 'lead_id' | 'utm' | 'fbclid' | 'contact';
 
 export interface MatchResult {
   adId: string | null;
@@ -193,6 +199,18 @@ async function matchByContact(
 }
 
 export interface LeadSignals {
+  /**
+   * Meta Lead ID'dan ALLAQACHON yechilgan reklama ID'si
+   * (`services/metaLeadAds.ts` → `lidReklamasiniTop`).
+   *
+   * Nega bu yerda tarmoq chaqiruvi yo'q: `matchLeadToAd` ochiq
+   * tranzaksiya ichidan chaqiriladi. Tashqi API'ni tranzaksiya ichida
+   * kutish — ulanishni band qilib turish demak, va serverless'da
+   * (pool max: 1) bu butun so'rovni o'ldiradi. Shuning uchun Meta
+   * chaqiruvi tranzaksiyadan TASHQARIDA qilinadi va natijasi shu
+   * maydonda keladi.
+   */
+  fbAdId?: string | null;
   utmTerm?: string | null;
   utmContent?: string | null;
   utmCampaign?: string | null;
@@ -225,6 +243,11 @@ export async function matchLeadToAd(
         ? signals.utmCampaign
         : signals.utmTerm;
 
+  // 1. Meta Lead ID orqali yechilgan reklama — eng kuchli kalit.
+  //    U ID bo'yicha topiladi, ya'ni nom takrorlanishi muammo emas.
+  const byLeadId = await matchByFbAdId(workspaceId, signals.fbAdId ?? null, db);
+  if (byLeadId.adId) return byLeadId;
+
   const byUtm = await matchByName(workspaceId, keyValue ?? null, db);
   // Takroriy nom topilsa ham to'xtaymiz: ogohlantirish yo'qolmasin.
   if (byUtm.adId || byUtm.ambiguous) return byUtm;
@@ -233,6 +256,44 @@ export async function matchLeadToAd(
   if (byFbclid.adId) return byFbclid;
 
   return matchByContact(workspaceId, signals.phoneHash ?? null, signals.emailHash ?? null, db);
+}
+
+/**
+ * Reklamani Facebook ID'si bo'yicha topadi.
+ *
+ * Nomga qaraganda ishonchli: nom takrorlanishi mumkin (o'lchangan:
+ * reklamalarning 43% i bir xil normalizatsiyalangan nomda), ID esa
+ * yagona. Shuning uchun bu yerda `ambiguous` holati umuman yo'q.
+ *
+ * Reklama bizda topilmasligi mumkin — masalan sinxrondan keyin
+ * yaratilgan yoki boshqa ad akkauntga tegishli. Bu xato emas: bo'sh
+ * natija qaytadi va lid atribusiyasiz qoladi.
+ */
+async function matchByFbAdId(
+  workspaceId: string,
+  fbAdId: string | null,
+  db: Bajaruvchi
+): Promise<MatchResult> {
+  if (!fbAdId) return EMPTY;
+
+  const { rows } = await db.query<AdRow>(
+    `SELECT id, adset_id, campaign_id, name
+       FROM ads
+      WHERE workspace_id = $1 AND fb_ad_id = $2
+      LIMIT 1`,
+    [workspaceId, String(fbAdId)]
+  );
+  const ad = rows[0];
+  if (!ad) return EMPTY;
+
+  return {
+    adId: ad.id,
+    adsetId: ad.adset_id,
+    campaignId: ad.campaign_id,
+    method: 'lead_id',
+    ambiguous: false,
+    note: `Meta Lead ID orqali: ${ad.name ?? fbAdId}`,
+  };
 }
 
 /* ---------- amoCRM maxsus maydonlaridan UTM ajratish ---------- */

@@ -17,6 +17,7 @@ import type {
   Member,
   CurrencyState,
   FieldReport,
+  LeadAdsStatus,
 } from '../types';
 
 const api = axios.create({
@@ -118,6 +119,29 @@ export const amocrmApi = {
 };
 
 // ---- Meta Conversions API ----
+export const leadAdsApi = {
+  status: () => api.get<LeadAdsStatus>('/api/workspace/lead-ads').then((r) => r.data),
+  /** '' — tokenni o'chiradi. Javobdagi `sinov` — saqlangach darhol qilingan sinov natijasi. */
+  saveToken: (token: string) =>
+    api
+      .post<{ success: boolean; tokenBor: boolean; sinov?: string }>(
+        '/api/workspace/lead-ads/token',
+        { token }
+      )
+      .then((r) => r.data),
+  yech: (limit = 50) =>
+    api
+      .post<{
+        korildi: number;
+        yechildi: number;
+        reklamagaBoglandi: number;
+        reklamasiz: number;
+        xatolar: string[];
+        izoh: string;
+      }>(`/api/workspace/lead-ads/yech?limit=${limit}`)
+      .then((r) => r.data),
+};
+
 export const metaCapiApi = {
   status: () => api.get<MetaCapiStatus>('/api/workspace/meta-capi').then((r) => r.data),
   save: (payload: {

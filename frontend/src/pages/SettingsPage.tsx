@@ -10,6 +10,7 @@
 import FacebookSection from '../components/settings/FacebookSection';
 import AmocrmSection from '../components/settings/AmocrmSection';
 import MetaCapiSection from '../components/settings/MetaCapiSection';
+import LeadAdsSection from '../components/settings/LeadAdsSection';
 import PixelSection from '../components/settings/PixelSection';
 
 export default function SettingsPage() {
@@ -33,6 +34,7 @@ export default function SettingsPage() {
 
       <FacebookSection />
       <AmocrmSection />
+      <LeadAdsSection />
       <MetaCapiSection />
       <PixelSection />
     </div>

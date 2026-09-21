@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import * as leadAds from '../controllers/leadAdsController';
 import {
   listAdAccounts,
   selectAdAccount,
@@ -47,6 +48,11 @@ router.post('/amocrm-lead-id-field', verifyToken, amocrmSaveLeadIdField);
 router.get('/amocrm-webhooks', verifyToken, amocrmListWebhooks);
 
 // Meta Conversions API (token bu yerdan o'tmaydi — faqat .env da, §4.1)
+// ---- Lead Ads: Meta Lead ID -> reklama ----
+router.get('/lead-ads', verifyToken, leadAds.status);
+router.post('/lead-ads/token', verifyToken, leadAds.saveToken);
+router.post('/lead-ads/yech', verifyToken, leadAds.yech);
+
 router.get('/meta-capi', verifyToken, metaCapiStatus);
 router.post('/meta-capi', verifyToken, metaCapiSave);
 // Sinov hodisasi — Events Manager > Test Events da ko'rinadi, statistikaga tushmaydi

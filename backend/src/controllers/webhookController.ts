@@ -12,6 +12,7 @@ import {
 import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
 import { leadIdniOl, extractLine, type LeadIdManbasi } from '../services/amocrmFields';
+import { lidReklamasiniTop } from '../services/metaLeadAds';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
 import { xatoQayd } from '../utils/xatolar';
@@ -185,12 +186,29 @@ async function handleLeadAdd(
     console.error('lead enrichment failed (will store minimal lead):', (err as Error).message);
   }
 
+  /* Meta Lead ID -> reklama.
+     Instant Form lidida UTM ham, fbclid ham yo'q — bu YAGONA ishlaydigan
+     kalit. Chaqiruv tranzaksiyadan TASHQARIDA turadi (leadMatcher'dagi
+     izohga qarang) va yiqilsa butun webhook'ni to'xtatmaydi: lid
+     baribir saqlanishi kerak. */
+  let fbAdId: string | null = null;
+  if (fbLeadId) {
+    try {
+      const yechim = await lidReklamasiniTop(workspaceId, fbLeadId);
+      fbAdId = yechim.adId;
+      if (yechim.xato) console.warn(`lead ${lead.id}: Lead ID yechilmadi — ${yechim.xato}`);
+    } catch (err) {
+      console.error(`lead ${lead.id}: Lead ID yechishda xato:`, (err as Error).message);
+    }
+  }
+
   // Reklamani darhol topamiz — sotuvni kutmasdan. Shunda lid hali yangi
   // bo'lganda ham "qaysi reklamadan keldi" ma'lum bo'ladi va voronkaning
   // birinchi bosqichi ishlaydi.
   const match = await matchLeadToAd(
     workspaceId,
     {
+      fbAdId,
       utmTerm: utm.utm_term,
       utmContent: utm.utm_content,
       utmCampaign: utm.utm_campaign,
