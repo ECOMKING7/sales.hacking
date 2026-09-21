@@ -526,3 +526,104 @@ export async function zanjir(req: Request, res: Response): Promise<void> {
     res.status(500).json({ error: "Zanjir o'qilmadi" });
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ---- GET /api/dashboard/xom-lid?id=<crm_lead_id> ----
+
+   Bitta lidni amoCRM'dan XOM holatda ko'rsatadi.
+
+   NEGA KERAK: "lidni kim tashiyapti va u nima yozyapti?" degan savolga
+   javob. Yangi mijoz ulanganda birinchi qaraladigan narsa shu — chunki
+   har CRM'da lid boshqa yo'ldan keladi (integratsiya, telefoniya,
+   qo'lda) va har biri boshqa maydonni to'ldiradi.
+
+   Ko'rsatiladi: lid nomi, kim yaratgan (`created_by = 0` → integratsiya
+   yoki robot, odam emas), manba, teglar, va HAMMA to'ldirilgan maydon.
+
+   ⚠ MAXFIYLIK: telefon va email QIYMATI qaytarilmaydi — faqat "bor"
+   deb belgilanadi (§Privacy: xom PII saqlanmaydi va ko'rsatilmaydi).
+   Qolgan maydonlar ko'rinadi, chunki savol aynan "u yerda nima yozilgan".
+
+   FAQAT O'QIYDI (§4.3).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+interface XomMaydon {
+  field_id?: number;
+  field_name?: string;
+  field_code?: string;
+  field_type?: string;
+  values?: Array<{ value?: unknown }>;
+}
+
+/** Telefon/email shaklidagi qiymatni yashiradi. */
+function maydonQiymati(m: XomMaydon): string {
+  const code = (m.field_code ?? '').toUpperCase();
+  const type = m.field_type ?? '';
+  if (code === 'PHONE' || code === 'EMAIL' || type === 'phone' || type === 'email') {
+    return '(bor — qiymat yashirildi)';
+  }
+  const q = (m.values ?? []).map((v) => String(v?.value ?? '')).filter(Boolean);
+  return q.join(' | ').slice(0, 200);
+}
+
+export async function xomLid(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const id = String(req.query.id ?? '').trim();
+  if (!/^\d{1,12}$/.test(id)) {
+    res.status(400).json({ error: "id — amoCRM lid raqami bo'lishi kerak" });
+    return;
+  }
+
+  try {
+    const lid = await amoGetPath<{
+      id?: number;
+      name?: string;
+      price?: number;
+      created_by?: number;
+      updated_by?: number;
+      responsible_user_id?: number;
+      created_at?: number;
+      pipeline_id?: number;
+      status_id?: number;
+      custom_fields_values?: XomMaydon[] | null;
+      _embedded?: { tags?: Array<{ id?: number; name?: string }>; contacts?: unknown[] };
+    }>(workspaceId, `/api/v4/leads/${id}?with=contacts`);
+
+    res.json({
+      id: lid.id ?? null,
+      nom: lid.name ?? null,
+      summa: lid.price ?? 0,
+      voronka_id: lid.pipeline_id ?? null,
+      etap_id: lid.status_id ?? null,
+      /* 0 = odam emas: integratsiya, robot yoki webhook yaratgan.
+         Boshqa raqam = amoCRM foydalanuvchisi (menejer). */
+      created_by: lid.created_by ?? null,
+      created_by_izoh:
+        lid.created_by === 0
+          ? "0 = odam emas. Lidni integratsiya, robot yoki webhook yaratgan."
+          : 'Lidni amoCRM foydalanuvchisi yaratgan (qo\'lda yoki telefoniya orqali).',
+      masul_user_id: lid.responsible_user_id ?? null,
+      teglar: (lid._embedded?.tags ?? []).map((t) => t.name).filter(Boolean),
+      kontakt_soni: (lid._embedded?.contacts ?? []).length,
+      maydonlar: (lid.custom_fields_values ?? []).map((m) => ({
+        id: m.field_id ?? null,
+        nom: m.field_name ?? null,
+        code: m.field_code ?? null,
+        tur: m.field_type ?? null,
+        qiymat: maydonQiymati(m),
+      })),
+    });
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 400 || e.status === 403 || e.status === 404) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    xatoQayd(err, { joy: 'xom-lid', workspaceId });
+    res.status(500).json({ error: "Lid o'qilmadi" });
+  }
+}

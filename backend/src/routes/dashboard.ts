@@ -22,6 +22,7 @@ import {
   formKashfiyot,
   etapTaqsimoti,
   zanjir,
+  xomLid,
 } from '../controllers/tashxisController';
 
 const router = Router();
@@ -40,6 +41,9 @@ router.get('/etap-taqsimoti', etapTaqsimoti);
 
 // Yangi lid zanjirni oxirigacha bosib o'tdimi — bo'g'in-bo'g'in.
 router.get('/zanjir', zanjir);
+
+// Bitta lid amoCRM'da XOM holatda qanday turibdi — kim yozgan, nima yozgan.
+router.get('/xom-lid', xomLid);
 // Ad → lid → sifatli lid → sotuv → pul, bitta jadvalda
 router.get('/funnel', funnel);
 // Demo ma'lumot bormi — UI ogohlantirish chizig'i uchun
