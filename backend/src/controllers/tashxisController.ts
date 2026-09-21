@@ -21,6 +21,8 @@ import { pool } from '../db/pool';
 import { normalizeName } from '../services/leadMatcher';
 import { formlarniKashfEt } from '../services/formKashfiyot';
 import { xatoQayd } from '../utils/xatolar';
+import { amoGetPath, getPipelines } from '../services/amocrmService';
+import { taqsimotYig, type AmoLidXom, type AmoVoronka } from '../services/etapTaqsimoti';
 
 /** Postgres COUNT/SUM matn qaytaradi — raqamga o'girish majburiy. */
 function son(v: unknown): number {
@@ -289,5 +291,97 @@ export async function formKashfiyot(req: Request, res: Response): Promise<void> 
     }
     xatoQayd(err, { joy: 'form-kashfiyot', workspaceId });
     res.status(500).json({ error: 'Kashfiyot bajarilmadi' });
+  }
+}
+
+/**
+ * ---- GET /api/dashboard/etap-taqsimoti ----
+ *
+ * "Pul qaysi voronkaning qaysi etapida turibdi?"
+ *
+ * `amocrm_won_pairs` ni tekshirishning yagona ishonchli yo'li. Har
+ * juftlik nomi, lid soni va summasi bilan ko'rsatiladi; config bilan
+ * solishtiriladi va nomuvofiqlik ogohlantirish sifatida chiqadi.
+ *
+ * FAQAT O'QIYDI (§4.3). Config'ga hech narsa yozmaydi — qaror odamniki.
+ *
+ * `?sahifa=<n>` — nechta sahifa o'qilsin (har sahifa 250 lid).
+ * Standart 40 = 10 000 lid. Chegara bor, chunki Vercel funksiyasi
+ * 300 soniyada uziladi va uzilish JIM o'tadi.
+ */
+export async function etapTaqsimoti(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const xom = Number(req.query.sahifa);
+  const chegara = Number.isFinite(xom) ? Math.min(Math.max(Math.trunc(xom), 1), 120) : 40;
+
+  try {
+    const ws = await pool.query<{
+      amocrm_won_pairs: string[] | null;
+      amocrm_qualified_pairs: string[] | null;
+      amocrm_lead_pairs: string[] | null;
+      currency: string | null;
+    }>(
+      `SELECT amocrm_won_pairs, amocrm_qualified_pairs, amocrm_lead_pairs, currency
+         FROM workspaces WHERE id = $1`,
+      [workspaceId]
+    );
+    const cfg = ws.rows[0];
+    if (!cfg) {
+      res.status(404).json({ error: 'Workspace topilmadi' });
+      return;
+    }
+
+    const voronkalar = await getPipelines(workspaceId);
+
+    /* Lidlarni sahifalab o'qiymiz. amoCRM bo'sh sahifada 204 qaytaradi,
+       `amoGetPath` uni bo'sh obyekt sifatida beradi — shuning uchun
+       to'xtash sharti "lid kelmadi". */
+    const lidlar: AmoLidXom[] = [];
+    let sahifa = 1;
+    let toliq = false;
+    for (; sahifa <= chegara; sahifa++) {
+      const javob = await amoGetPath<{ _embedded?: { leads?: AmoLidXom[] } }>(
+        workspaceId,
+        `/api/v4/leads?limit=250&page=${sahifa}`
+      );
+      const bolak = javob?._embedded?.leads ?? [];
+      lidlar.push(...bolak);
+      if (bolak.length < 250) {
+        toliq = true;
+        break;
+      }
+    }
+
+    const natija = taqsimotYig(lidlar, voronkalar as AmoVoronka[], {
+      yutildi: cfg.amocrm_won_pairs ?? [],
+      sifatli: cfg.amocrm_qualified_pairs ?? [],
+      yangi: cfg.amocrm_lead_pairs ?? [],
+    });
+
+    if (!toliq) {
+      natija.ogohlantirishlar.unshift(
+        `⚠ ${chegara} sahifa chegarasiga urildi — hamma lid o'qilmadi. Raqamlar TO'LIQ EMAS. \`?sahifa=${Math.min(chegara * 2, 120)}\` bilan qayta urinib ko'ring.`
+      );
+    }
+
+    res.json({
+      valyuta: cfg.currency ?? null,
+      sahifa_soni: Math.min(sahifa, chegara),
+      toliq,
+      ...natija,
+    });
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 400 || e.status === 403) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    xatoQayd(err, { joy: 'etap-taqsimoti', workspaceId });
+    res.status(500).json({ error: "Etap taqsimoti o'qilmadi" });
   }
 }

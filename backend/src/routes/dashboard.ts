@@ -17,7 +17,7 @@ import {
   entityIds,
 } from '../controllers/dashboardController';
 import { funnel, demoStatus } from '../controllers/funnelController';
-import { atribusiyaTashxis, formKashfiyot } from '../controllers/tashxisController';
+import { atribusiyaTashxis, formKashfiyot, etapTaqsimoti } from '../controllers/tashxisController';
 
 const router = Router();
 
@@ -29,6 +29,9 @@ router.get('/overview', overview);
 router.get('/atribusiya-tashxis', atribusiyaTashxis);
 // Instant Form -> reklama xaritasi qurilishi mumkinmi (B yo'li tajribasi).
 router.get('/form-kashfiyot', formKashfiyot);
+
+// Voronka × etap kesimida lid soni va summa — `won_pairs` ni tekshirish uchun.
+router.get('/etap-taqsimoti', etapTaqsimoti);
 // Ad → lid → sifatli lid → sotuv → pul, bitta jadvalda
 router.get('/funnel', funnel);
 // Demo ma'lumot bormi — UI ogohlantirish chizig'i uchun
