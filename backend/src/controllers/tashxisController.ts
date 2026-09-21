@@ -385,3 +385,144 @@ export async function etapTaqsimoti(req: Request, res: Response): Promise<void> 
     res.status(500).json({ error: "Etap taqsimoti o'qilmadi" });
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ---- GET /api/dashboard/zanjir ----
+
+   "Yangi lid zanjirni oxirigacha bosib o'tdimi?"
+
+   Webhook 2026-09-19 da ulandi. Undan OLDINGI 15 690 lid import orqali
+   kelgan — ularda Meta Lead ID ham, touchpoint ham yo'q va bo'lishi ham
+   mumkin emas. Shuning uchun eski raqamlarga qarab hukm chiqarish
+   noto'g'ri: ular boshqa yo'ldan kelgan.
+
+   Bu endpoint FAQAT yangi lidlarni ko'radi va har bo'g'inni alohida
+   ko'rsatadi:
+
+     webhook keldi → fb_lead_id yozildi → reklamaga bog'landi → CAPI ketdi
+          ↓               ↓                      ↓                  ↓
+      leads qatori    fb_lead_id           match_method        capi_events
+
+   Qaysi bo'g'inda to'xtaganini ko'rsatadi — "ishlamayapti" emas, aniq joy.
+
+   ⚠ `leads.created_at` — bizning bazaga YOZILGAN vaqt, amoCRM'dagi
+   yaratilgan vaqt emas (`crm_created_at`). Webhook orqali kelganini
+   aynan shu ikkisi orasidagi farq ko'rsatadi: webhook'da ular deyarli
+   teng, importda esa `created_at` ancha keyin.
+
+   FAQAT O'QIYDI (§4.3).
+   ═══════════════════════════════════════════════════════════════════════ */
+export async function zanjir(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const xom = Number(req.query.soat);
+  const soat = Number.isFinite(xom) ? Math.min(Math.max(Math.trunc(xom), 1), 720) : 72;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT l.crm_lead_id,
+              l.created_at,
+              l.crm_created_at,
+              l.status,
+              l.crm_stage,
+              l.revenue,
+              l.fb_lead_id,
+              l.source_line,
+              l.match_method,
+              l.utm_term,
+              l.fbclid,
+              (l.phone_hash IS NOT NULL)                       AS telefon_bor,
+              (SELECT COUNT(*) FROM touchpoints t
+                WHERE t.lead_id = l.id)                        AS touchpoint,
+              (SELECT a.name FROM ads a
+                WHERE a.id = l.last_click_ad_id)               AS reklama,
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'hodisa', c.event_name,
+                         'holat',  c.status,
+                         'kalit',  c.match_keys,
+                         'xato',   c.error
+                       ) ORDER BY c.sent_at)
+                  FROM capi_events c
+                 WHERE c.lead_id = l.id
+              ), '[]'::json)                                   AS capi
+         FROM leads l
+        WHERE l.workspace_id = $1
+          AND l.created_at > now() - ($2 || ' hours')::interval
+          AND l.is_demo = false
+        ORDER BY l.created_at DESC
+        LIMIT 50`,
+      [workspaceId, String(soat)]
+    );
+
+    const jami = rows.length;
+    const bilan = (f: (r: Record<string, unknown>) => boolean) => rows.filter(f).length;
+
+    const bogichlar = {
+      webhook_keldi: jami,
+      fb_lead_id_bor: bilan((r) => Boolean(r.fb_lead_id)),
+      reklamaga_boglandi: bilan((r) => Boolean(r.match_method)),
+      touchpoint_bor: bilan((r) => son(r.touchpoint) > 0),
+      capi_ketdi: bilan((r) => Array.isArray(r.capi) && r.capi.length > 0),
+      capi_xato: bilan(
+        (r) =>
+          Array.isArray(r.capi) &&
+          (r.capi as Array<{ holat?: string }>).some((c) => c.holat === 'error')
+      ),
+    };
+
+    /* Zanjir qayerda uzilgan — birinchi nol bo'g'in. */
+    let uzilgan: string | null = null;
+    if (jami === 0) {
+      uzilgan = 'webhook';
+    } else if (bogichlar.fb_lead_id_bor === 0) {
+      uzilgan = 'fb_lead_id';
+    } else if (bogichlar.reklamaga_boglandi === 0) {
+      uzilgan = 'boglanish';
+    } else if (bogichlar.capi_ketdi === 0) {
+      uzilgan = 'capi';
+    }
+
+    const xulosa =
+      jami === 0
+        ? `Oxirgi ${soat} soatda BIRORTA yangi lid kelmadi. Yo reklama lid keltirmayapti, yo webhook ishlamayapti. Reklama faol bo'lsa — webhook'ni tekshiring.`
+        : uzilgan === 'fb_lead_id'
+          ? `${jami} ta yangi lid keldi, lekin birortasida Meta Lead ID yo'q. Zanjir shu yerda uzilgan — 'amocrm_lead_id_source' sozlamasi noto'g'ri bo'lishi mumkin.`
+          : uzilgan === 'boglanish'
+            ? `${jami} ta lid keldi va Lead ID bor, lekin hech biri reklamaga bog'lanmadi. Reklama sinxronida o'sha lead ID yo'q bo'lishi mumkin.`
+            : uzilgan === 'capi'
+              ? `${jami} ta lid keldi va bog'landi, lekin CAPI hodisasi yuborilmagan.`
+              : `${jami} ta yangi lid: ${bogichlar.fb_lead_id_bor} tasida Lead ID, ${bogichlar.reklamaga_boglandi} tasi reklamaga bog'landi, ${bogichlar.capi_ketdi} tasidan CAPI ketdi.`;
+
+    res.json({
+      soat,
+      bogichlar,
+      uzilgan,
+      xulosa,
+      lidlar: rows.map((r) => ({
+        crm_lead_id: r.crm_lead_id,
+        bazaga: r.created_at,
+        crmda: r.crm_created_at,
+        status: r.status,
+        etap: r.crm_stage,
+        summa: son(r.revenue),
+        fb_lead_id: r.fb_lead_id ?? null,
+        liniya: r.source_line ?? null,
+        boglanish: r.match_method ?? null,
+        reklama: r.reklama ?? null,
+        utm_term: r.utm_term ?? null,
+        fbclid: r.fbclid ? 'bor' : null,
+        telefon: r.telefon_bor ? 'bor' : null,
+        touchpoint: son(r.touchpoint),
+        capi: r.capi,
+      })),
+    });
+  } catch (err) {
+    xatoQayd(err, { joy: 'zanjir', workspaceId });
+    res.status(500).json({ error: "Zanjir o'qilmadi" });
+  }
+}
