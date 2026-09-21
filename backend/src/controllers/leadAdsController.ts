@@ -197,22 +197,25 @@ export async function yech(req: Request, res: Response): Promise<void> {
         continue;
       }
 
+      /* Reklama bizda bormi — atribusiya dvigatelini bekorga
+         chaqirmaslik uchun oldindan tekshiramiz. */
       const match = await matchLeadToAd(workspaceId, { fbAdId: n.adId }, 'utm_term');
       if (!match.adId) {
         reklamasiz += 1;
         continue;
       }
 
-      await pool.query(
-        `UPDATE leads
-            SET last_click_ad_id  = $1,
-                first_click_ad_id = COALESCE(first_click_ad_id, $1),
-                match_method      = 'lead_id'
-          WHERE id = $2 AND workspace_id = $3`,
-        [match.adId, lid.id, workspaceId]
-      );
-      await processLeadAttribution(workspaceId, lid.id);
-      boglandi += 1;
+      /* Yozishni O'ZIMIZ qilmaymiz. `processLeadAttribution` lidni
+         qayta hisoblaydi: u `fb_lead_ads` keshidan reklamani topadi,
+         touchpoint yaratadi, `match_method` ni yozadi va reklama
+         metrikalarini mutlaq qayta hisoblaydi.
+
+         ⚠ Argument tartibi: (leadId, workspaceId). Ikkalasi ham
+         `string`, shuning uchun teskari uzatilsa TypeScript ushlamaydi
+         — bir marta shunday bo'lgan va 500 xato bergan. */
+      const natija = await processLeadAttribution(lid.id, workspaceId);
+      if (natija.lastAdId) boglandi += 1;
+      else reklamasiz += 1;
     }
 
     res.json({

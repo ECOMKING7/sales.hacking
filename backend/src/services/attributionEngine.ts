@@ -167,6 +167,8 @@ interface LeadRow {
   phone_hash: string | null;
   email_hash: string | null;
   crm_created_at: string | null;
+  /** Meta Lead ID — Instant Form lidida yagona ishlaydigan kalit. */
+  fb_lead_id: string | null;
 }
 
 /**
@@ -189,7 +191,7 @@ export async function processLeadAttribution(
     const leadRes = await client.query<LeadRow>(
       `SELECT id, revenue, won_at, first_click_ad_id,
               utm_term, utm_content, utm_campaign, fbclid, phone_hash, email_hash,
-              crm_created_at
+              crm_created_at, fb_lead_id
          FROM leads WHERE id = $1 AND workspace_id = $2 FOR UPDATE`,
       [leadId, workspaceId]
     );
@@ -280,9 +282,29 @@ export async function processLeadAttribution(
       //
       // Bu real xato edi: importda 14 ta yutilgan lidning hammasi shu
       // yerda yiqildi va atribusiyasiz qoldi.
+      /* Meta Lead ID -> reklama. Kesh (`fb_lead_ads`) shu tranzaksiya
+         ichidan o'qiladi — tashqi API chaqiruvi YO'Q. Meta'ga so'rov
+         webhook yoki qayta yechish paytida, tranzaksiyadan tashqarida
+         yuboriladi va natijasi shu jadvalga tushadi.
+
+         ⚠ BU QATOR MAJBURIY. Busiz funksiya `matchLeadToAd` ni Lead
+         ID'siz chaqiradi va Instant Form lidida hech bir kalit
+         ishlamagani uchun `match_method = NULL` yozib, allaqachon
+         topilgan bog'lanishni O'CHIRADI. Aynan shu sodir bo'lgandi. */
+      let fbAdId: string | null = null;
+      if (lead.fb_lead_id) {
+        const la = await client.query<{ fb_ad_id: string | null }>(
+          `SELECT fb_ad_id FROM fb_lead_ads
+            WHERE workspace_id = $1 AND fb_lead_id = $2 AND holat = 'ok'`,
+          [workspaceId, lead.fb_lead_id]
+        );
+        fbAdId = la.rows[0]?.fb_ad_id ?? null;
+      }
+
       const m = await matchLeadToAd(
         workspaceId,
         {
+          fbAdId,
           utmTerm: lead.utm_term,
           utmContent: lead.utm_content,
           utmCampaign: lead.utm_campaign,
