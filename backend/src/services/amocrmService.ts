@@ -329,6 +329,72 @@ async function amoGet<T = unknown>(workspaceId: string, path: string): Promise<T
 }
 
 /**
+ * amoCRM ga POST.
+ *
+ * ⚠ BU YOZADI (§4.3). Faqat ATAYLAB chaqiriladigan joylardan
+ * ishlatiladi va har chaqiruv hujjatda sababi bilan yoziladi.
+ * Hozircha yagona foydalanuvchisi — webhook ro'yxatdan o'tkazish.
+ *
+ * Nega alohida funksiya: token yangilash, 401 dan keyin qayta urinish
+ * va so'rovlar orasidagi oraliq `amoGet` da allaqachon bor. Ularni
+ * nusxalash ikki xil xulq demak — birinchisi tuzatilsa ikkinchisi
+ * eskirib qoladi.
+ *
+ * 429 bu yerda QAYTA URINILMAYDI: yozuv so'rovini takrorlash ikki
+ * marta yozib qo'yish xavfini tug'diradi. Xato yuqoriga chiqadi.
+ */
+export async function amoPost<T = unknown>(
+  workspaceId: string,
+  path: string,
+  body: unknown
+): Promise<T> {
+  const ws = await loadAmoWorkspace(workspaceId);
+  if (!ws.amocrm_domain || !ws.amocrm_access_token) {
+    throw new Error('AmoCRM is not connected');
+  }
+
+  const qoldi = await sovishHolati(workspaceId);
+  if (qoldi > 0) {
+    throw Object.assign(
+      new Error(
+        `amoCRM so'rov limiti: ${Math.ceil(qoldi / 60)} daqiqadan keyin qayta urinib ko'ring`
+      ),
+      { status: 429 }
+    );
+  }
+  await oraliqniKut(ws.amocrm_domain);
+
+  const url = `https://${ws.amocrm_domain}${path}`;
+  let token = decrypt(ws.amocrm_access_token);
+
+  if (expiringSoon(ws.amocrm_token_expires_at)) {
+    try {
+      token = await refreshAccessToken(workspaceId);
+    } catch (err) {
+      console.warn('amocrm proaktiv yangilash ishlamadi:', (err as Error).message);
+    }
+  }
+
+  try {
+    const res = await axios.post<T>(url, body, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    void sovishniTozala(workspaceId);
+    return res.data;
+  } catch (e) {
+    const err = e as AxiosError;
+    if (err.response?.status === 401) {
+      token = await refreshAccessToken(workspaceId);
+      const res = await axios.post<T>(url, body, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      return res.data;
+    }
+    throw err;
+  }
+}
+
+/**
  * Ixtiyoriy amoCRM yo'liga GET. Token yangilash, 401 dan keyin qayta
  * urinish — hammasi amoGet ichida, ya'ni import ham xuddi shu yo'ldan
  * yuradi va ikkinchi nusxa mantiq paydo bo'lmaydi.

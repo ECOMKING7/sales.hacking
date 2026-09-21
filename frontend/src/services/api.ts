@@ -18,6 +18,8 @@ import type {
   CurrencyState,
   FieldReport,
   LeadAdsStatus,
+  WebhookRoyxat,
+  WebhookTamin,
 } from '../types';
 
 const api = axios.create({
@@ -90,6 +92,17 @@ export const amocrmApi = {
       .post<{ success: boolean; domain: string }>('/api/auth/amocrm/manual', payload)
       .then((r) => r.data),
   status: () => api.get<AmocrmStatus>('/api/workspace/amocrm-status').then((r) => r.data),
+
+  /** Webhook ro'yxati — faqat o'qiydi. */
+  webhooks: () =>
+    api.get<WebhookRoyxat>('/api/workspace/amocrm-webhooks').then((r) => r.data),
+
+  /**
+   * ⚠ CRM ga YOZADI: o'z webhook'imizni ro'yxatdan o'tkazadi.
+   * Idempotent — bor bo'lsa hech narsa yozilmaydi. Hech narsa o'chirilmaydi.
+   */
+  ensureWebhook: () =>
+    api.post<WebhookTamin>('/api/workspace/amocrm-webhook').then((r) => r.data),
   pipelines: () =>
     api.get<{ pipelines: Pipeline[] }>('/api/workspace/amocrm-pipelines').then((r) => r.data),
   savePipeline: (payload: {

@@ -362,3 +362,28 @@ export interface LeadAdsStatus {
   yechilgan: { ok: number; reklamaliOk: number; xato: number };
   oxirgiXato: string | null;
 }
+
+
+/** `GET /api/workspace/amocrm-webhooks` — faqat o'qiydi. */
+export interface WebhookRoyxat {
+  jami: number;
+  bizniki: number;
+  yetishmayotgan: string[];
+  xulosa: string;
+  webhooklar: Array<{
+    id: number | null;
+    manzil: string;
+    bizniki: boolean;
+    hodisalar: string[];
+    ochirilgan: boolean;
+  }>;
+}
+
+/** `POST /api/workspace/amocrm-webhook` — ta'minlash natijasi. */
+export interface WebhookTamin {
+  holat: 'bor' | 'qoshildi' | 'xato';
+  manzil: string | null;
+  hodisalar: string[];
+  begona: Array<{ host: string; hodisalar: string[] }>;
+  xabar: string;
+}

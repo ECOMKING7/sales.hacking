@@ -18,6 +18,7 @@ import {
   savePipeline as amocrmSavePipeline,
   listFields as amocrmListFields,
   listWebhooks as amocrmListWebhooks,
+  ensureWebhook as amocrmEnsureWebhook,
   saveLeadIdField as amocrmSaveLeadIdField,
 } from '../controllers/amocrmController';
 import {
@@ -46,6 +47,10 @@ router.get('/amocrm-fields', verifyToken, amocrmListFields);
 router.post('/amocrm-lead-id-field', verifyToken, amocrmSaveLeadIdField);
 // Webhook obunalari — soxta lid yaratmasdan tekshirish uchun (faqat o'qish)
 router.get('/amocrm-webhooks', verifyToken, amocrmListWebhooks);
+
+// ⚠ CRM ga YOZADI: o'z webhook'imizni ro'yxatdan o'tkazadi (idempotent,
+// hech narsa o'chirmaydi). Faqat foydalanuvchi so'raganda.
+router.post('/amocrm-webhook', verifyToken, amocrmEnsureWebhook);
 
 // Meta Conversions API (token bu yerdan o'tmaydi — faqat .env da, §4.1)
 // ---- Lead Ads: Meta Lead ID -> reklama ----

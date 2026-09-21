@@ -11,6 +11,7 @@ import {
 } from '../services/amocrmService';
 import { discoverLeadFields, type MaydonTahlili } from '../services/amocrmFields';
 import { bizniki, hostAjrat } from '../services/webhookIdentity';
+import { webhookniTaminla } from '../services/webhookTaminla';
 
 function frontendUrl(): string {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -69,6 +70,24 @@ export async function callback(req: Request, res: Response): Promise<void> {
   try {
     // `referer` is the account domain, e.g. "example.amocrm.ru".
     await exchangeCodeForTokens(code, referer, workspaceId);
+
+    // Webhook siri bo'lmasa yasaymiz — keyingi qadam unga tayanadi.
+    await pool.query(
+      `UPDATE workspaces
+          SET amocrm_webhook_secret = replace(gen_random_uuid()::text, '-', '')
+        WHERE id = $1 AND amocrm_webhook_secret IS NULL`,
+      [workspaceId]
+    );
+
+    /* Webhook — ulanishning bir qismi, alohida qadam emas.
+       Sababi manualConnect dagi izohda. */
+    try {
+      const n = await webhookniTaminla(workspaceId, apiBaseUrl(req));
+      if (n.holat === 'xato') console.warn(`amocrm callback: ${n.xabar}`);
+    } catch (err) {
+      console.error('webhook taminlash xatosi:', (err as Error).message);
+    }
+
     redirectTo('connected');
   } catch (err) {
     console.error('amocrm callback error:', err);
@@ -164,7 +183,19 @@ export async function manualConnect(req: Request, res: Response): Promise<void> 
       [req.user.workspaceId]
     );
 
-    res.json({ success: true, domain });
+    /* Webhook'ni DARHOL ro'yxatdan o'tkazamiz.
+       Ilgari bu qadam yo'q edi va natija: integratsiya "ulangan"
+       ko'rinardi, import ishlardi, lekin yangi lid haqida bizga
+       hech narsa kelmasdi. 3 oy shunday turdi va hech kim sezmadi.
+       Yiqilsa ulanishni BUZMAYDI — holat javobda qaytadi. */
+    let webhook: Awaited<ReturnType<typeof webhookniTaminla>> | null = null;
+    try {
+      webhook = await webhookniTaminla(req.user.workspaceId, apiBaseUrl(req));
+    } catch (err) {
+      console.error('webhook taminlash xatosi:', (err as Error).message);
+    }
+
+    res.json({ success: true, domain, webhook });
   } catch (err) {
     // amoCRM javobidan sababni olamiz; kod/token hech qachon log'ga tushmaydi.
     const amo = (err as {
@@ -649,5 +680,33 @@ export async function listWebhooks(req: Request, res: Response): Promise<void> {
     }
     console.error('amocrm webhooks error:', e.message);
     res.status(500).json({ error: "Webhook ro'yxatini o'qib bo'lmadi" });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ---- POST /api/workspace/amocrm-webhook ----
+
+   Webhook'ni qo'lda tiklash.
+
+   NEGA KERAK: webhook ulanish paytida avtomatik qo'shiladi, lekin
+   mijoz uni amoCRM'dan o'chirib yuborishi mumkin (ular ro'yxatda
+   ko'rinadi va "keraksiz" deb tuyulishi mumkin). O'chirilsa atribusiya
+   jimgina to'xtaydi — hech qayerda xato chiqmaydi.
+
+   ⚠ CRM GA YOZADI (§4.3), lekin faqat foydalanuvchi tugmani bosganda.
+   Yozadigan narsa: bitta webhook qatori, o'z manzilimiz bilan.
+   Mavjud bo'lsa — hech narsa yozilmaydi. Hech narsa o'chirilmaydi.
+   ═══════════════════════════════════════════════════════════════════════ */
+export async function ensureWebhook(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const natija = await webhookniTaminla(req.user.workspaceId, apiBaseUrl(req));
+    res.status(natija.holat === 'xato' ? 400 : 200).json(natija);
+  } catch (err) {
+    console.error('ensureWebhook:', (err as Error).message);
+    res.status(500).json({ error: "Webhook ta'minlanmadi" });
   }
 }
