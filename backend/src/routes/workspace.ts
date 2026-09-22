@@ -72,6 +72,8 @@ router.post('/telegram/webhook', verifyToken, telegram.webhookniOrnat);
 router.patch('/telegram/chat/:id', verifyToken, telegram.chatYangila);
 router.delete('/telegram/chat/:id', verifyToken, telegram.chatOchir);
 router.post('/telegram/chat/:id/sinov', verifyToken, telegram.sinov);
+// Hisobot matnini YUBORMASDAN ko'rish — sozlash paytidagi preview.
+router.get('/telegram/chat/:id/oldindan', verifyToken, telegram.oldindan);
 
 // Workspace management
 router.get('/list', verifyToken, listWorkspaces);

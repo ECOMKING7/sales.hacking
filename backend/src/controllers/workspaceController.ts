@@ -111,12 +111,18 @@ export async function selectAdAccount(req: Request, res: Response): Promise<void
      * bo'lmagani uchun buzilmasin. Sync keyin to'ldiradi.
      */
     let currency: string | null = null;
+    /* Vaqt zonasi ham shu yerda. `ad_insights_daily.kun` — Facebook'ning
+       o'z sanasi, ya'ni AKKAUNT vaqt zonasida. Uni bilmasak "kecha" ni
+       noto'g'ri zonada hisoblaymiz va Ads Manager bilan raqam bir kunga
+       siljiydi. */
+    let timezone: string | null = null;
     try {
       const ws = await loadFbWorkspace(workspaceId);
       if (ws?.fb_access_token) {
         const accounts = await getAdAccounts(decrypt(ws.fb_access_token));
         const found = accounts.find((a) => a.id === adAccountId || a.account_id === adAccountId);
         currency = found?.currency ? String(found.currency).toUpperCase() : null;
+        timezone = found?.timezone_name ? String(found.timezone_name) : null;
       }
     } catch (err) {
       console.error('ad account currency not read:', (err as Error).message);
@@ -130,9 +136,13 @@ export async function selectAdAccount(req: Request, res: Response): Promise<void
              -- chiqaradi). O'qib bo'lmasa NULL — sync to'ldiradi.
              fb_currency = CASE WHEN $4::boolean THEN $3
                                 ELSE COALESCE($3, fb_currency) END,
+             -- Valyuta bilan bir xil qoida: akkaunt almashsa eskisi
+             -- saqlanmaydi. Noto'g'ri zona noma'lum zonadan xavfliroq.
+             fb_timezone = CASE WHEN $4::boolean THEN $5
+                                ELSE COALESCE($5, fb_timezone) END,
              updated_at = now()
        WHERE id = $2`,
-      [adAccountId, workspaceId, currency, changed]
+      [adAccountId, workspaceId, currency, changed, timezone]
     );
 
     // Ad account almashtirilganda eski kampaniya/adset/ad qatorlari qolib

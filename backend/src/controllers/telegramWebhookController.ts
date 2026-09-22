@@ -45,10 +45,17 @@ interface TgChat {
   first_name?: string;
 }
 
+interface TgPost {
+  text?: string;
+  chat?: TgChat;
+  /** Forum guruhida qaysi topikdan kelgani. Yo'q — umumiy topik. */
+  message_thread_id?: number;
+}
+
 interface TgUpdate {
-  message?: { text?: string; chat?: TgChat };
+  message?: TgPost;
   /** KANAL. `message` emas — 1-tuzoqqa qarang. */
-  channel_post?: { text?: string; chat?: TgChat };
+  channel_post?: TgPost;
   my_chat_member?: {
     chat?: TgChat;
     new_chat_member?: { status?: string };
@@ -103,6 +110,15 @@ export async function telegramWebhook(req: Request, res: Response): Promise<void
 
     const chatId = String(chat.id);
 
+    /**
+     * TOPIK. Buyruq QAYSI TOPIKDA yozilgan bo'lsa, hisobot ham o'sha
+     * topikka tushadi. Shuning uchun "Add Bot to Group" tugmasi
+     * yetarli emas: u botni umumiy topikka qo'shadi. Aniq topik
+     * kerak bo'lsa buyruq o'sha topik ichida yozilishi shart.
+     */
+    const threadId =
+      post?.message_thread_id === undefined ? null : String(post.message_thread_id);
+
     // `/start KOD`, `/ulash KOD`, `/ulash@bot KOD` — hammasi bir xil.
     const [xomBuyruq, ...qolgan] = matn.split(/\s+/);
     const buyruq = xomBuyruq.toLowerCase().split('@')[0];
@@ -110,31 +126,39 @@ export async function telegramWebhook(req: Request, res: Response): Promise<void
 
     if (buyruq === '/start' || buyruq === '/ulash') {
       if (!arg) {
-        await xabarYubor(chatId, await yordam());
+        await xabarYubor(chatId, await yordam(), threadId);
         return;
       }
-      await ulash(chatId, chat, arg);
+      await ulash(chatId, chat, arg, threadId);
       return;
     }
 
     if (buyruq === '/holat') {
-      await holat(chatId);
+      await holat(chatId, threadId);
       return;
     }
 
     if (buyruq === '/ochir') {
-      const r = await pool.query(`DELETE FROM telegram_chats WHERE chat_id = $1`, [chatId]);
+      /* Topikda yozilsa FAQAT o'sha topik uziladi: bitta guruhda
+         ikki topik ikki alohida yo'nalish bo'lishi mumkin. */
+      const r = await pool.query(
+        `DELETE FROM telegram_chats
+          WHERE chat_id = $1
+            AND COALESCE(message_thread_id, '') = COALESCE($2::text, '')`,
+        [chatId, threadId]
+      );
       await xabarYubor(
         chatId,
         r.rowCount
-          ? `Bog‘lanish uzildi (${r.rowCount} ta). Endi bu chatga xabar kelmaydi.`
-          : 'Bu chat bog‘lanmagan edi.'
+          ? `Bog‘lanish uzildi (${r.rowCount} ta). Endi bu yerga xabar kelmaydi.`
+          : 'Bu chat bog‘lanmagan edi.',
+        threadId
       );
       return;
     }
 
     if (buyruq.startsWith('/')) {
-      await xabarYubor(chatId, await yordam());
+      await xabarYubor(chatId, await yordam(), threadId);
     }
   } catch (err) {
     xatoQayd(err, { joy: 'telegram-webhook' });
@@ -197,7 +221,7 @@ async function azolikOzgardi(u: TgUpdate): Promise<void> {
   );
 }
 
-async function holat(chatId: string): Promise<void> {
+async function holat(chatId: string, threadId: string | null): Promise<void> {
   const { rows } = await pool.query<{
     nom: string;
     sotuv_xabari: boolean;
@@ -212,7 +236,11 @@ async function holat(chatId: string): Promise<void> {
   );
 
   if (!rows.length) {
-    await xabarYubor(chatId, `Bu chat hech qaysi akkauntga bog‘lanmagan.\n\n${await yordam()}`);
+    await xabarYubor(
+      chatId,
+      `Bu chat hech qaysi akkauntga bog‘lanmagan.\n\n${await yordam()}`,
+      threadId
+    );
     return;
   }
 
@@ -227,7 +255,7 @@ async function holat(chatId: string): Promise<void> {
     })
     .join('\n');
 
-  await xabarYubor(chatId, `Bog‘langan akkauntlar:\n${q}`);
+  await xabarYubor(chatId, `Bog‘langan akkauntlar:\n${q}`, threadId);
 }
 
 /**
@@ -238,7 +266,12 @@ async function holat(chatId: string): Promise<void> {
  * (avval SELECT, keyin UPDATE) bir vaqtda kelgan ikki xabar bitta
  * kodni ikki marta ishlatishi mumkin edi.
  */
-async function ulash(chatId: string, chat: TgChat, kod: string): Promise<void> {
+async function ulash(
+  chatId: string,
+  chat: TgChat,
+  kod: string,
+  threadId: string | null
+): Promise<void> {
   const { rows } = await pool.query<{ workspace_id: string }>(
     `UPDATE telegram_kodlar
         SET ishlatilgan = now()
@@ -251,23 +284,26 @@ async function ulash(chatId: string, chat: TgChat, kod: string): Promise<void> {
     await xabarYubor(
       chatId,
       'Kod yaroqsiz yoki muddati o‘tgan (15 daqiqa).\n' +
-        'Sozlamalar → Telegram bo‘limidan yangi kod oling.'
+        'Sozlamalar → Telegram bo‘limidan yangi kod oling.',
+      threadId
     );
     return;
   }
 
   const workspaceId = rows[0].workspace_id;
 
+  /* ON CONFLICT indeksga mos kelishi SHART: migratsiya 039 da unikal
+     indeks (workspace_id, chat_id, COALESCE(message_thread_id,'')). */
   await pool.query(
     `INSERT INTO telegram_chats
-       (workspace_id, chat_id, nom, tur, metrikalar, oxirgi_hisobot)
-     VALUES ($1, $2, $3, $4, $5::text[], (now() AT TIME ZONE 'Asia/Tashkent')::date)
-     ON CONFLICT (workspace_id, chat_id) DO UPDATE
+       (workspace_id, chat_id, message_thread_id, nom, tur, metrikalar, oxirgi_hisobot)
+     VALUES ($1, $2, $6, $3, $4, $5::text[], (now() AT TIME ZONE 'Asia/Tashkent')::date)
+     ON CONFLICT (workspace_id, chat_id, COALESCE(message_thread_id, '')) DO UPDATE
        SET nom = EXCLUDED.nom,
            tur = EXCLUDED.tur,
            faol = TRUE,
            oxirgi_xato = NULL`,
-    [workspaceId, chatId, chatNomi(chat), chat.type ?? null, STANDART_METRIKALAR]
+    [workspaceId, chatId, chatNomi(chat), chat.type ?? null, STANDART_METRIKALAR, threadId]
   );
 
   const { rows: w } = await pool.query<{ name: string }>(
@@ -280,7 +316,9 @@ async function ulash(chatId: string, chat: TgChat, kod: string): Promise<void> {
     `✅ Ulandi: <b>${w[0]?.name ?? 'akkaunt'}</b>\n\n` +
       'Sotuv bo‘lganda darhol xabar keladi.\n' +
       'Rejali hisobot hozircha <b>o‘chirilgan</b> — vaqtini Sozlamalar → ' +
-      'Telegram bo‘limida tanlang.\n\n' +
-      `<i>Chat id: ${chatId}</i>`
+      'Telegram bo‘limida tanlang.' +
+      (threadId ? '\n\n📌 Xabarlar aynan shu topikka tushadi.' : '') +
+      `\n\n<i>Chat id: ${chatId}</i>`,
+    threadId
   );
 }

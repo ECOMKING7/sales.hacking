@@ -35,6 +35,8 @@ export interface AdAccount {
   name: string;
   account_status: number;
   currency: string;
+  /** Akkaunt vaqt zonasi (masalan 'Asia/Tashkent'). Kunlik raqamlar shunda bo'linadi. */
+  timezone_name?: string;
   business_name?: string;
 }
 
@@ -120,7 +122,7 @@ export async function getFbUserProfile(accessToken: string): Promise<FbUserProfi
 export async function getAdAccounts(accessToken: string): Promise<AdAccount[]> {
   const res = await axios.get(`${GRAPH_URL}/me/adaccounts`, {
     params: {
-      fields: 'id,account_id,name,account_status,currency,business_name',
+      fields: 'id,account_id,name,account_status,currency,timezone_name,business_name',
       access_token: accessToken,
       limit: 100,
     },

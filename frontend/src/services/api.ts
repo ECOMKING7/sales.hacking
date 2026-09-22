@@ -342,6 +342,11 @@ export const telegramApi = {
     api.patch<TelegramChat>(`/api/workspace/telegram/chat/${id}`, payload).then((r) => r.data),
   ochir: (id: string) =>
     api.delete(`/api/workspace/telegram/chat/${id}`).then((r) => r.data),
+  /** Hisobot matnini YUBORMASDAN qaytaradi — sozlash paytidagi preview. */
+  oldindan: (id: string) =>
+    api
+      .get<{ matn: string }>(`/api/workspace/telegram/chat/${id}/oldindan`)
+      .then((r) => r.data),
   /** Aynan rejali hisobotning o'zini yuboradi — boshqa matn emas. */
   sinov: (id: string) =>
     api

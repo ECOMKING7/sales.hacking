@@ -61,9 +61,9 @@ export async function status(req: Request, res: Response): Promise<void> {
   }
 
   const chats = await pool.query(
-    `SELECT id, chat_id, nom, tur, hisobot_vaqti, vaqt_zonasi, hisobot_davri,
-            metrikalar, tafsilot, tafsilot_soni, sotuv_xabari, faol,
-            oxirgi_xato, oxirgi_yuborildi, oxirgi_hisobot
+    `SELECT id, chat_id, message_thread_id, nom, tur, hisobot_vaqti,
+            vaqt_zonasi, hisobot_davri, metrikalar, tafsilot, tafsilot_soni,
+            sotuv_xabari, faol, oxirgi_xato, oxirgi_yuborildi, oxirgi_hisobot
        FROM telegram_chats
       WHERE workspace_id = $1
       ORDER BY created_at`,
@@ -85,10 +85,18 @@ export async function status(req: Request, res: Response): Promise<void> {
         },
       ];
 
+  // Reklama akkaunti vaqt zonasi — hisobotdagi "kecha" shunga tayanadi.
+  const wsQator = await pool.query<{ fb_timezone: string | null }>(
+    `SELECT fb_timezone FROM workspaces WHERE id = $1`,
+    [workspaceId]
+  );
+
   res.json({
     botSozlangan: botTokenBor(),
     botNomi: nomi,
     webhook: hook,
+    /** Raqamlar qaysi zonada bo'linadi. NULL — hali o'qilmagan (sync to'ldiradi). */
+    malumotZonasi: wsQator.rows[0]?.fb_timezone ?? null,
     chatlar: chats.rows,
     // Katalog API'dan keladi: frontendda ikkinchi ro'yxat saqlansa
     // ikkisi bir kun ajralib qoladi.
@@ -144,6 +152,32 @@ export async function kodYarat(req: Request, res: Response): Promise<void> {
      * Oddiy shaklni ko'rsatish — ko'pchilikda ishlamaydigan yo'riqnoma.
      */
     guruhUchun: nomi ? `/ulash@${nomi} ${kod}` : `/ulash ${kod}`,
+
+    /**
+     * `?startgroup=` — Telegram guruhlar ro'yxatini ochadi, foydalanuvchi
+     * tanlaydi, bot QO'SHILADI va o'zi `/start@bot KOD` yuboradi
+     * (core.telegram.org/bots/features#deep-linking). Ya'ni kodni qo'lda
+     * ko'chirish shart emas.
+     *
+     * ⚠ Lekin bu UMUMIY topikka tushadi. Forum guruhida aniq topik
+     * kerak bo'lsa `guruhUchun` buyrug'i o'sha topik ichida yozilishi
+     * shart — shuning uchun ikkalasi ham qaytariladi.
+     *
+     * Kod alifbosi (A–Z, 2–9) deep link talabiga mos: A-Z a-z 0-9 _ -,
+     * 64 belgigacha.
+     */
+    guruhHavola: nomi ? `https://t.me/${nomi}?startgroup=${kod}` : null,
+
+    /**
+     * ⚠ `?startchannel=` Telegram hujjatida TAVSIFLANMAGAN — mavjudligi
+     * aytilgan, xulq-atvori yo'q. `admin=post_messages` amalda ishlaydi,
+     * lekin kafolat yo'q. JONLI SINOV KERAK. Ishlamasa zaxira yo'l bor:
+     * bot kanalga qo'shilganda `my_chat_member` keladi va o'zi
+     * yo'riqnomani post qiladi.
+     */
+    kanalHavola: nomi
+      ? `https://t.me/${nomi}?startchannel=${kod}&admin=post_messages`
+      : null,
   });
 }
 
@@ -253,14 +287,7 @@ export async function sinov(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { rows } = await pool.query<ChatQator & { id: string; chat_id: string }>(
-    `SELECT id, workspace_id, chat_id, nom, vaqt_zonasi, hisobot_davri,
-            metrikalar, tafsilot, tafsilot_soni
-       FROM telegram_chats
-      WHERE id = $1 AND workspace_id = $2`,
-    [req.params.id, workspaceId]
-  );
-  const chat = rows[0];
+  const chat = await chatniOl(String(req.params.id), workspaceId);
   if (!chat) {
     res.status(404).json({ error: 'Chat topilmadi' });
     return;
@@ -270,8 +297,48 @@ export async function sinov(req: Request, res: Response): Promise<void> {
     // Xuddi rejali hisobotning o'zi. Boshqa matn yuborilsa sinov
     // hech narsani isbotlamaydi.
     const matn = await chatHisoboti(chat);
-    const n = await chatgaYubor(chat.id, chat.chat_id, matn);
+    const n = await chatgaYubor(chat.id, chat.chat_id, matn, chat.message_thread_id);
     res.json({ success: n.ok, xato: n.xato });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+}
+
+async function chatniOl(
+  id: string,
+  workspaceId: string
+): Promise<(ChatQator & { id: string; chat_id: string }) | null> {
+  const { rows } = await pool.query<ChatQator & { id: string; chat_id: string }>(
+    `SELECT id, workspace_id, chat_id, message_thread_id, nom, vaqt_zonasi,
+            hisobot_davri, metrikalar, tafsilot, tafsilot_soni
+       FROM telegram_chats
+      WHERE id = $1 AND workspace_id = $2`,
+    [id, workspaceId]
+  );
+  return rows[0] ?? null;
+}
+
+/* ───── GET /api/workspace/telegram/chat/:id/oldindan ─────────────────
+   Hisobotni YUBORMASDAN qaytaradi.
+
+   Nega kerak: metrikani belgilab, natijani ko'rish uchun har safar
+   o'zingizga xabar yuborish — 10 ta urinishda 10 ta xabar. Preview
+   aynan `chatHisoboti` ni chaqiradi, ya'ni ekranda ko'ringan matn
+   yuboriladigan matnning O'ZI. Alohida "namuna" yozilsa ikkisi bir
+   kun ajralib qolardi. */
+export async function oldindan(req: Request, res: Response): Promise<void> {
+  const workspaceId = ws(req);
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const chat = await chatniOl(String(req.params.id), workspaceId);
+  if (!chat) {
+    res.status(404).json({ error: 'Chat topilmadi' });
+    return;
+  }
+  try {
+    res.json({ matn: await chatHisoboti(chat) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

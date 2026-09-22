@@ -216,6 +216,12 @@ export interface HisobotKirish {
   malumot: HisobotMalumot;
   tafsilotSarlavha: string | null;
   tafsilot: TafsilotQator[];
+  /**
+   * Raqamlar qaysi vaqt zonasida bo'lingani. Yetkazish zonasidan
+   * farq qilsa ko'rsatiladi — aks holda mijoz "kecha" ni o'z soatiga
+   * qarab tushunadi va Ads Manager bilan solishtirganda farq chiqadi.
+   */
+  zonaIzoh?: string | null;
 }
 
 /**
@@ -260,6 +266,11 @@ export function hisobotMatni(k: HisobotKirish): string {
   if (d.valyutaSababi) {
     qatorlar.push('');
     qatorlar.push(`ℹ️ ${esc(d.valyutaSababi)}`);
+  }
+
+  if (k.zonaIzoh) {
+    qatorlar.push('');
+    qatorlar.push(`<i>${esc(k.zonaIzoh)}</i>`);
   }
 
   if (k.tafsilot.length > 0 && k.tafsilotSarlavha) {

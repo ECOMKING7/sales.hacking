@@ -404,6 +404,8 @@ export interface TelegramMetrika {
 export interface TelegramChat {
   id: string;
   chat_id: string;
+  /** Forum topigi. NULL — oddiy guruh yoki umumiy topik. */
+  message_thread_id: string | null;
   nom: string | null;
   tur: string | null;
   /** 'HH:MM:SS' yoki null — hisobot o'chirilgan. */
@@ -432,6 +434,8 @@ export interface TelegramHolat {
     /** Kerakli, lekin obuna bo'linmagan turlar. Kanal shu yerdan buziladi. */
     yetishmayotgan: string[];
   };
+  /** Raqamlar qaysi zonada bo'linadi (reklama akkaunti). NULL — hali noma'lum. */
+  malumotZonasi: string | null;
   chatlar: TelegramChat[];
   metrikalar: TelegramMetrika[];
   davrlar: string[];
@@ -442,6 +446,12 @@ export interface TelegramKod {
   kod: string;
   daqiqa: number;
   botNomi: string | null;
+  /** Shaxsiy chat: t.me/<bot>?start=KOD */
   havola: string | null;
+  /** Guruh/kanalda qo'lda yoziladigan buyruq (topik uchun shart). */
   guruhUchun: string;
+  /** t.me/<bot>?startgroup=KOD — Telegram guruh tanlash oynasini ochadi. */
+  guruhHavola: string | null;
+  /** t.me/<bot>?startchannel=KOD — hujjatlashtirilmagan, sinov kerak. */
+  kanalHavola: string | null;
 }

@@ -18,12 +18,23 @@
      2. O'tkazib yuborilgan cron o'zini tuzatadi: 09:00 dagi chaqiruv
         yiqilsa, 09:30 dagisi baribir yuboradi — jim yo'qolmaydi.
 
-   ⚠ VAQT ZONASI CHALKASHLIGI (hujjatlashtirilgan cheklov):
-   `ad_insights_daily.kun` — Facebook reklama akkauntining vaqt
-   zonasida. `leads.won_at` — UTC. Hisobotning "kecha" si esa chat
-   vaqt zonasida. Uch xil kun chegarasi. Akkaunt Toshkentda bo'lsa
-   (bizning holat) farq yo'q; boshqa zonadagi akkauntda kun chegarasida
-   bir necha lid siljishi mumkin. BU TEKSHIRILISHI KERAK.
+   ─── IKKI VAQT ZONASI ───────────────────────────────────────────────
+   Ilgari bitta zona ishlatilardi va bu jim xato berardi. Endi ajratilgan:
+
+     MA'LUMOT zonasi  — `workspaces.fb_timezone` (reklama akkauntiniki).
+       `ad_insights_daily.kun` Facebook'ning o'z sanasi, shu zonada
+       bo'lingan. "Kecha" oralig'i SHUNDAN hisoblanadi.
+     YETKAZISH zonasi — `telegram_chats.vaqt_zonasi`.
+       Xabar soat nechada ketishini belgilaydi, raqamga ta'sir qilmaydi.
+
+   Ikkisi farq qilsa xabarning oxirida qaysi zona ishlatilgani yoziladi.
+
+   ⚠ QOLGAN CHEKLOV: `leads.won_at` UTC da saqlanadi va `::date` ham
+   UTC bo'yicha kesiladi. Ya'ni CRM tomoni hali server zonasida.
+   Toshkentda (UTC+5) yarim tundan keyin yopilgan bitim oldingi kunga
+   tushadi. BU TEKSHIRILISHI KERAK — tuzatish `won_at AT TIME ZONE`
+   qo'shish, lekin u dashboard bilan birga o'zgarishi shart, aks holda
+   ikki ekran ikki xil raqam ko'rsatadi.
    ═══════════════════════════════════════════════════════════════════════ */
 
 import { pool } from '../db/pool';
@@ -47,7 +58,10 @@ export interface ChatQator {
   id: string;
   workspace_id: string;
   chat_id: string;
+  /** Forum topigi. NULL — oddiy guruh / umumiy topik. */
+  message_thread_id: string | null;
   nom: string | null;
+  /** YETKAZISH zonasi — xabar qachon ketishini belgilaydi. */
   vaqt_zonasi: string;
   hisobot_davri: string;
   metrikalar: string[];
@@ -259,13 +273,29 @@ export async function tafsilotQatorlari(
 
 /** Bitta chat uchun to'liq hisobot matni. Sinov tugmasi ham shuni chaqiradi. */
 export async function chatHisoboti(chat: ChatQator): Promise<string> {
-  const bugun = sanaMahalliy(new Date(), chat.vaqt_zonasi);
-  const { since, until, nomi } = davrOraligi(chat.hisobot_davri, bugun);
-
-  const { rows } = await pool.query<{ name: string }>(
-    `SELECT name FROM workspaces WHERE id = $1`,
+  const { rows } = await pool.query<{ name: string; fb_timezone: string | null }>(
+    `SELECT name, fb_timezone FROM workspaces WHERE id = $1`,
     [chat.workspace_id]
   );
+
+  /**
+   * ⚠ IKKI VAQT ZONASI — ataylab ajratilgan.
+   *
+   *   MA'LUMOT zonasi  = reklama akkauntiniki (`workspaces.fb_timezone`).
+   *     `ad_insights_daily.kun` Facebook'ning o'z sanasi, ya'ni shu
+   *     zonada bo'lingan. "Kecha" ni boshqa zonada hisoblasak,
+   *     Ads Manager'dagi raqam bilan bir kunga siljiydi.
+   *
+   *   YETKAZISH zonasi = chatniki (`vaqt_zonasi`).
+   *     Xabar soat nechada ketishini belgilaydi, raqamga ta'siri yo'q.
+   *
+   * FB zonasi hali o'qilmagan bo'lsa (yangi akkaunt, sync ishlamagan)
+   * yetkazish zonasiga tushamiz — bu taxmin, shuning uchun xabarda
+   * qaysi zona ishlatilgani yoziladi.
+   */
+  const malumotZonasi = rows[0]?.fb_timezone || chat.vaqt_zonasi;
+  const bugun = sanaMahalliy(new Date(), malumotZonasi);
+  const { since, until, nomi } = davrOraligi(chat.hisobot_davri, bugun);
 
   const malumot = await hisobotMalumot(chat.workspace_id, since, until);
   const tafsilot = await tafsilotQatorlari(
@@ -290,6 +320,10 @@ export async function chatHisoboti(chat: ChatQator): Promise<string> {
           ? `Top ${tafsilot.length} reklama`
           : null,
     tafsilot,
+    zonaIzoh:
+      malumotZonasi === chat.vaqt_zonasi
+        ? null
+        : `Raqamlar ${malumotZonasi} zonasida bo'lingan, xabar ${chat.vaqt_zonasi} bo'yicha yuborildi.`,
   });
 }
 
@@ -311,8 +345,8 @@ export async function hisobotlarniYubor(): Promise<HisobotNatija> {
   if (!botTokenBor()) return natija;
 
   const { rows } = await pool.query<ChatQator>(
-    `SELECT id, workspace_id, chat_id, nom, vaqt_zonasi, hisobot_davri,
-            metrikalar, tafsilot, tafsilot_soni
+    `SELECT id, workspace_id, chat_id, message_thread_id, nom, vaqt_zonasi,
+            hisobot_davri, metrikalar, tafsilot, tafsilot_soni
        FROM telegram_chats
       WHERE faol = TRUE
         AND hisobot_vaqti IS NOT NULL
@@ -328,7 +362,7 @@ export async function hisobotlarniYubor(): Promise<HisobotNatija> {
   for (const chat of rows) {
     try {
       const matn = await chatHisoboti(chat);
-      const n = await chatgaYubor(chat.id, chat.chat_id, matn);
+      const n = await chatgaYubor(chat.id, chat.chat_id, matn, chat.message_thread_id);
 
       /* Sana FAQAT muvaffaqiyatdan keyin belgilanadi: aks holda
          vaqtincha nosozlik (Telegram 500) o'sha kunlik hisobotni

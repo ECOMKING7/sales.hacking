@@ -778,6 +778,7 @@ interface WorkspaceTokenRow {
   fb_access_token: string | null;
   fb_token_expires_at: string | null;
   fb_currency: string | null;
+  fb_timezone: string | null;
 }
 
 /**
@@ -797,15 +798,20 @@ async function backfillAccountCurrency(
 ): Promise<void> {
   try {
     const res = await axios.get(`${GRAPH}/${actId}`, {
-      params: { fields: 'currency', access_token: token },
+      params: { fields: 'currency,timezone_name', access_token: token },
       timeout: 15_000,
     });
     const currency = res.data?.currency ? String(res.data.currency).toUpperCase() : null;
-    if (!currency) return;
-    await pool.query(`UPDATE workspaces SET fb_currency = $1 WHERE id = $2`, [
-      currency,
-      workspaceId,
-    ]);
+    const timezone = res.data?.timezone_name ? String(res.data.timezone_name) : null;
+    if (!currency && !timezone) return;
+    // COALESCE: bittasi o'qilmasa ikkinchisi baribir yoziladi.
+    await pool.query(
+      `UPDATE workspaces
+          SET fb_currency = COALESCE($1, fb_currency),
+              fb_timezone = COALESCE($3, fb_timezone)
+        WHERE id = $2`,
+      [currency, workspaceId, timezone]
+    );
   } catch (err) {
     // Sync bu sababdan to'xtamaydi — valyuta keyingi urinishda o'qiladi.
     console.error('fb currency backfill failed:', (err as Error).message);
@@ -866,6 +872,7 @@ export async function syncWorkspace(
   const wsRes = await pool.query<WorkspaceTokenRow>(
     `SELECT w.fb_ad_account_id,
             w.fb_currency,
+            w.fb_timezone,
             u.fb_access_token,
             u.fb_token_expires_at
        FROM workspaces w
@@ -887,7 +894,7 @@ export async function syncWorkspace(
   // Valyuta bir marta o'qiladi va bazada qoladi. Bilinmaguncha ROAS
   // qo'riqchisi ishlamaydi, ya'ni eski workspace'lar birinchi sync'da
   // o'zini o'zi tuzatadi.
-  if (!ws.fb_currency) {
+  if (!ws.fb_currency || !ws.fb_timezone) {
     await backfillAccountCurrency(workspaceId, actId, token);
   }
 

@@ -54,8 +54,12 @@ export async function sotuvXabariniYubor(
   try {
     if (!botTokenBor()) return;
 
-    const chatlar = await pool.query<{ id: string; chat_id: string }>(
-      `SELECT id, chat_id
+    const chatlar = await pool.query<{
+      id: string;
+      chat_id: string;
+      message_thread_id: string | null;
+    }>(
+      `SELECT id, chat_id, message_thread_id
          FROM telegram_chats
         WHERE workspace_id = $1 AND faol = TRUE AND sotuv_xabari = TRUE`,
       [workspaceId]
@@ -111,7 +115,7 @@ export async function sotuvXabariniYubor(
         );
         if (!band.rowCount) continue; // allaqachon yuborilgan
 
-        await chatgaYubor(chat.id, chat.chat_id, matn);
+        await chatgaYubor(chat.id, chat.chat_id, matn, chat.message_thread_id);
       } catch (err) {
         xatoQayd(err, {
           joy: 'telegram-sotuv-chat',

@@ -89,18 +89,29 @@ async function chaqir<T>(metod: string, body: unknown): Promise<TgJavob<T>> {
  * va qayta urinamiz; ikkinchi 429 da voz kechamiz — cron'ning umumiy
  * vaqti cheklangan (Vercel 300s) va navbatdagi chatlar kutib qolmasin.
  */
-export async function xabarYubor(chatId: string, matn: string): Promise<YuborishNatija> {
+export async function xabarYubor(
+  chatId: string,
+  matn: string,
+  threadId?: string | null
+): Promise<YuborishNatija> {
   if (!botTokenBor()) {
     return { ok: false, xato: 'TELEGRAM_BOT_TOKEN sozlanmagan', ochirilsin: false };
   }
 
-  const gavda = {
+  const gavda: Record<string, unknown> = {
     chat_id: chatId,
     text: matn,
     parse_mode: 'HTML',
     // Havola oldindan ko'rinishi hisobotni cho'zib yuboradi.
     disable_web_page_preview: true,
   };
+
+  /**
+   * TOPIK. Forum guruhida `message_thread_id` bo'lmasa xabar UMUMIY
+   * topikka tushadi — mijoz uni "Reklama" topigida kutib o'tiradi va
+   * "kelmayapti" deydi. Qiymat ulash buyrug'i yozilgan topikdan olinadi.
+   */
+  if (threadId) gavda.message_thread_id = Number(threadId);
 
   for (let urinish = 0; urinish < 2; urinish++) {
     try {
@@ -144,9 +155,10 @@ export async function xabarYubor(chatId: string, matn: string): Promise<Yuborish
 export async function chatgaYubor(
   chatRowId: string,
   chatId: string,
-  matn: string
+  matn: string,
+  threadId?: string | null
 ): Promise<YuborishNatija> {
-  const n = await xabarYubor(chatId, matn);
+  const n = await xabarYubor(chatId, matn, threadId);
 
   if (n.ok) {
     await pool.query(

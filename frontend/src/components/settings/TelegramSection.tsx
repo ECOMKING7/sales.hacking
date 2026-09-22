@@ -8,21 +8,19 @@
  *      qancha summa.
  *
  * ⚠ BU YERDA TOKEN MAYDONI YO'Q va bo'lmaydi. Bot bitta, tokeni
- * serverning `.env` ida (`TELEGRAM_BOT_TOKEN`) — §4.1. Ekranda faqat
- * "sozlangan / sozlanmagan" ko'rinadi.
+ * serverning `.env` ida (`TELEGRAM_BOT_TOKEN`) — §4.1.
  *
  * Ulanish kodi — VAQTINCHALIK PAROL: uni bilgan odam shu akkauntning
- * sotuv summalarini o'z telegramiga ulaydi. Shuning uchun 15 daqiqa
- * yashaydi va bir marta ishlaydi.
+ * sotuv summalarini o'z telegramiga ulaydi. 15 daqiqa, bir marta.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Send } from 'lucide-react';
 import { telegramApi } from '../../services/api';
-import type { TelegramChat, TelegramHolat } from '../../types';
+import type { TelegramChat, TelegramHolat, TelegramKod } from '../../types';
 import { Badge, Button, Card, CardHeader, SkeletonText, cn, toast } from '../ui';
 import { CardFooterRow, ErrorRow, LABEL, SELECT, errMsg } from './shared';
 
-/** 30 daqiqalik qadamlar — cron shundan tez kelmaydi (pastdagi izohga qarang). */
+/** 30 daqiqalik qadamlar — cron shundan tez kelmaydi. */
 const VAQTLAR = Array.from({ length: 48 }, (_, i) => {
   const s = String(Math.floor(i / 2)).padStart(2, '0');
   const d = i % 2 === 0 ? '00' : '30';
@@ -36,7 +34,7 @@ const DAVR_NOMI: Record<string, string> = {
 };
 
 const TAFSILOT_NOMI: Record<string, string> = {
-  yoq: "Faqat umumiy raqamlar",
+  yoq: 'Faqat umumiy raqamlar',
   kampaniya: 'Top kampaniyalar',
   reklama: 'Top reklamalar',
 };
@@ -46,14 +44,28 @@ function vaqtQisqa(v: string | null): string {
   return v ? v.slice(0, 5) : '';
 }
 
+/**
+ * Telegram HTML'ini ko'rinish uchun oddiy matnga aylantiradi.
+ *
+ * ⚠ ATAYLAB `dangerouslySetInnerHTML` ISHLATILMAYDI. Matn ichida
+ * reklama nomlari bor — ular mijoz Ads Manager'ida yozgan qiymat, ya'ni
+ * bizning nazoratimizda emas. Serverda ular `esc()` bilan ekranlangan,
+ * lekin himoyani ikki joyga tarqatib qo'yish — kelajakdagi XSS.
+ */
+function htmlniTozala(matn: string): string {
+  return matn
+    .replace(/<\/?(b|i|code|pre|u|s)>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
 export default function TelegramSection() {
   const [holat, setHolat] = useState<TelegramHolat | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [kod, setKod] = useState<{ kod: string; havola: string | null; guruh: string } | null>(
-    null
-  );
+  const [kod, setKod] = useState<TelegramKod | null>(null);
   const [xabar, setXabar] = useState<{ ok: boolean; matn: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -75,8 +87,7 @@ export default function TelegramSection() {
     setBusy(true);
     setXabar(null);
     try {
-      const k = await telegramApi.kod();
-      setKod({ kod: k.kod, havola: k.havola, guruh: k.guruhUchun });
+      setKod(await telegramApi.kod());
     } catch (err) {
       setXabar({ ok: false, matn: errMsg(err, 'Kod olinmadi') });
     } finally {
@@ -89,10 +100,7 @@ export default function TelegramSection() {
     setXabar(null);
     try {
       const n = await telegramApi.webhook();
-      setXabar({
-        ok: n.ok,
-        matn: n.ok ? `Bot ulandi: ${n.manzil}` : (n.xato ?? 'Ulanmadi'),
-      });
+      setXabar({ ok: n.ok, matn: n.ok ? `Bot ulandi: ${n.manzil}` : (n.xato ?? 'Ulanmadi') });
       await load();
     } catch (err) {
       setXabar({ ok: false, matn: errMsg(err, 'Bot ulanmadi') });
@@ -104,9 +112,7 @@ export default function TelegramSection() {
   const yangila = async (id: string, patch: Partial<TelegramChat>) => {
     // Optimistik: tanlov darhol ko'rinsin, so'rov fonda ketsin.
     setHolat((h) =>
-      h
-        ? { ...h, chatlar: h.chatlar.map((c) => (c.id === id ? { ...c, ...patch } : c)) }
-        : h
+      h ? { ...h, chatlar: h.chatlar.map((c) => (c.id === id ? { ...c, ...patch } : c)) } : h
     );
     try {
       const yangi = await telegramApi.yangila(id, patch);
@@ -178,24 +184,21 @@ export default function TelegramSection() {
         <div className="rounded-sm border-[1.5px] border-line-2 bg-surface-2 px-3 py-3 text-xs text-ink-2">
           <p className="mb-2 font-semibold text-ink">Bot hali sozlanmagan.</p>
           <p className="mb-1">
-            1. Telegramda <span className="text-ink">@BotFather</span> ga{' '}
-            <code>/newbot</code> yozing va bot yarating.
+            1. Telegramda <span className="text-ink">@BotFather</span> ga <code>/newbot</code>{' '}
+            yozing va bot yarating.
           </p>
           <p className="mb-1">
             2. BotFather bergan tokenni serverning muhit o'zgaruvchisiga qo'ying:{' '}
             <code>TELEGRAM_BOT_TOKEN</code>.
           </p>
           <p className="mb-1">3. Serverni qayta deploy qiling va shu sahifani yangilang.</p>
-          <p className="mt-2">
-            Token bu yerga kiritilmaydi va hech qachon bazaga tushmaydi.
-          </p>
+          <p className="mt-2">Token bu yerga kiritilmaydi va hech qachon bazaga tushmaydi.</p>
         </div>
       ) : (
         <>
           {!webhookBor && (
             <div className="mb-4 rounded-sm border-[1.5px] border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-              Bot Telegram'ga ulanmagan — `/start` buyrug'i ishlamaydi. "Botni ulash" ni
-              bosing.
+              Bot Telegram'ga ulanmagan — buyruqlar ishlamaydi. "Botni ulash" ni bosing.
             </div>
           )}
 
@@ -204,7 +207,7 @@ export default function TelegramSection() {
               Webhook eski ro'yxat bilan ulangan — {holat.webhook.yetishmayotgan.join(', ')}{' '}
               kelmayapti.
               {holat.webhook.yetishmayotgan.includes('channel_post') &&
-                ' Ya\'ni kanaldagi buyruq bizgacha yetib kelmaydi.'}{' '}
+                " Ya'ni kanaldagi buyruq bizgacha yetib kelmaydi."}{' '}
               "Botni ulash" ni qayta bosing.
             </div>
           )}
@@ -215,42 +218,13 @@ export default function TelegramSection() {
             </p>
           )}
 
-          {kod && (
-            <div className="mb-4 rounded-sm border-[1.5px] border-ok/30 bg-ok/10 px-3 py-3 text-xs text-ink">
-              <p className="mb-2">
-                Kod: <span className="font-bold tracking-widest">{kod.kod}</span>{' '}
-                <span className="text-ink-2">(15 daqiqa)</span>
-              </p>
-              {kod.havola && (
-                <p className="mb-1">
-                  Shaxsiy chat:{' '}
-                  <a
-                    className="underline"
-                    href={kod.havola}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {kod.havola}
-                  </a>
-                </p>
-              )}
-              <p className="mb-1 text-ink-2">
-                Guruh: botni guruhga qo'shing va <code>{kod.guruh}</code> deb yozing.
-              </p>
-              <p className="text-ink-2">
-                Kanal: botni <b>administrator</b> qilib qo'shing ("Post yuborish"
-                huquqi bilan) va kanalga <code>{kod.guruh}</code> deb post qiling.
-              </p>
-            </div>
-          )}
+          {kod && <KodPaneli kod={kod} />}
 
           {xabar && (
             <p
               className={cn(
                 'mb-4 rounded-sm border-[1.5px] px-3 py-2 text-xs',
-                xabar.ok
-                  ? 'border-ok/30 bg-ok/10 text-ok'
-                  : 'border-bad/30 bg-bad/10 text-bad'
+                xabar.ok ? 'border-ok/30 bg-ok/10 text-ok' : 'border-bad/30 bg-bad/10 text-bad'
               )}
             >
               {xabar.matn}
@@ -259,7 +233,7 @@ export default function TelegramSection() {
 
           {chatlar.length === 0 ? (
             <p className="mb-4 text-sm text-ink-2">
-              Hali bitta ham chat ulanmagan. "Kod olish" ni bosing va botga yuboring.
+              Hali bitta ham chat ulanmagan. "Kod olish" ni bosing.
             </p>
           ) : (
             <div className="mb-4 space-y-4">
@@ -270,6 +244,7 @@ export default function TelegramSection() {
                   metrikalar={holat.metrikalar}
                   davrlar={holat.davrlar}
                   tafsilotlar={holat.tafsilotlar}
+                  malumotZonasi={holat.malumotZonasi}
                   busy={busy}
                   onYangila={(p) => void yangila(c.id, p)}
                   onSinov={() => void sinovYubor(c.id)}
@@ -299,6 +274,71 @@ export default function TelegramSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   ULANISH KODI — uch yo'l
+
+   Uchalasi ham bitta kodni ishlatadi. Farqi faqat qulaylikda:
+   tugma bosilsa Telegram o'zi ochiladi va kodni O'ZI yuboradi;
+   qo'lda yozish esa topik uchun yagona yo'l.
+   ═══════════════════════════════════════════════════════════════════════ */
+function KodPaneli({ kod }: { kod: TelegramKod }) {
+  return (
+    <div className="mb-4 rounded-sm border-[1.5px] border-ok/30 bg-ok/10 px-3 py-3 text-xs text-ink">
+      <p className="mb-3">
+        Kod: <span className="font-bold tracking-widest">{kod.kod}</span>{' '}
+        <span className="text-ink-2">({kod.daqiqa} daqiqa, bir marta)</span>
+      </p>
+
+      <div className="mb-3 flex flex-wrap gap-2">
+        {kod.havola && (
+          <a
+            className="rounded-sm border-[1.5px] border-line-2 bg-surface px-2.5 py-1.5 text-ink hover:border-accent/40"
+            href={kod.havola}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Menga shaxsiy
+          </a>
+        )}
+        {kod.guruhHavola && (
+          <a
+            className="rounded-sm border-[1.5px] border-accent/40 bg-accent/15 px-2.5 py-1.5 text-accent"
+            href={kod.guruhHavola}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Guruhga qo'shish
+          </a>
+        )}
+        {kod.kanalHavola && (
+          <a
+            className="rounded-sm border-[1.5px] border-line-2 bg-surface px-2.5 py-1.5 text-ink hover:border-accent/40"
+            href={kod.kanalHavola}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Kanalga qo'shish
+          </a>
+        )}
+      </div>
+
+      <p className="mb-1 text-ink-2">
+        "Guruhga qo'shish" — Telegram guruhlar ro'yxatini ochadi, tanlaysiz, bot o'zi
+        qo'shiladi va kodni o'zi yuboradi.
+      </p>
+      <p className="mb-1 text-ink-2">
+        <b className="text-ink">Topikli guruh</b> yoki qo'lda ulash uchun: botni qo'shing va
+        kerakli topik ichida <code>{kod.guruhUchun}</code> deb yozing. Hisobot aynan o'sha
+        topikka tushadi.
+      </p>
+      <p className="text-ink-2">
+        <b className="text-ink">Kanal</b>: bot administrator bo'lishi va "Post yuborish"
+        huquqiga ega bo'lishi kerak.
+      </p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    BITTA CHAT
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -307,6 +347,7 @@ function ChatKartasi({
   metrikalar,
   davrlar,
   tafsilotlar,
+  malumotZonasi,
   busy,
   onYangila,
   onSinov,
@@ -316,19 +357,49 @@ function ChatKartasi({
   metrikalar: Array<{ kalit: string; yorliq: string }>;
   davrlar: string[];
   tafsilotlar: string[];
+  malumotZonasi: string | null;
   busy: boolean;
   onYangila: (p: Partial<TelegramChat>) => void;
   onSinov: () => void;
   onOchir: () => void;
 }) {
   const tanlangan = new Set(chat.metrikalar);
+  const [ochiq, setOchiq] = useState(false);
+  const [oldin, setOldin] = useState<string | null>(null);
+  const [oldinBusy, setOldinBusy] = useState(false);
+
+  /* Preview serverdan keladi va AYNAN yuboriladigan matn. Alohida
+     "namuna" yozilsa ikkisi bir kun ajralib qolardi. */
+  const oldindanYukla = useCallback(async () => {
+    setOldinBusy(true);
+    try {
+      const r = await telegramApi.oldindan(chat.id);
+      setOldin(r.matn);
+    } catch {
+      setOldin(null);
+    } finally {
+      setOldinBusy(false);
+    }
+  }, [chat.id]);
+
+  // Sozlama o'zgarsa preview yangilanadi — lekin faqat ochiq bo'lsa.
+  useEffect(() => {
+    if (!ochiq) return;
+    const t = setTimeout(() => void oldindanYukla(), 350);
+    return () => clearTimeout(t);
+  }, [
+    ochiq,
+    oldindanYukla,
+    chat.metrikalar,
+    chat.hisobot_davri,
+    chat.tafsilot,
+    chat.tafsilot_soni,
+  ]);
 
   const metrikaBos = (kalit: string) => {
     const yangi = new Set(tanlangan);
     if (yangi.has(kalit)) yangi.delete(kalit);
     else yangi.add(kalit);
-    // Bo'sh ro'yxat serverda standartga qaytadi — bu yerda ham
-    // hech bo'lmasa bittasi qolishini talab qilmaymiz.
     onYangila({ metrikalar: [...yangi] });
   };
 
@@ -336,11 +407,10 @@ function ChatKartasi({
     <div className="rounded-sm border-[1.5px] border-line-2 bg-surface-2 p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-ink">
-            {chat.nom ?? chat.chat_id}
-          </p>
+          <p className="truncate text-sm font-semibold text-ink">{chat.nom ?? chat.chat_id}</p>
           <p className="text-xs text-ink-2">
             {chat.tur === 'private' ? 'shaxsiy' : (chat.tur ?? 'chat')} · {chat.chat_id}
+            {chat.message_thread_id && ` · topik ${chat.message_thread_id}`}
           </p>
         </div>
         {!chat.faol && <Badge tone="bad">To'xtatilgan</Badge>}
@@ -386,7 +456,7 @@ function ChatKartasi({
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-ink-2">{chat.vaqt_zonasi}</p>
+          <p className="mt-1 text-xs text-ink-2">Yetkazish: {chat.vaqt_zonasi}</p>
         </div>
 
         <div>
@@ -402,6 +472,12 @@ function ChatKartasi({
               </option>
             ))}
           </select>
+          {/* ⚠ Raqamlar reklama akkauntining zonasida bo'linadi, chatniki
+              emas. Ikkisi farq qilsa — aytamiz, aks holda "kecha" ikki
+              xil ma'noga ega bo'lib qoladi. */}
+          <p className="mt-1 text-xs text-ink-2">
+            Raqamlar: {malumotZonasi ?? "noma'lum (sync to'ldiradi)"}
+          </p>
         </div>
 
         <div>
@@ -418,7 +494,9 @@ function ChatKartasi({
             ))}
           </select>
           {chat.tafsilot !== 'yoq' && (
-            <p className="mt-1 text-xs text-ink-2">Eng ko'p sarflagan {chat.tafsilot_soni} ta</p>
+            <p className="mt-1 text-xs text-ink-2">
+              Eng ko'p sarflagan {chat.tafsilot_soni} ta
+            </p>
           )}
         </div>
       </div>
@@ -452,7 +530,23 @@ function ChatKartasi({
         )}
       </div>
 
+      {ochiq && (
+        <div className="mt-3">
+          <label className={LABEL}>Telegramda shunday ko'rinadi</label>
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-sm border-[1.5px] border-line bg-surface px-3 py-2.5 font-sans text-xs leading-relaxed text-ink">
+            {oldinBusy && !oldin
+              ? 'Yuklanyapti…'
+              : oldin
+                ? htmlniTozala(oldin)
+                : "Ko'rinish olinmadi."}
+          </pre>
+        </div>
+      )}
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={() => setOchiq((v) => !v)}>
+          {ochiq ? "Ko'rinishni yopish" : "Ko'rinishi"}
+        </Button>
         <Button variant="secondary" size="sm" onClick={onSinov} disabled={busy}>
           Sinov hisoboti
         </Button>

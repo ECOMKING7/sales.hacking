@@ -136,6 +136,29 @@ test('tafovut nol bo‘lsa ogohlantirish yo‘q — shovqin qilmaydi', () => {
   assert.ok(!m.includes('tafovut'));
 });
 
+test('vaqt zonalari farq qilsa xabarda aytiladi', () => {
+  // ⚠ Raqam reklama akkaunti zonasida bo'linadi, xabar esa chat
+  // zonasida ketadi. Farqni yashirish "kecha" ni ikki ma'noli qiladi.
+  const m = hisobotMatni({
+    akkaunt: 'X',
+    davrNomi: 'Kecha',
+    since: '2026-09-21',
+    until: '2026-09-21',
+    metrikalar: ['sarf'],
+    malumot: { ...BOSH },
+    tafsilotSarlavha: null,
+    tafsilot: [],
+    zonaIzoh: "Raqamlar America/New_York zonasida bo'lingan, xabar Asia/Tashkent bo'yicha yuborildi.",
+  });
+  assert.match(m, /America\/New_York/);
+  assert.match(m, /Asia\/Tashkent/);
+});
+
+test('zonalar teng bo‘lsa ortiqcha qator yo‘q', () => {
+  const m = matn({ sarf: 10 });
+  assert.ok(!m.includes('zonasida'));
+});
+
 /* ---- sotuv xabari ---- */
 
 test('sotuv xabarida kampaniya, guruh, reklama va summa bor', () => {
