@@ -423,7 +423,15 @@ export interface TelegramChat {
 export interface TelegramHolat {
   botSozlangan: boolean;
   botNomi: string | null;
-  webhook: { manzil: string | null; kutilayotgan: number; oxirgiXato: string | null };
+  webhook: {
+    manzil: string | null;
+    kutilayotgan: number;
+    oxirgiXato: string | null;
+    /** `allowed_updates` — bo'sh bo'lsa "hammasi". */
+    turlar: string[];
+    /** Kerakli, lekin obuna bo'linmagan turlar. Kanal shu yerdan buziladi. */
+    yetishmayotgan: string[];
+  };
   chatlar: TelegramChat[];
   metrikalar: TelegramMetrika[];
   davrlar: string[];

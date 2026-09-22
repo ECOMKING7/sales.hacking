@@ -74,7 +74,16 @@ export async function status(req: Request, res: Response): Promise<void> {
   // sozlanmagan bo'lsa umuman so'ramaymiz — kutish bekorga ketmasin.
   const [nomi, hook] = botTokenBor()
     ? await Promise.all([botNomi(), webhookHolati()])
-    : [null, { manzil: null, kutilayotgan: 0, oxirgiXato: null }];
+    : [
+        null,
+        {
+          manzil: null,
+          kutilayotgan: 0,
+          oxirgiXato: null,
+          turlar: [] as string[],
+          yetishmayotgan: [] as string[],
+        },
+      ];
 
   res.json({
     botSozlangan: botTokenBor(),
@@ -128,7 +137,13 @@ export async function kodYarat(req: Request, res: Response): Promise<void> {
     daqiqa: KOD_DAQIQA,
     botNomi: nomi,
     havola: nomi ? `https://t.me/${nomi}?start=${kod}` : null,
-    guruhUchun: `/ulash ${kod}`,
+    /**
+     * ⚠ `@bot_nomi` MAJBURIY. Telegram hujjati: privacy mode yoqilgan
+     * guruhda (standart holat) bot oddiy `/ulash KOD` ni FAQAT o'zi
+     * oxirgi yozgan bot bo'lsa oladi. `@bot_nomi` bilan esa har doim.
+     * Oddiy shaklni ko'rsatish — ko'pchilikda ishlamaydigan yo'riqnoma.
+     */
+    guruhUchun: nomi ? `/ulash@${nomi} ${kod}` : `/ulash ${kod}`,
   });
 }
 

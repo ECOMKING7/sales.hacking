@@ -168,12 +168,22 @@ export async function chatgaYubor(
   return n;
 }
 
-/** Bot username — ulanish havolasi (`t.me/<username>?start=<kod>`) uchun. */
+/**
+ * Bot username — ulanish havolasi (`t.me/<username>?start=<kod>`) va
+ * guruh buyrug'i (`/ulash@<username> KOD`) uchun.
+ *
+ * Keshlanadi: bot nomi o'zgarmaydi, lekin `my_chat_member` oqimida
+ * har qo'shilishda `getMe` chaqirish bekorga kutish.
+ */
+let NOM_KESH: string | null = null;
+
 export async function botNomi(): Promise<string | null> {
   if (!botTokenBor()) return null;
+  if (NOM_KESH) return NOM_KESH;
   try {
     const j = await chaqir<{ username?: string }>('getMe', {});
-    return j.ok ? (j.result?.username ?? null) : null;
+    NOM_KESH = j.ok ? (j.result?.username ?? null) : null;
+    return NOM_KESH;
   } catch {
     return null;
   }
@@ -204,9 +214,21 @@ export async function webhookOrnat(
     const j = await chaqir<boolean>('setWebhook', {
       url: manzil,
       secret_token: sir,
-      // Bizga faqat xabarlar kerak. Qolgani (inline, poll, reaction)
-      // trafikni oshiradi va hech qayerda ishlatilmaydi.
-      allowed_updates: ['message'],
+      /**
+       * ⚠ UCHALASI HAM KERAK — bittasi tushib qolsa jim buziladi:
+       *
+       *   message       — shaxsiy chat va guruh.
+       *   channel_post  — KANAL. Kanalga yozilgan xabar `message`
+       *                   emas, `channel_post` bo'lib keladi. Faqat
+       *                   `message` ga obuna bo'lsak kanaldagi
+       *                   `/ulash KOD` bizgacha umuman yetib kelmaydi
+       *                   va hech qayerda xato chiqmaydi.
+       *   my_chat_member — bot guruhga/kanalga qo'shilgani yoki
+       *                   chiqarilgani. Shu orqali qo'shilishi bilan
+       *                   yo'riqnomani o'zi yozadi, chiqarilganda esa
+       *                   chat `faol = FALSE` bo'ladi.
+       */
+      allowed_updates: ['message', 'channel_post', 'my_chat_member'],
       drop_pending_updates: true,
     });
     return {
@@ -219,26 +241,54 @@ export async function webhookOrnat(
   }
 }
 
-/** Joriy webhook holati — "ulanganmi?" savoliga javob. */
+/** Webhook qaysi turdagi yangilanishlarga obuna bo'lishi SHART. */
+export const KERAKLI_TURLAR = ['message', 'channel_post', 'my_chat_member'] as const;
+
+/**
+ * Joriy webhook holati — "ulanganmi?" savoliga javob.
+ *
+ * ⚠ `turlar` ni ham qaytaramiz. Sabab: `allowed_updates` eski ro'yxat
+ * bilan qolgan bo'lsa (masalan `['message']`), kanal JIM ishlamaydi —
+ * xato yo'q, javob yo'q. Ekranda ko'rinib tursa "Botni ulash" ni
+ * qayta bosish yetadi.
+ */
 export async function webhookHolati(): Promise<{
   manzil: string | null;
   kutilayotgan: number;
   oxirgiXato: string | null;
+  turlar: string[];
+  yetishmayotgan: string[];
 }> {
   try {
     const j = await chaqir<{
       url?: string;
       pending_update_count?: number;
       last_error_message?: string;
+      allowed_updates?: string[];
     }>('getWebhookInfo', {});
+
+    /* Telegram `allowed_updates` ni FAQAT standartdan farq qilganda
+       qaytaradi. Bo'sh kelsa — "hammasi" degani, ya'ni kamchilik yo'q. */
+    const turlar = j.result?.allowed_updates ?? [];
+    const yetishmayotgan =
+      turlar.length === 0 ? [] : KERAKLI_TURLAR.filter((t) => !turlar.includes(t));
+
     return {
       manzil: j.result?.url || null,
       kutilayotgan: j.result?.pending_update_count ?? 0,
       oxirgiXato: j.result?.last_error_message
         ? maskla(j.result.last_error_message)
         : null,
+      turlar,
+      yetishmayotgan,
     };
   } catch {
-    return { manzil: null, kutilayotgan: 0, oxirgiXato: null };
+    return {
+      manzil: null,
+      kutilayotgan: 0,
+      oxirgiXato: null,
+      turlar: [],
+      yetishmayotgan: [],
+    };
   }
 }

@@ -199,6 +199,16 @@ export default function TelegramSection() {
             </div>
           )}
 
+          {holat.webhook.yetishmayotgan.length > 0 && (
+            <div className="mb-4 rounded-sm border-[1.5px] border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+              Webhook eski ro'yxat bilan ulangan — {holat.webhook.yetishmayotgan.join(', ')}{' '}
+              kelmayapti.
+              {holat.webhook.yetishmayotgan.includes('channel_post') &&
+                ' Ya\'ni kanaldagi buyruq bizgacha yetib kelmaydi.'}{' '}
+              "Botni ulash" ni qayta bosing.
+            </div>
+          )}
+
           {holat.webhook.oxirgiXato && (
             <p className="mb-4 rounded-sm border-[1.5px] border-bad/30 bg-bad/10 px-3 py-2 text-xs text-bad">
               Telegram oxirgi xatosi: {holat.webhook.oxirgiXato}
@@ -224,9 +234,12 @@ export default function TelegramSection() {
                   </a>
                 </p>
               )}
+              <p className="mb-1 text-ink-2">
+                Guruh: botni guruhga qo'shing va <code>{kod.guruh}</code> deb yozing.
+              </p>
               <p className="text-ink-2">
-                Guruhga: botni guruhga qo'shing va guruhda <code>{kod.guruh}</code> deb
-                yozing.
+                Kanal: botni <b>administrator</b> qilib qo'shing ("Post yuborish"
+                huquqi bilan) va kanalga <code>{kod.guruh}</code> deb post qiling.
               </p>
             </div>
           )}
