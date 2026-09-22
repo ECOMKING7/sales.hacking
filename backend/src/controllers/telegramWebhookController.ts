@@ -28,14 +28,35 @@
 
    ⚠ JAVOB HAR DOIM 200. Telegram 2xx bo'lmasa qayta yuboradi va ko'p
    marta xato bo'lsa webhook'ni umuman o'chirib qo'yadi.
+
+   ⚠⚠ SERVERLESS: JAVOB ISHDAN KEYIN YUBORILADI.
+   Birinchi versiyada teskari edi — avval `res.status(200)`, keyin
+   `await` bilan ishlash. Vercel'da javob ketishi bilan funksiya
+   MUZLATILADI, ya'ni `xabarYubor` umuman bajarilmasdi: foydalanuvchi
+   `/start` yozardi, biz 200 qaytarardik, bot esa jim turardi. Xato
+   hech qayerda ko'rinmasdi.
+
+   Aynan shu tuzoq `webhookController.ts` da izoh bilan yozilgan
+   (amoCRM'da sotuv yo'qolgan edi) — va bu yerda takrorlandi.
+
+   Endi: ishni boshlaymiz → DEADLINE gacha kutamiz → 200. Ulgurmagani
+   `waitUntil` ga topshiriladi.
    ═══════════════════════════════════════════════════════════════════════ */
 
 import { Request, Response } from 'express';
 import { pool } from '../db/pool';
 import { botNomi, xabarYubor } from '../services/telegram';
 import { STANDART_METRIKALAR } from '../services/telegramMatn';
+import { awaitWithDeadline } from '../utils/background';
 import { xatoQayd } from '../utils/xatolar';
 import { webhookSiri } from './telegramController';
+
+/**
+ * Telegram javobni 60 soniyagacha kutadi, lekin biz cho'zmaymiz: ish
+ * amalda 1–2 soniya (bitta sendMessage + bir necha SQL). 8s — sekin
+ * tarmoqqa zaxira.
+ */
+const DEADLINE_MS = 8000;
 
 interface TgChat {
   id?: number | string;
@@ -84,18 +105,27 @@ async function yordam(): Promise<string> {
 }
 
 export async function telegramWebhook(req: Request, res: Response): Promise<void> {
-  // Telegram javobni kutmasin.
-  res.status(200).json({ ok: true });
+  const sir = webhookSiri();
+  const kelgan = req.header('x-telegram-bot-api-secret-token') ?? '';
+  if (!sir || kelgan !== sir) {
+    console.warn('telegram webhook: sir mos kelmadi');
+    // 200 — aks holda Telegram qayta-qayta urinadi va webhook'ni o'chiradi.
+    res.status(200).json({ ok: true, processed: false });
+    return;
+  }
 
+  const { finished } = await awaitWithDeadline(
+    ishla(req.body as TgUpdate),
+    DEADLINE_MS,
+    'telegram webhook'
+  );
+
+  res.status(200).json({ ok: true, processed: finished });
+}
+
+/** Butun ish shu yerda — javobdan OLDIN bajariladi (yuqoridagi izohga qarang). */
+async function ishla(u: TgUpdate): Promise<void> {
   try {
-    const sir = webhookSiri();
-    const kelgan = req.header('x-telegram-bot-api-secret-token') ?? '';
-    if (!sir || kelgan !== sir) {
-      console.warn('telegram webhook: sir mos kelmadi');
-      return;
-    }
-
-    const u = req.body as TgUpdate;
 
     if (u?.my_chat_member) {
       await azolikOzgardi(u);
