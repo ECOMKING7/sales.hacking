@@ -21,7 +21,6 @@ import {
   n,
 } from '../../utils/format';
 import {
-  Badge,
   Button,
   Skeleton,
   TableWrap,
@@ -39,12 +38,28 @@ export type Sel = { id: string; name: string } | null;
 
 const LIMIT = 50;
 
+/**
+ * Yetkazish holati — sokin, raqamdan past darajada.
+ *
+ * Ilgari bu yorqin yashil "pill" edi va jadvalda eng ko'zga
+ * tashlanadigan narsa bo'lib turardi. Lekin "ACTIVE" hech qanday
+ * qaror bermaydi — u shunchaki kontekst. Qaror raqamlarda: xarajat,
+ * natija, ROAS. Shuning uchun holat endi kichik kulrang matn va
+ * bitta nuqta; butun og'irlik raqamlarga o'tdi.
+ */
 function DeliveryBadge({ status }: { status: string | null }) {
   const active = (status ?? '').toUpperCase() === 'ACTIVE';
   return (
-    <Badge tone={active ? 'ok' : 'neutral'} dot>
-      {status ?? '—'}
-    </Badge>
+    <span className="inline-flex items-center gap-1.5 text-xs text-ink-3">
+      <span
+        aria-hidden
+        className={cn(
+          'h-1.5 w-1.5 flex-none rounded-full',
+          active ? 'bg-ok' : 'bg-ink-3/45'
+        )}
+      />
+      <span className="capitalize">{(status ?? '—').toLowerCase()}</span>
+    </span>
   );
 }
 
@@ -676,7 +691,10 @@ export default function EntityTable({
                     key={c.key}
                     className={cn(
                       'sticky bottom-0 z-20 border-t-[1.5px] border-line bg-surface-2',
-                      'px-3 py-2.5 text-sm tabular-nums',
+                      /* Jami qatori — jadvaldagi eng yirik raqam.
+                         Qatorlar 15px, jami 16px: farq kichik, lekin
+                         ko'z avval shu yerga tushadi. */
+                      'px-3 py-3 text-[16px] font-bold tabular-nums tracking-[-0.01em]',
                       c.align === 'right' ? 'text-right' : 'text-left'
                     )}
                   >

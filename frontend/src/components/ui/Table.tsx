@@ -65,7 +65,11 @@ export function Td({
     <td
       className={cn(
         'whitespace-nowrap border-b border-line px-4 py-3 text-ink',
-        numeric && 'text-right font-medium tabular-nums',
+        /* Raqam — jadvaldagi eng muhim narsa, shuning uchun eng katta.
+           Ilgari u boshqa matn bilan bir xil o'lchamda edi va ko'z
+           avval yashil "ACTIVE" belgisiga tushardi. Holat — kontekst,
+           raqam — javob. Ierarxiya shuni aks ettirishi kerak. */
+        numeric && 'text-right text-[15px] font-semibold tabular-nums tracking-[-0.01em]',
         className
       )}
       {...rest}
