@@ -465,7 +465,13 @@ export interface TelegramKod {
    ═══════════════════════════════════════════════════════════════════════ */
 
 export interface IntegratsiyaHolat {
-  holat: 'ok' | 'yoq' | 'nomalum';
+  /**
+   * `ogoh` — ulangan, lekin yarim ishlaydi (masalan amoCRM ulangan
+   * lekin sotuv etaplari belgilanmagan → daromad 0 ko'rinadi).
+   * `nomalum` — BILMAYMIZ, "yo'q" emas: aniqlash uchun tashqi so'rov
+   * kerak va u to'r uchun juda sekin.
+   */
+  holat: 'ok' | 'ogoh' | 'yoq' | 'nomalum';
   /** Kartada belgi ostida turadigan bir qator. */
   izoh: string | null;
 }

@@ -191,10 +191,23 @@ export default function SettingsPage() {
    talab qiladi, ayniqsa telefonda.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const BELGI: Record<'ok' | 'yoq' | 'nomalum', { matn: string; tone: 'ok' | 'neutral' }> = {
-  ok: { matn: 'Ulangan', tone: 'ok' },
-  yoq: { matn: 'Ulanmagan', tone: 'neutral' },
-  nomalum: { matn: 'Sozlanmagan', tone: 'neutral' },
+/**
+ * ⚠ `nomalum` "Sozlanmagan" EMAS.
+ *
+ * Birinchi versiyada shunday edi va ishlab turgan webhook ekranda
+ * "sozlanmagan" bo'lib ko'rindi — chunki uning holatini bilish uchun
+ * amoCRM'ga so'rov kerak va to'r uni so'ramaydi. Bilmagan narsani yo'q
+ * deb yozish, noto'g'ri raqam ko'rsatish bilan bir xil darajadagi xato:
+ * odam ishlayotgan narsani "tuzatishga" kirishadi.
+ */
+const BELGI: Record<
+  IntegratsiyaHolat['holat'],
+  { matn: string; tone: 'ok' | 'warn' | 'neutral'; nuqta: boolean }
+> = {
+  ok: { matn: 'Ulangan', tone: 'ok', nuqta: true },
+  ogoh: { matn: "E'tibor kerak", tone: 'warn', nuqta: true },
+  yoq: { matn: 'Ulanmagan', tone: 'neutral', nuqta: false },
+  nomalum: { matn: 'Tekshirilmagan', tone: 'neutral', nuqta: false },
 };
 
 function IntegratsiyaKartasi({
@@ -232,7 +245,7 @@ function IntegratsiyaKartasi({
         {yuklanyapti ? (
           <Skeleton className="h-5 w-20" />
         ) : b ? (
-          <Badge tone={b.tone} dot={b.tone === 'ok'}>
+          <Badge tone={b.tone} dot={b.nuqta}>
             {b.matn}
           </Badge>
         ) : null}
@@ -249,7 +262,7 @@ function IntegratsiyaKartasi({
       </p>
 
       <span className="mt-3 text-sm font-medium text-accent">
-        {holat?.holat === 'ok' ? 'Sozlash' : 'Ulash'} →
+        {holat?.holat === 'ok' || holat?.holat === 'ogoh' ? 'Sozlash' : 'Ulash'} →
       </span>
     </button>
   );

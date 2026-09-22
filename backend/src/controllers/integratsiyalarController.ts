@@ -23,7 +23,21 @@ import { Request, Response } from 'express';
 import { pool } from '../db/pool';
 import { botTokenBor } from '../services/telegram';
 
-export type Holat = 'ok' | 'yoq' | 'nomalum';
+/**
+ * ⚠ TO'RTTA HOLAT, ATAYLAB.
+ *
+ *   ok       — ishlayapti, bazadan tasdiqlangan
+ *   ogoh     — ulangan, LEKIN yarim: natija bermaydi yoki noto'g'ri
+ *              beradi. Bu "ulangan" emas va "ulanmagan" ham emas —
+ *              aynan shu holat yashirilsa jim buziladi.
+ *   yoq      — ulanmagan, aniq bilamiz
+ *   nomalum  — BILMAYMIZ. Aniqlash uchun tashqi so'rov kerak.
+ *
+ * Birinchi versiyada `nomalum` ekranda "Sozlanmagan" deb chiqardi va
+ * ishlab turgan webhook "sozlanmagan" bo'lib ko'rindi. Bilmagan narsani
+ * yo'q deb da'vo qilish — noto'g'ri raqam ko'rsatish bilan bir xil xato.
+ */
+export type Holat = 'ok' | 'ogoh' | 'yoq' | 'nomalum';
 
 export interface IntegratsiyaHolat {
   holat: Holat;
@@ -95,7 +109,9 @@ export async function holatlar(req: Request, res: Response): Promise<void> {
           : null,
     },
     amocrm: {
-      holat: amoUlangan ? (juftlikBor ? 'ok' : 'nomalum') : 'yoq',
+      /* Juftliksiz amoCRM ulangan, lekin daromad 0 bo'lib qoladi —
+         "ulangan" deyish yolg'on, "ulanmagan" deyish ham. */
+      holat: amoUlangan ? (juftlikBor ? 'ok' : 'ogoh') : 'yoq',
       izoh: amoUlangan
         ? juftlikBor
           ? w.amocrm_domain
@@ -116,7 +132,8 @@ export async function holatlar(req: Request, res: Response): Promise<void> {
       izoh: w.meta_dataset_id ? `Dataset ${w.meta_dataset_id}` : null,
     },
     telegram: {
-      holat: !botTokenBor() ? 'yoq' : tgFaol > 0 ? 'ok' : 'nomalum',
+      /* Bot bor, lekin chat yo'q — xabar hech qayerga bormaydi. */
+      holat: !botTokenBor() ? 'yoq' : tgFaol > 0 ? 'ok' : 'ogoh',
       izoh: !botTokenBor()
         ? 'Bot sozlanmagan'
         : tgFaol > 0
