@@ -232,3 +232,108 @@
     --halqa-burchak: 360deg;
   }
 }
+
+@layer components {
+  /* ═══════════════ AVRORA — qimirlaydigan fon ═══════════════
+
+     Binafsha + havorang aralashmasi, sekin siljiydi.
+
+     Uchta katta radial dog', har biri o'z tezligida. Ular bir-birining
+     ustidan yurganda oraliq ranglar tug'iladi — shuning uchun uchta
+     dog' o'ndan ko'p tus beradi.
+
+     ⚠ NEGA `fixed` VA `z-index: 0`, `-1` EMAS:
+     manfiy z-index element o'z stacking kontekstidan CHIQIB ketadi va
+     ba'zi brauzerda butun sahifa ortiga tushib ko'rinmay qoladi.
+     Shuning uchun fon alohida `fixed` qatlam, kontent esa uning
+     ustida `relative z-10` bilan turadi.
+
+     ⚠ `background-position` ANIMATSIYA QILINADI, `transform` emas:
+     transform butun qatlamni ko'chiradi va chekkalarda bo'shliq
+     qoldiradi. Pozitsiya esa gradientni qatlam ichida suradi —
+     chekka har doim to'la.
+
+     Rang qiymatlari TOKEN emas, chunki bu bezak qatlami: u mavzuga
+     emas, brendga tegishli. Qorong'i mavzuda alohida to'plam
+     ishlatiladi (pastda). */
+  .avrora {
+    /* ⚠ `position: fixed` va `inset: 0` BU YERDA EMAS, JSX da utiliti
+       sifatida beriladi (`fixed inset-0 z-0`).
+
+       Sabab: bir marta shu yerga yozilgan edi va build paytida
+       IKKALASI HAM tushib qoldi — natijada fon oddiy blok bo'lib
+       qolib, tartibni surib yubordi. Aynan shu naqsh `backdrop-filter`
+       bilan ham bo'lgan (yuqoridagi `.shisha` izohiga qarang):
+       qo'lda yozilgan xossa yo'qoladi, Tailwind utilitisi esa
+       har doim chiqadi. Takrorlanmasligi uchun shu yerda qoldirilmadi. */
+    pointer-events: none;
+    background-color: rgb(var(--ground));
+    background-image:
+      radial-gradient(60% 55% at 12% 8%, rgba(255, 214, 224, 0.85) 0%, rgba(255, 214, 224, 0) 62%),
+      radial-gradient(55% 50% at 88% 12%, rgba(214, 224, 255, 0.9) 0%, rgba(214, 224, 255, 0) 60%),
+      radial-gradient(65% 60% at 20% 92%, rgba(205, 232, 255, 0.9) 0%, rgba(205, 232, 255, 0) 64%),
+      radial-gradient(60% 55% at 92% 88%, rgba(219, 245, 231, 0.75) 0%, rgba(219, 245, 231, 0) 62%);
+    background-size:
+      140% 140%,
+      150% 150%,
+      160% 160%,
+      150% 150%;
+    background-position:
+      0% 0%,
+      100% 0%,
+      0% 100%,
+      100% 100%;
+    animation: avrora-siljish 34s ease-in-out infinite alternate;
+  }
+
+  /* Qorong'i mavzu: bir xil ranglar, lekin to'yinganligi past va
+     shaffofligi baland — aks holda oq matn o'qilmay qoladi. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .avrora {
+      background-image:
+        radial-gradient(60% 55% at 12% 8%, rgba(122, 78, 120, 0.30) 0%, rgba(122, 78, 120, 0) 62%),
+        radial-gradient(55% 50% at 88% 12%, rgba(78, 96, 168, 0.32) 0%, rgba(78, 96, 168, 0) 60%),
+        radial-gradient(65% 60% at 20% 92%, rgba(56, 118, 166, 0.30) 0%, rgba(56, 118, 166, 0) 64%),
+        radial-gradient(60% 55% at 92% 88%, rgba(62, 132, 106, 0.24) 0%, rgba(62, 132, 106, 0) 62%);
+    }
+  }
+
+  :root[data-theme='dark'] .avrora {
+    background-image:
+      radial-gradient(60% 55% at 12% 8%, rgba(122, 78, 120, 0.30) 0%, rgba(122, 78, 120, 0) 62%),
+      radial-gradient(55% 50% at 88% 12%, rgba(78, 96, 168, 0.32) 0%, rgba(78, 96, 168, 0) 60%),
+      radial-gradient(65% 60% at 20% 92%, rgba(56, 118, 166, 0.30) 0%, rgba(56, 118, 166, 0) 64%),
+      radial-gradient(60% 55% at 92% 88%, rgba(62, 132, 106, 0.24) 0%, rgba(62, 132, 106, 0) 62%);
+  }
+
+  /* Harakat sezgirligi: rang qoladi, siljish to'xtaydi. */
+  @media (prefers-reduced-motion: reduce) {
+    .avrora {
+      animation: none;
+    }
+  }
+}
+
+@keyframes avrora-siljish {
+  0% {
+    background-position:
+      0% 0%,
+      100% 0%,
+      0% 100%,
+      100% 100%;
+  }
+  50% {
+    background-position:
+      18% 12%,
+      82% 16%,
+      14% 86%,
+      86% 82%;
+  }
+  100% {
+    background-position:
+      6% 22%,
+      94% 4%,
+      4% 96%,
+      96% 70%;
+  }
+}

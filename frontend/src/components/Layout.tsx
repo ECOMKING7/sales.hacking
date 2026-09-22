@@ -147,7 +147,14 @@ export default function Layout() {
   const initial = (workspace?.name ?? 'W').charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-screen bg-ground">
+    <div className="relative flex h-screen bg-ground">
+      {/* Qimirlaydigan fon — binafsha va havorang aralashmasi.
+          Alohida qatlam: panellar `.shisha` bilan shaffof va fon
+          ularning ORQASIDAN ko'rinib turadi. Agar fon `body` ga
+          qo'yilganda edi, `overflow-y-auto` bo'lgan `main` uni
+          kesib tashlardi. */}
+      <div aria-hidden className="avrora fixed inset-0 z-0" />
+
       {/* ── Ikon-rail: 62px desktop, mobilda 240px overlay ── */}
       <aside
         className={cn(
@@ -324,8 +331,9 @@ export default function Layout() {
       )}
 
       {/* Asosiy qism */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:px-8">
+      {/* `relative z-10` — fon qatlami ustida. Busiz avrora kontentni yopardi. */}
+      <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
+        <header className="shisha flex items-center justify-between border-b border-line px-4 py-3 md:px-8">
           <div className="flex items-center gap-3">
             <button
               className="text-ink-2 md:hidden"
