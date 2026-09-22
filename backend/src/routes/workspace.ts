@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as leadAds from '../controllers/leadAdsController';
 import * as telegram from '../controllers/telegramController';
+import { holatlar as integratsiyaHolatlari } from '../controllers/integratsiyalarController';
 import {
   listAdAccounts,
   selectAdAccount,
@@ -63,6 +64,10 @@ router.get('/meta-capi', verifyToken, metaCapiStatus);
 router.post('/meta-capi', verifyToken, metaCapiSave);
 // Sinov hodisasi — Events Manager > Test Events da ko'rinadi, statistikaga tushmaydi
 router.post('/meta-capi/test', verifyToken, metaCapiTest);
+
+// Sozlamalar to'ri: hamma ulanishning holati BITTA so'rovda.
+// Tashqi API chaqirilmaydi — faqat baza (integratsiyalarController).
+router.get('/integratsiyalar', verifyToken, integratsiyaHolatlari);
 
 // ---- Telegram: hisobot + sotuv xabari ----
 // Bot tokeni bu yerdan O'TMAYDI — faqat .env da (§4.1).

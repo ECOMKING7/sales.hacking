@@ -455,3 +455,27 @@ export interface TelegramKod {
   /** t.me/<bot>?startchannel=KOD — hujjatlashtirilmagan, sinov kerak. */
   kanalHavola: string | null;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   INTEGRATSIYALAR TO'RI — bitta so'rovda hamma ulanish holati
+
+   `nomalum` — "bilmaymiz", "yo'q" EMAS. Webhook va piksel holatini
+   bilish uchun tashqi so'rov kerak, u esa to'r uchun juda sekin.
+   Bilmagan narsani "ulangan" deb yozib qo'yish eng yomon variant.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export interface IntegratsiyaHolat {
+  holat: 'ok' | 'yoq' | 'nomalum';
+  /** Kartada belgi ostida turadigan bir qator. */
+  izoh: string | null;
+}
+
+export interface IntegratsiyaHolatlari {
+  facebook: IntegratsiyaHolat;
+  amocrm: IntegratsiyaHolat;
+  webhook: IntegratsiyaHolat;
+  leadAds: IntegratsiyaHolat;
+  capi: IntegratsiyaHolat;
+  telegram: IntegratsiyaHolat;
+  pixel: IntegratsiyaHolat;
+}

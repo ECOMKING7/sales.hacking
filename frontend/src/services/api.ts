@@ -21,6 +21,7 @@ import type {
   TelegramHolat,
   TelegramChat,
   TelegramKod,
+  IntegratsiyaHolatlari,
   WebhookRoyxat,
   WebhookTamin,
 } from '../types';
@@ -302,6 +303,9 @@ export const syncApi = {
 
 // ---- Workspace / SaaS ----
 export const workspaceApi = {
+  /** Sozlamalar to'ri: hamma ulanish holati bitta so'rovda (tashqi API chaqirilmaydi). */
+  integratsiyalar: () =>
+    api.get<IntegratsiyaHolatlari>('/api/workspace/integratsiyalar').then((r) => r.data),
   usage: () => api.get<Usage>('/api/workspace/usage').then((r) => r.data),
   members: () =>
     api.get<{ members: Member[] }>('/api/workspace/members').then((r) => r.data.members),
