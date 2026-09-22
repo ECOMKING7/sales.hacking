@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import {
   ChevronRight,
@@ -465,6 +465,50 @@ export default function EntityTable({
     : serverTotals ?? null;
   const showTotals = totals !== null && rows.length > 0;
 
+  /* ── Jadval balandligi ekranga bog'lanadi ────────────────────────
+     MUAMMO: balandlik `calc(100vh - 300px)` edi — doimiy son. Lekin
+     jadval ekranda QAYERDAN boshlanishi o'zgaruvchan: yuqorida
+     ogohlantirish banneri, KPI kartochkalari, asboblar qatori turadi
+     va ularning balandligi ekran kengligiga qarab o'zgaradi.
+
+     Natija: jadvalning PASTKI chekkasi ko'pincha ekrandan pastda
+     qolardi. `position: sticky; bottom: 0` esa KONTEYNER pastiga
+     yopishadi — ekran pastiga emas. Shuning uchun "Jami" qatori
+     texnik jihatdan ishlayotgan bo'lsa ham hech qachon ko'rinmasdi.
+
+     YECHIM: haqiqiy joylashuvni o'lchab, balandlikni shunga qarab
+     beramiz — jadval har doim aynan ekran pastida tugaydi.
+     Sahifa aylantirilganda `top` o'zgaradi, shuning uchun `scroll`
+     ham tinglanadi. */
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [maxH, setMaxH] = useState<number | null>(null);
+
+  const olchash = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const tepa = el.getBoundingClientRect().top;
+    // 16px — pastki nafas joyi, aks holda jadval ekran chetiga yopishadi.
+    const bolsa = Math.round(window.innerHeight - tepa - 16);
+    setMaxH(Math.max(280, bolsa));
+  }, []);
+
+  useLayoutEffect(() => {
+    olchash();
+    window.addEventListener('resize', olchash);
+    // `capture` — aylantirish ichki konteynerda bo'lsa ham eshitamiz.
+    window.addEventListener('scroll', olchash, true);
+    return () => {
+      window.removeEventListener('resize', olchash);
+      window.removeEventListener('scroll', olchash, true);
+    };
+  }, [olchash]);
+
+  // Qatorlar soni o'zgarsa tepadagi bloklar balandligi ham o'zgarishi
+  // mumkin (masalan ogohlantirish paydo bo'lishi) — qayta o'lchaymiz.
+  useEffect(() => {
+    olchash();
+  }, [olchash, rows.length, showTotals]);
+
   const cols = ALL_COLUMNS.filter((c) => c.always || visibleColumns.includes(c.key));
   const kunlikRejim = query.data?.vaqt?.rejim === 'kunlik';
   const entityLabel = view === 'campaigns' ? 'campaigns' : view === 'adsets' ? 'ad sets' : 'ads';
@@ -555,8 +599,12 @@ export default function EntityTable({
         kichik ekranda jadval yo'q bo'lib ketmasligi uchun.
       */}
       <TableWrap
+        ref={wrapRef}
+        style={maxH ? { maxHeight: maxH } : undefined}
         className={cn(
           'rounded-none border-0',
+          // `maxHeight` JS dan keladi; bu yerdagi qiymat faqat birinchi
+          // kadr uchun zaxira (o'lchashdan oldin).
           'max-h-[calc(100vh-300px)] min-h-[280px] overflow-auto overscroll-contain'
         )}
       >

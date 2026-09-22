@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import type { HTMLAttributes, ReactNode, ThHTMLAttributes, TdHTMLAttributes } from 'react';
 import { cn } from './cn';
 
@@ -7,23 +8,26 @@ import { cn } from './cn';
  * Raqamli ustunlarga <Td numeric> qo'ying: tabular-nums va o'ngga tekislash.
  */
 
-export function TableWrap({
-  className,
-  children,
-  ...rest
-}: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn(
-        'overflow-x-auto rounded-md border-[1.5px] border-line bg-surface',
-        className
-      )}
-      {...rest}
-    >
-      {children}
-    </div>
-  );
-}
+/**
+ * `forwardRef` — chaqiruvchi balandlikni o'lchashi uchun (EntityTable).
+ * Busiz `sticky bottom-0` ekrandan pastda qolib ko'rinmasdi.
+ */
+export const TableWrap = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  function TableWrap({ className, children, ...rest }, ref) {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'overflow-x-auto rounded-md border-[1.5px] border-line bg-surface',
+          className
+        )}
+        {...rest}
+      >
+        {children}
+      </div>
+    );
+  }
+);
 
 export function Table({ className, children, ...rest }: HTMLAttributes<HTMLTableElement>) {
   return (
