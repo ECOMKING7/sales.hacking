@@ -274,66 +274,110 @@ export default function TelegramSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   ULANISH KODI — uch yo'l
+   ULANISH — "qayerga xabar kelsin?"
 
-   Uchalasi ham bitta kodni ishlatadi. Farqi faqat qulaylikda:
-   tugma bosilsa Telegram o'zi ochiladi va kodni O'ZI yuboradi;
-   qo'lda yozish esa topik uchun yagona yo'l.
+   ⚠ BIRINCHI VERSIYA CHALKASH EDI va buni foydalanuvchi aytdi:
+   "bu kodni qayerga yuboraman?". Sabab — kod eng tepada katta harflarda
+   turardi, ya'ni ekran "kodni biror joyga yuboring" deb ko'rsatardi.
+   Aslida esa kodni HECH QAYERGA yozish shart emas: tugma bosilsa
+   Telegram deep link o'zi `/start KOD` yuboradi.
+
+   Shuning uchun tuzilish teskari qilindi:
+     1. Savol  — "Qayerga hisobot kelsin?"
+     2. Uchta tanlov, har birining ostida natijasi bir qatorda
+     3. Kod — pastda, YOPIQ bo'limda, faqat topik uchun
+
+   Qoida: ekran foydalanuvchiga NIMA QILISHINI ko'rsatsin, tizim ichida
+   nima borligini emas.
    ═══════════════════════════════════════════════════════════════════════ */
-function KodPaneli({ kod }: { kod: TelegramKod }) {
-  return (
-    <div className="mb-4 rounded-sm border-[1.5px] border-ok/30 bg-ok/10 px-3 py-3 text-xs text-ink">
-      <p className="mb-3">
-        Kod: <span className="font-bold tracking-widest">{kod.kod}</span>{' '}
-        <span className="text-ink-2">({kod.daqiqa} daqiqa, bir marta)</span>
-      </p>
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        {kod.havola && (
-          <a
-            className="rounded-sm border-[1.5px] border-line-2 bg-surface px-2.5 py-1.5 text-ink hover:border-accent/40"
-            href={kod.havola}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Menga shaxsiy
-          </a>
-        )}
-        {kod.guruhHavola && (
-          <a
-            className="rounded-sm border-[1.5px] border-accent/40 bg-accent/15 px-2.5 py-1.5 text-accent"
-            href={kod.guruhHavola}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Guruhga qo'shish
-          </a>
-        )}
-        {kod.kanalHavola && (
-          <a
-            className="rounded-sm border-[1.5px] border-line-2 bg-surface px-2.5 py-1.5 text-ink hover:border-accent/40"
-            href={kod.kanalHavola}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Kanalga qo'shish
-          </a>
-        )}
+const YOLLAR = [
+  {
+    kalit: 'shaxsiy' as const,
+    belgi: '👤',
+    nom: 'Menga shaxsiy',
+    izoh: 'Telegram ochiladi → "Start" bosasiz → tayyor',
+  },
+  {
+    kalit: 'guruh' as const,
+    belgi: '👥',
+    nom: 'Guruhga',
+    izoh: "Guruhlar ro'yxati ochiladi → tanlaysiz → tayyor",
+  },
+  {
+    kalit: 'kanal' as const,
+    belgi: '📢',
+    nom: 'Kanalga',
+    izoh: "Kanallar ro'yxati → tanlaysiz → botni admin qilasiz",
+  },
+];
+
+function KodPaneli({ kod }: { kod: TelegramKod }) {
+  const [qolda, setQolda] = useState(false);
+
+  const havola = (k: 'shaxsiy' | 'guruh' | 'kanal') =>
+    k === 'shaxsiy' ? kod.havola : k === 'guruh' ? kod.guruhHavola : kod.kanalHavola;
+
+  return (
+    <div className="mb-4 rounded-sm border-[1.5px] border-ok/30 bg-ok/10 p-3">
+      <p className="mb-3 text-sm font-semibold text-ink">Qayerga hisobot kelsin?</p>
+
+      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+        {YOLLAR.map((y) => {
+          const h = havola(y.kalit);
+          if (!h) return null;
+          return (
+            <a
+              key={y.kalit}
+              href={h}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                'block rounded-sm border-[1.5px] bg-surface px-3 py-2.5 transition-colors',
+                'border-line-2 hover:border-accent/50'
+              )}
+            >
+              <span className="block text-sm font-semibold text-ink">
+                {y.belgi} {y.nom}
+              </span>
+              <span className="mt-0.5 block text-xs leading-snug text-ink-2">{y.izoh}</span>
+            </a>
+          );
+        })}
       </div>
 
-      <p className="mb-1 text-ink-2">
-        "Guruhga qo'shish" — Telegram guruhlar ro'yxatini ochadi, tanlaysiz, bot o'zi
-        qo'shiladi va kodni o'zi yuboradi.
+      <p className="text-xs text-ink-2">
+        Tugmani bosish yetarli — <b className="text-ink">kodni hech qayerga yozmaysiz</b>,
+        Telegram uni o'zi yuboradi.
       </p>
-      <p className="mb-1 text-ink-2">
-        <b className="text-ink">Topikli guruh</b> yoki qo'lda ulash uchun: botni qo'shing va
-        kerakli topik ichida <code>{kod.guruhUchun}</code> deb yozing. Hisobot aynan o'sha
-        topikka tushadi.
-      </p>
-      <p className="text-ink-2">
-        <b className="text-ink">Kanal</b>: bot administrator bo'lishi va "Post yuborish"
-        huquqiga ega bo'lishi kerak.
-      </p>
+
+      <button
+        type="button"
+        onClick={() => setQolda((v) => !v)}
+        className="mt-2 text-xs text-ink-2 underline underline-offset-2 hover:text-ink"
+      >
+        {qolda ? '− Yashirish' : "+ Topikli guruh yoki qo'lda ulash"}
+      </button>
+
+      {qolda && (
+        <div className="mt-2 rounded-sm border-[1.5px] border-line bg-surface px-3 py-2.5 text-xs text-ink-2">
+          <p className="mb-2">
+            Guruhda <b className="text-ink">Topics</b> yoqilgan bo'lsa, yuqoridagi tugma
+            botni umumiy topikka qo'shadi. Hisobot aynan kerakli topikka tushishi uchun:
+          </p>
+          <p className="mb-1">1. Botni guruhga qo'shing</p>
+          <p className="mb-2">
+            2. Kerakli topik ichida shuni yozing:
+            <code className="mt-1 block rounded-sm border border-line bg-surface-2 px-2 py-1.5 font-mono text-ink">
+              {kod.guruhUchun}
+            </code>
+          </p>
+          <p>
+            Kod {kod.daqiqa} daqiqa amal qiladi va bir marta ishlaydi. Muddati o'tsa
+            "Kod olish" ni qayta bosing.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
