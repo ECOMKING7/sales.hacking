@@ -11,7 +11,10 @@
  * serverning `.env` ida (`TELEGRAM_BOT_TOKEN`) — §4.1.
  *
  * Ulanish kodi — VAQTINCHALIK PAROL: uni bilgan odam shu akkauntning
- * sotuv summalarini o'z telegramiga ulaydi. 15 daqiqa, bir marta.
+ * sotuv summalarini o'z telegramiga ulaydi. 15 daqiqa amal qiladi va
+ * shu oyna ichida uchala yo'l uchun ham ishlaydi (shaxsiy · guruh ·
+ * kanal) — chunki ekranda uchta tugma turibdi va odam uchalasini ham
+ * bosishi tabiiy.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Send } from 'lucide-react';
@@ -373,8 +376,9 @@ function KodPaneli({ kod }: { kod: TelegramKod }) {
             </code>
           </p>
           <p>
-            Kod {kod.daqiqa} daqiqa amal qiladi va bir marta ishlaydi. Muddati o'tsa
-            "Kod olish" ni qayta bosing.
+            Bitta kod uchala yo'l uchun ham ishlaydi — {kod.daqiqa} daqiqa ichida
+            shaxsiy chatni ham, guruhni ham, kanalni ham ulashingiz mumkin. Muddati
+            o'tsa "Kod olish" ni qayta bosing.
           </p>
         </div>
       )}

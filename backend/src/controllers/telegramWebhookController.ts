@@ -291,10 +291,19 @@ async function holat(chatId: string, threadId: string | null): Promise<void> {
 /**
  * Kodni tekshiradi va chatni bog'laydi.
  *
- * ⚠ KOD BIR MARTALIK. `UPDATE ... WHERE ishlatilgan IS NULL RETURNING`
- * — bitta so'rovda tekshirish va band qilish. Ikki qadamga bo'lsak
- * (avval SELECT, keyin UPDATE) bir vaqtda kelgan ikki xabar bitta
- * kodni ikki marta ishlatishi mumkin edi.
+ * ⚠ KOD BIR MARTALIK EMAS — MUDDATLI (15 daqiqa).
+ *
+ * Avval bir martalik edi va bu ekrandagi va'daga zid edi: "Kod olish"
+ * uchta tugma beradi (shaxsiy · guruh · kanal), ya'ni odam uchalasini
+ * ham bosishini kutadi. Bir martalik kodda birinchisi ishlaydi,
+ * qolgan ikkitasi "kod yaroqsiz" deydi — foydalanuvchi esa nima
+ * noto'g'ri qilganini tushunmaydi.
+ *
+ * Xavfsizlikka ta'siri chegaralangan: kod baribir 15 daqiqada o'ladi,
+ * ya'ni oyna o'zgarmadi — faqat shu oyna ichida bir nechta chat
+ * ulanishi mumkin. Bu aynan kutilgan xatti-harakat.
+ *
+ * `ishlatilgan` endi qulf emas — OXIRGI ishlatilgan vaqt (diagnostika).
  */
 async function ulash(
   chatId: string,
@@ -305,7 +314,7 @@ async function ulash(
   const { rows } = await pool.query<{ workspace_id: string }>(
     `UPDATE telegram_kodlar
         SET ishlatilgan = now()
-      WHERE kod = $1 AND ishlatilgan IS NULL AND amal_qiladi > now()
+      WHERE kod = $1 AND amal_qiladi > now()
       RETURNING workspace_id`,
     [kod]
   );
