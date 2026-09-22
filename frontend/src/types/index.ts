@@ -387,3 +387,53 @@ export interface WebhookTamin {
   begona: Array<{ host: string; hodisalar: string[] }>;
   xabar: string;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TELEGRAM — hisobot va sotuv xabari
+
+   ⚠ Bot tokeni bu tiplarda YO'Q va bo'lmaydi: u faqat serverning
+   .env ida (§4.1). Frontend faqat "sozlangan / sozlanmagan" ni biladi.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export interface TelegramMetrika {
+  kalit: string;
+  yorliq: string;
+  tur: string;
+}
+
+export interface TelegramChat {
+  id: string;
+  chat_id: string;
+  nom: string | null;
+  tur: string | null;
+  /** 'HH:MM:SS' yoki null — hisobot o'chirilgan. */
+  hisobot_vaqti: string | null;
+  vaqt_zonasi: string;
+  hisobot_davri: string;
+  metrikalar: string[];
+  tafsilot: string;
+  tafsilot_soni: number;
+  sotuv_xabari: boolean;
+  faol: boolean;
+  oxirgi_xato: string | null;
+  oxirgi_yuborildi: string | null;
+  oxirgi_hisobot: string | null;
+}
+
+export interface TelegramHolat {
+  botSozlangan: boolean;
+  botNomi: string | null;
+  webhook: { manzil: string | null; kutilayotgan: number; oxirgiXato: string | null };
+  chatlar: TelegramChat[];
+  metrikalar: TelegramMetrika[];
+  davrlar: string[];
+  tafsilotlar: string[];
+}
+
+export interface TelegramKod {
+  kod: string;
+  daqiqa: number;
+  botNomi: string | null;
+  havola: string | null;
+  guruhUchun: string;
+}

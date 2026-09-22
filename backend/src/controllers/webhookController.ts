@@ -13,6 +13,7 @@ import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
 import { leadIdniOl, extractLine, type LeadIdManbasi } from '../services/amocrmFields';
 import { lidReklamasiniTop } from '../services/metaLeadAds';
+import { sotuvXabariniYubor } from '../services/telegramSotuv';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
 import { xatoQayd } from '../utils/xatolar';
@@ -351,6 +352,12 @@ async function handleLeadStatus(
       );
       if (rows[0]) {
         await processLeadAttribution(rows[0].id, workspaceId);
+
+        /* Telegram xabari — ATRIBUSIYADAN KEYIN.
+           processLeadAttribution `last_click_ad_id` ni yozadi; undan
+           oldin chaqirilsa har sotuv "reklama aniqlanmadi" bo'lib
+           ketadi. Funksiya o'zi fail-soft — throw qilmaydi. */
+        await sotuvXabariniYubor(workspaceId, rows[0].id);
       }
       // Fresh won deal — invalidate cached dashboard overviews.
       await cacheDelPattern(overviewCachePattern(workspaceId));

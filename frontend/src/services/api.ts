@@ -18,6 +18,9 @@ import type {
   CurrencyState,
   FieldReport,
   LeadAdsStatus,
+  TelegramHolat,
+  TelegramChat,
+  TelegramKod,
   WebhookRoyxat,
   WebhookTamin,
 } from '../types';
@@ -319,5 +322,31 @@ export const attributionApi = {
   reprocess: (leadId: string, model?: string) =>
     api
       .post(`/api/attribution/reprocess/${leadId}`, model ? { model } : {})
+      .then((r) => r.data),
+};
+
+// ---- Telegram: hisobot + sotuv xabari ----
+// Bot tokeni bu yerdan O'TMAYDI — u faqat serverning .env ida (§4.1).
+export const telegramApi = {
+  status: () => api.get<TelegramHolat>('/api/workspace/telegram').then((r) => r.data),
+  /** Bir martalik ulanish kodi (15 daqiqa). */
+  kod: () => api.post<TelegramKod>('/api/workspace/telegram/kod').then((r) => r.data),
+  /** Telegram'ga webhook manzilini aytadi. Idempotent. */
+  webhook: () =>
+    api
+      .post<{ ok: boolean; manzil: string; xato: string | null }>(
+        '/api/workspace/telegram/webhook'
+      )
+      .then((r) => r.data),
+  yangila: (id: string, payload: Partial<TelegramChat>) =>
+    api.patch<TelegramChat>(`/api/workspace/telegram/chat/${id}`, payload).then((r) => r.data),
+  ochir: (id: string) =>
+    api.delete(`/api/workspace/telegram/chat/${id}`).then((r) => r.data),
+  /** Aynan rejali hisobotning o'zini yuboradi — boshqa matn emas. */
+  sinov: (id: string) =>
+    api
+      .post<{ success: boolean; xato: string | null }>(
+        `/api/workspace/telegram/chat/${id}/sinov`
+      )
       .then((r) => r.data),
 };

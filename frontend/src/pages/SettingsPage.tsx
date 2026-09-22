@@ -13,6 +13,7 @@ import MetaCapiSection from '../components/settings/MetaCapiSection';
 import LeadAdsSection from '../components/settings/LeadAdsSection';
 import WebhookSection from '../components/settings/WebhookSection';
 import PixelSection from '../components/settings/PixelSection';
+import TelegramSection from '../components/settings/TelegramSection';
 
 export default function SettingsPage() {
   const params = new URLSearchParams(window.location.search);
@@ -38,6 +39,7 @@ export default function SettingsPage() {
       <WebhookSection />
       <LeadAdsSection />
       <MetaCapiSection />
+      <TelegramSection />
       <PixelSection />
     </div>
   );

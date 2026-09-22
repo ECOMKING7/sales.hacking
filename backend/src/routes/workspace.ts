@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as leadAds from '../controllers/leadAdsController';
+import * as telegram from '../controllers/telegramController';
 import {
   listAdAccounts,
   selectAdAccount,
@@ -62,6 +63,15 @@ router.get('/meta-capi', verifyToken, metaCapiStatus);
 router.post('/meta-capi', verifyToken, metaCapiSave);
 // Sinov hodisasi — Events Manager > Test Events da ko'rinadi, statistikaga tushmaydi
 router.post('/meta-capi/test', verifyToken, metaCapiTest);
+
+// ---- Telegram: hisobot + sotuv xabari ----
+// Bot tokeni bu yerdan O'TMAYDI — faqat .env da (§4.1).
+router.get('/telegram', verifyToken, telegram.status);
+router.post('/telegram/kod', verifyToken, telegram.kodYarat);
+router.post('/telegram/webhook', verifyToken, telegram.webhookniOrnat);
+router.patch('/telegram/chat/:id', verifyToken, telegram.chatYangila);
+router.delete('/telegram/chat/:id', verifyToken, telegram.chatOchir);
+router.post('/telegram/chat/:id/sinov', verifyToken, telegram.sinov);
 
 // Workspace management
 router.get('/list', verifyToken, listWorkspaces);

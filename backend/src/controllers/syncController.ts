@@ -8,6 +8,7 @@ import { fbUsage } from '../services/fbRateLimit';
 import { ensureFreshFxRates } from '../services/fxRates';
 import { importChunk } from '../services/amocrmImport';
 import { bolakniYukla } from '../services/kunlikInsights';
+import { hisobotlarniYubor } from '../services/telegramHisobot';
 import { runInBackground } from '../utils/background';
 import { xatoQayd, xatolarniYubor } from '../utils/xatolar';
 
@@ -253,10 +254,31 @@ async function hammaniSinxronla(): Promise<{
   durationMs: number;
   pool: ReturnType<typeof poolStats>;
   fbUsage: ReturnType<typeof fbUsage>;
+  telegram: { tekshirildi: number; yuborildi: number; xato: number };
   results: Array<{ workspaceId: string; ok: boolean; error?: string }>;
 }> {
   const startedAt = Date.now();
   const results: Array<{ workspaceId: string; ok: boolean; error?: string }> = [];
+
+  /**
+   * ⚠ TELEGRAM HISOBOTI SINXRONDAN OLDIN.
+   *
+   * Mantiqan keyin bo'lishi kerakdek tuyuladi — "avval yangi raqam
+   * olamiz, keyin yuboramiz". Lekin sinxron 134 soniya (o'lchangan) va
+   * Vercel chegarasi 300s: ikkinchi mijoz qo'shilishi bilan funksiya
+   * sinxronning o'rtasida uziladi va hisobot HECH QACHON ishga
+   * tushmaydi — jim, xatosiz.
+   *
+   * Hisobot esa 2–3 soniya. Oldinga qo'yilsa har doim ketadi.
+   * Yo'qotish: raqamlar 30 daqiqa eski. Hisobot "kecha" ni ko'rsatadi,
+   * kechagi xarajat esa o'zgarmaydi — amalda farq nol.
+   */
+  let telegram = { tekshirildi: 0, yuborildi: 0, xato: 0 };
+  try {
+    telegram = await hisobotlarniYubor();
+  } catch (err) {
+    xatoQayd(err, { joy: 'sync-cron', qoshimcha: { bosqich: 'telegram' } });
+  }
 
   // Serverless'da ichki cron yo'q, shuning uchun kurs ham shu tetikdan
   // yangilanadi. Kurs yangi bo'lsa tashqi so'rov yuborilmaydi.
@@ -296,6 +318,7 @@ async function hammaniSinxronla(): Promise<{
     // Facebook aniq chaqiruvlar sonini bermaydi — limitning necha foizi
     // ishlatilganini beradi. Bloklangan bo'lsa regainMinutes to'ladi.
     fbUsage: fbUsage(),
+    telegram,
     results,
   };
 }
