@@ -18,7 +18,20 @@ interface DateRange {
 
 function parseRange(req: Request): DateRange {
   const now = new Date();
-  const toRaw = req.query.to ? new Date(String(req.query.to)) : now;
+  /**
+   * ⚠ `to=2026-09-23` — bu KUN, bir lahza emas.
+   *
+   * `new Date('2026-09-23')` UTC yarim tunni beradi, ya'ni o'sha kunning
+   * o'zi oraliqdan tushib qoladi. Shuning uchun yalang sana kelsa
+   * ertangi yarim tun olinadi (oxiri ochiq oraliq). Bu faqat
+   * `revenueGrowth` ga ta'sir qiladi — qolgan hamma raqam `kunOraliq`
+   * dan keladi.
+   */
+  const toStr = String(req.query.to ?? '');
+  const toRaw = req.query.to
+    ? new Date(KUN_RE.test(toStr) ? `${toStr}T00:00:00.000Z` : toStr)
+    : now;
+  if (req.query.to && KUN_RE.test(toStr)) toRaw.setUTCDate(toRaw.getUTCDate() + 1);
   const to = isNaN(toRaw.getTime()) ? now : toRaw;
   const fromRaw = req.query.from
     ? new Date(String(req.query.from))
@@ -150,12 +163,34 @@ interface KunOraliq {
  * bu esa faqat so'rovda `from`/`to` bo'lsa. Ya'ni "tanlanmagan" va
  * "oxirgi 30 kun tanlangan" farqlanadi — birinchisi butun davr degani.
  */
-function kunOraliq(req: Request): KunOraliq | null {
-  const f = String(req.query.from ?? '').slice(0, 10);
-  const t = String(req.query.to ?? '').slice(0, 10);
-  if (!KUN_RE.test(f) || !KUN_RE.test(t)) return null;
-  if (f > t) return null;
-  return { from: f, to: t };
+type KunNatija = { xato: null; oraliq: KunOraliq | null } | { xato: string; oraliq: null };
+
+/**
+ * ⚠ ISO VAQT BELGISI QABUL QILINMAYDI — bu jim xatoning manbai edi.
+ *
+ * Ilgari bu yerda `.slice(0, 10)` turardi. Frontend `overview` ga
+ * `from=2026-08-23T19:00:00.000Z` (Toshkent 24-avgust 00:00 ning UTC
+ * ko'rinishi) yuborardi, jadvalga esa `from=2026-08-24`. Kesish natijasi
+ * `2026-08-23` — ya'ni kartochka jadvaldan BIR KUN ortiqcha hisoblardi.
+ * Ekranda "$36 sarflandi" va pastda "Jami $14" turardi; farq — 22-avgust.
+ *
+ * Kesish xato emas, TAXMIN edi: qaysi vaqt zonasida ekanini bilmay
+ * turib UTC deb qabul qilardi. Endi taxmin qilmaydi — 400 qaytaradi.
+ * Shovqinli xato jim noto'g'ri raqamdan arzon.
+ */
+function kunOraliq(req: Request): KunNatija {
+  const f = String(req.query.from ?? '');
+  const t = String(req.query.to ?? '');
+  // Ikkalasi ham yo'q — oraliq tanlanmagan, butun davr.
+  if (!f && !t) return { xato: null, oraliq: null };
+  if (!KUN_RE.test(f) || !KUN_RE.test(t)) {
+    return {
+      xato: `from/to faqat YYYY-MM-DD bo'lishi mumkin (kelgani: from=${f}, to=${t})`,
+      oraliq: null,
+    };
+  }
+  if (f > t) return { xato: 'from sanasi to dan keyin', oraliq: null };
+  return { xato: null, oraliq: { from: f, to: t } };
 }
 
 /** Kunlik jadval qaysi oraliqni qamragan. */
@@ -333,7 +368,12 @@ export async function overview(req: Request, res: Response): Promise<void> {
     return;
   }
   const range = parseRange(req);
-  const o = kunOraliq(req);
+  const sana = kunOraliq(req);
+  if (sana.xato) {
+    res.status(400).json({ error: sana.xato });
+    return;
+  }
+  const o = sana.oraliq;
 
   const key = overviewCacheKey(workspaceId, range.from, range.to);
   const cached = await cacheGet(key);
@@ -526,7 +566,12 @@ export async function campaigns(req: Request, res: Response): Promise<void> {
   const sortCol = ENTITY_SORTS[sortKey] ?? 'spend';
   const order = String(req.query.order ?? 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-  const o = kunOraliq(req);
+  const sana = kunOraliq(req);
+  if (sana.xato) {
+    res.status(400).json({ error: sana.xato });
+    return;
+  }
+  const o = sana.oraliq;
   const params: unknown[] = [workspaceId];
   let where = 'WHERE workspace_id = $1';
   if (req.query.status) {
@@ -595,7 +640,12 @@ async function listEntities(
     return;
   }
   const { limit, offset, page } = paginate(req);
-  const o = kunOraliq(req);
+  const sana = kunOraliq(req);
+  if (sana.xato) {
+    res.status(400).json({ error: sana.xato });
+    return;
+  }
+  const o = sana.oraliq;
   const sortCol = ENTITY_SORTS[String(req.query.sort ?? 'spend')] ?? 'spend';
   const order = String(req.query.order ?? 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 

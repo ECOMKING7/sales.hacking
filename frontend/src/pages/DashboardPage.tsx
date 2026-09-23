@@ -94,12 +94,32 @@ export default function DashboardPage() {
   const fbStatus = useQuery({ queryKey: ['fb-status'], queryFn: facebookApi.status });
   const adAccountId = fbStatus.data?.adAccountId ?? null;
 
+  /**
+   * ⚠ KPI VA JADVAL BIR XIL SANANI YUBORISHI SHART.
+   *
+   * `range` ichida ISO timestamp turadi (`2026-09-22T19:00:00.000Z` —
+   * Toshkent yarim tuni). Backend esa `from` ning birinchi 10 belgisini
+   * kesib oladi, ya'ni UTC sanasini: `2026-09-22`. Jadval esa allaqachon
+   * `kunlikOraliq()` orqali MAHALLIY sana yuborardi: `2026-09-23`.
+   *
+   * Natija: bitta ekranda ikki xil oraliq. "23-sentabr" tanlansa KPI
+   * 22+23 ni qo'shardi ($36), jadval faqat 23 ni ($14). Hech qayerda
+   * xato chiqmasdi — ikkala raqam ham ishonarli ko'rinadi.
+   *
+   * Shuning uchun `kun` endi bu yerda, so'rovdan OLDIN hisoblanadi va
+   * ikkala so'rov ham shundan oziqlanadi.
+   *
+   * "Maximum" — sana filtri YO'Q degani: `kun = null`, backendga sana
+   * yuborilmaydi va u butun davr ustunlaridan o'qiydi.
+   */
+  const kun = preset === 'maximum' ? null : kunlikOraliq(range);
+
   const overview = useQuery({
     // Ad account kalitga kiradi: aks holda akkaunt almashtirilganda React Query
     // eski javobni qaytaraveradi (staleTime 5 daqiqa) va dashboard boshqa
     // akkauntning raqamlarini ko'rsatadi.
-    queryKey: ['overview', adAccountId, range.from, range.to, model],
-    queryFn: () => dashboardApi.overview(range.from, range.to),
+    queryKey: ['overview', adAccountId, kun?.from ?? null, kun?.to ?? null, model],
+    queryFn: () => dashboardApi.overview(kun?.from, kun?.to),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -146,13 +166,6 @@ export default function DashboardPage() {
    */
   const fbVal = d?.currency?.fb ?? null;
   const crmVal = d?.currency?.crm ?? null;
-
-  /**
-   * "Maximum" — sana filtri YO'Q degani, 37 oylik oraliq emas.
-   * Shuning uchun u holda backendga sana yuborilmaydi va u eski
-   * (butun davr) ustunlaridan o'qiydi.
-   */
-  const kun = preset === 'maximum' ? null : kunlikOraliq(range);
 
   const cards: KpiSpec[] = [
     { title: 'Amount Spent', value: formatMoney(d?.amountSpent, fbVal) },
