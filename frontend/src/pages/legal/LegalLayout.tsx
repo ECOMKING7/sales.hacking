@@ -8,7 +8,7 @@
  * Shuning uchun `App.tsx` da bu yo'llar `ProtectedRoute` dan TASHQARIDA
  * turadi. Ularni Layout ichiga ko'chirish — review'ni buzish demak.
  */
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { HUQUQIY, huquqiyQator } from '../../config/huquqiy';
@@ -22,6 +22,25 @@ interface Props {
 }
 
 export default function LegalLayout({ sarlavha, izoh, children }: Props) {
+  /**
+   * ⚠ BRAUZER SARLAVHASI SAHIFAGA MOS BO'LSIN.
+   *
+   * `index.html` da yagona `<title>` turadi va SPA uni o'zgartirmaydi.
+   * Natijada maxfiylik sahifasi ochilganda ham eski sarlavha ko'rinadi.
+   * Meta tekshiruvchisi URL va sarlavhani birga skrinshot qiladi —
+   * ikkalasi mos kelmasa savol tug'iladi.
+   *
+   * react-helmet qo'shilmadi: bitta `useEffect` yetarli bo'lganda
+   * kutubxona qo'shish — ortiqcha bog'liqlik.
+   */
+  useEffect(() => {
+    const eski = document.title;
+    document.title = `${sarlavha} — ${HUQUQIY.mahsulot}`;
+    return () => {
+      document.title = eski;
+    };
+  }, [sarlavha]);
+
   return (
     <div className="min-h-screen bg-ground">
       <header className="border-b-[1.5px] border-line">

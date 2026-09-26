@@ -173,11 +173,11 @@ export default function PrivacyPage() {
       <Bolim raqam={7} nom="Qancha muddat saqlanadi">
         <p>
           Mijoz akkaunti faol turgan davrda. Akkaunt o'chirilganda unga tegishli hamma
-          yozuv o'chiriladi — 4-bo'limga qarang:{' '}
+          yozuv o'chiriladi. Qanday so'rash kerakligi{' '}
           <a href="/data-deletion" className="text-accent hover:underline">
             Ma'lumotlarni o'chirish
-          </a>
-          .
+          </a>{' '}
+          sahifasida yozilgan.
         </p>
       </Bolim>
 
