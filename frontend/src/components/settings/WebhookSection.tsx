@@ -56,7 +56,16 @@ export default function WebhookSection() {
     }
   };
 
-  const ishlaydi = (royxat?.bizniki ?? 0) > 0 && (royxat?.yetishmayotgan.length ?? 1) === 0;
+  /**
+   * ⚠ "ISHLAYAPTI" UCHUN IKKI SHART, BITTASI EMAS.
+   *
+   * Obuna bor bo'lishi yetmaydi — 2026-09-19 da obuna ro'yxatda
+   * turardi-yu, bizga hech narsa kelmasdi va bu OYLAB sezilmadi.
+   * Shuning uchun yashil belgi faqat REAL SIGNAL kelganda chiqadi.
+   */
+  const obunaBor = (royxat?.bizniki ?? 0) > 0 && (royxat?.yetishmayotgan.length ?? 1) === 0;
+  const signalBor = Boolean(royxat?.signal?.oxirgi);
+  const ishlaydi = obunaBor && signalBor;
   const begona = (royxat?.webhooklar ?? []).filter((w) => !w.bizniki && !w.ochirilgan);
 
   return (
@@ -70,6 +79,9 @@ export default function WebhookSection() {
             <Badge tone="ok" dot>
               Ishlayapti
             </Badge>
+          ) : obunaBor ? (
+            // Obuna bor, signal yo'q — eng xavfli holat, "yo'q" emas.
+            <Badge tone="warn">Signal yo'q</Badge>
           ) : (
             <Badge tone="bad">Ro'yxatda yo'q</Badge>
           )
@@ -93,6 +105,18 @@ export default function WebhookSection() {
           </p>
 
           <dl className="mb-5">
+            {/* Eng muhim qator eng tepada: obuna emas, SIGNAL. */}
+            <StatRow
+              label="Oxirgi signal"
+              value={
+                royxat?.signal?.oxirgi
+                  ? `${vaqtMatni(royxat.signal.oxirgi)}${
+                      royxat.signal.turi ? ` — ${royxat.signal.turi}` : ''
+                    }`
+                  : 'hech qachon kelmagan'
+              }
+            />
+            <StatRow label="Jami qabul qilingan" value={royxat?.signal?.soni ?? 0} />
             <StatRow label="Jami webhook" value={royxat?.jami ?? 0} />
             <StatRow label="Bizniki" value={royxat?.bizniki ?? 0} />
             {(royxat?.yetishmayotgan.length ?? 0) > 0 && (
@@ -148,6 +172,21 @@ export default function WebhookSection() {
       )}
     </Card>
   );
+}
+
+/**
+ * "hozirgina" / "12 daqiqa oldin" / "3 soat oldin" / "6 kun oldin".
+ * Noto'g'ri sana kelsa — o'zini qaytaradi, yiqilmaydi.
+ */
+function vaqtMatni(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return iso;
+  const daq = Math.floor(ms / 60_000);
+  if (daq < 1) return 'hozirgina';
+  if (daq < 60) return `${daq} daqiqa oldin`;
+  const soat = Math.floor(daq / 60);
+  if (soat < 24) return `${soat} soat oldin`;
+  return `${Math.floor(soat / 24)} kun oldin`;
 }
 
 /** `https://host/yo'l?secret=***` → `host`. URL bo'lmasa o'zini qaytaradi. */

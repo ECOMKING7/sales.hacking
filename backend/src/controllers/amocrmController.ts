@@ -617,6 +617,25 @@ export async function saveLeadIdField(req: Request, res: Response): Promise<void
    FAQAT O'QIYDI (§4.3). Hech narsa yozmaydi, o'chirmaydi, ulamaydi.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/** ISO vaqtdan hozirgacha necha to'liq kun. Noto'g'ri sana → 0. */
+function kunFarqi(iso: string): number {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.floor(ms / 86_400_000);
+}
+
+/** "12 daqiqa oldin" / "3 soat oldin" / "6 kun oldin". */
+function vaqtMatni(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return iso;
+  const daq = Math.floor(ms / 60_000);
+  if (daq < 1) return 'hozirgina';
+  if (daq < 60) return `${daq} daqiqa oldin`;
+  const soat = Math.floor(daq / 60);
+  if (soat < 24) return `${soat} soat oldin`;
+  return `${Math.floor(soat / 24)} kun oldin`;
+}
+
 interface AmoWebhook {
   id?: number;
   destination?: string;
@@ -658,6 +677,32 @@ export async function listWebhooks(req: Request, res: Response): Promise<void> {
       (h) => !bizniki_lar.some((w) => w.hodisalar.includes(h))
     );
 
+    /**
+     * ⚠ RO'YXAT ≠ ISHLAYAPTI.
+     *
+     * Yuqoridagi tekshiruv amoCRM "obuna bor" deganini aytadi, xolos.
+     * Haqiqatan signal kelayotganini faqat BIZNING baza biladi —
+     * `oxirgi_webhook` (migratsiya 040). Ikkalasi birga ko'rsatiladi:
+     * "obuna bor, lekin 6 kundan beri jim" — bu eng xavfli holat va
+     * faqat shu ikki manbani solishtirganda ko'rinadi.
+     */
+    const { rows: sig } = await pool.query<{
+      oxirgi: string | null;
+      turi: string | null;
+      soni: string;
+    }>(
+      `SELECT oxirgi_webhook::text AS oxirgi,
+              oxirgi_webhook_turi  AS turi,
+              webhook_soni::text   AS soni
+         FROM workspaces WHERE id = $1`,
+      [req.user.workspaceId]
+    );
+    const signal = {
+      oxirgi: sig[0]?.oxirgi ?? null,
+      turi: sig[0]?.turi ?? null,
+      soni: Number(sig[0]?.soni ?? 0),
+    };
+
     let xulosa: string;
     if (royxat.length === 0) {
       xulosa =
@@ -666,12 +711,25 @@ export async function listWebhooks(req: Request, res: Response): Promise<void> {
       xulosa = `${royxat.length} ta webhook bor, lekin BIZNIKI YO'Q (yoki o'chirilgan). Mavjudlari boshqa integratsiyalarniki.`;
     } else if (yetishmayotgan.length > 0) {
       xulosa = `Bizning webhook bor, lekin shu hodisalarga obuna emas: ${yetishmayotgan.join(', ')}. Obuna bo'lmagan hodisa umuman kelmaydi.`;
-    } else {
+    } else if (signal.oxirgi === null) {
+      // Obuna bor, lekin bizga hali BIROR MARTA ham signal kelmagan.
+      // Aynan shu holat 2026-09-19 da oylab sezilmasdan turgan edi.
       xulosa =
-        "Bizning webhook bor va kerakli hodisalarga obuna. Demak yangi lid kelganda CAPI ishga tushishi kerak.";
+        "Obuna bor, lekin bizga HALI BIROR MARTA signal kelmagan. Obuna yangi bo'lsa — birinchi lid yoki etap o'zgarishini kuting. Aks holda amoCRM bizga yetkazmayapti.";
+    } else if (kunFarqi(signal.oxirgi) >= 7) {
+      xulosa = `Obuna bor, lekin oxirgi signal ${kunFarqi(signal.oxirgi)} kun oldin kelgan. CRM'da shu davrda harakat bo'lgan bo'lsa — yetkazish buzilgan.`;
+    } else {
+      xulosa = `Ishlayapti: oxirgi signal ${vaqtMatni(signal.oxirgi)}, jami ${signal.soni} ta qabul qilingan.`;
     }
 
-    res.json({ jami: royxat.length, bizniki: bizniki_lar.length, yetishmayotgan, xulosa, webhooklar: royxat });
+    res.json({
+      jami: royxat.length,
+      bizniki: bizniki_lar.length,
+      yetishmayotgan,
+      xulosa,
+      webhooklar: royxat,
+      signal,
+    });
   } catch (err) {
     const e = err as Error & { status?: number };
     if (e.status === 400 || e.status === 403) {

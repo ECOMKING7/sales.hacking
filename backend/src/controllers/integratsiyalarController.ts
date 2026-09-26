@@ -56,6 +56,38 @@ interface Qator {
   meta_dataset_id: string | null;
   telegram_chatlar: string;
   telegram_faol: string;
+  oxirgi_webhook: string | null;
+}
+
+/**
+ * WEBHOOK HOLATI — endi TAXMIN EMAS, FAKT.
+ *
+ * Ilgari bu yerda `'nomalum'` turardi: "amoCRM'ga so'rov kerak, karta
+ * ochilganda aniqlanadi". Bu to'g'ri edi — obunani bilish uchun
+ * haqiqatan tashqi so'rov kerak. Lekin obuna bor-yo'qligi **eng
+ * muhim savol emas**: muhimi signal KELAYAPTIMI.
+ *
+ * Migratsiya 040 dan keyin buni bazadan bilamiz — tashqi so'rovsiz.
+ *
+ * ⚠ 7 KUN — chegara, hukm emas. Kam lidli akkauntda bir hafta jimlik
+ * normal bo'lishi mumkin, shuning uchun matn FAKT aytadi ("N kun
+ * oldin"), "buzilgan" demaydi. Qaror odamniki.
+ */
+function webhookHolati(amoUlangan: boolean, oxirgi: string | null): IntegratsiyaHolat {
+  if (!amoUlangan) return { holat: 'yoq', izoh: 'Avval amoCRM ulansin' };
+  if (!oxirgi) {
+    return { holat: 'ogoh', izoh: 'Hali birorta signal kelmagan' };
+  }
+  const kun = Math.floor((Date.now() - new Date(oxirgi).getTime()) / 86_400_000);
+  if (kun >= 7) {
+    return { holat: 'ogoh', izoh: `Oxirgi signal ${kun} kun oldin` };
+  }
+  if (kun >= 1) return { holat: 'ok', izoh: `Oxirgi signal ${kun} kun oldin` };
+  const soat = Math.floor((Date.now() - new Date(oxirgi).getTime()) / 3_600_000);
+  return {
+    holat: 'ok',
+    izoh: soat >= 1 ? `Oxirgi signal ${soat} soat oldin` : 'Signal hozirgina keldi',
+  };
 }
 
 export async function holatlar(req: Request, res: Response): Promise<void> {
@@ -74,6 +106,7 @@ export async function holatlar(req: Request, res: Response): Promise<void> {
             w.fb_lead_token,
             w.meta_capi_enabled,
             w.meta_dataset_id,
+            w.oxirgi_webhook::text AS oxirgi_webhook,
             (SELECT COUNT(*) FROM telegram_chats t
               WHERE t.workspace_id = w.id)                    AS telegram_chatlar,
             (SELECT COUNT(*) FROM telegram_chats t
@@ -118,11 +151,7 @@ export async function holatlar(req: Request, res: Response): Promise<void> {
           : "Sotuv etaplari belgilanmagan — daromad 0 ko'rinadi"
         : null,
     },
-    webhook: {
-      // amoCRM'ga so'rov kerak — karta ochilganda aniqlanadi.
-      holat: amoUlangan ? 'nomalum' : 'yoq',
-      izoh: amoUlangan ? 'Tekshirish uchun oching' : 'Avval amoCRM ulansin',
-    },
+    webhook: webhookHolati(amoUlangan, w.oxirgi_webhook),
     leadAds: {
       holat: w.fb_lead_token ? 'ok' : 'yoq',
       izoh: w.fb_lead_token ? 'System User tokeni saqlangan' : 'Token kiritilmagan',

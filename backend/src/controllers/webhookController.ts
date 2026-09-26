@@ -455,6 +455,46 @@ async function processWebhookBody(
 // Shu oraliqda ulgursak — javobdan oldin tugatamiz (eng ishonchli yo'l).
 const WEBHOOK_DEADLINE_MS = Number(process.env.WEBHOOK_DEADLINE_MS ?? 8000);
 
+/**
+ * Body ichida qanday hodisalar bor — inson o'qiydigan qatorda.
+ * Masalan: `leads.status, contacts.add`.
+ */
+function hodisaTurlari(body: AmoWebhookBody): string {
+  const turlar: string[] = [];
+  if (body.leads?.add?.length) turlar.push(`leads.add×${body.leads.add.length}`);
+  if (body.leads?.status?.length) turlar.push(`leads.status×${body.leads.status.length}`);
+  if (body.contacts?.add?.length) turlar.push(`contacts.add×${body.contacts.add.length}`);
+  return turlar.join(', ') || 'bo\'sh';
+}
+
+/**
+ * SIGNAL QAYDI — "CRM bizga xabar berdi" faktini bazaga yozish.
+ *
+ * ⚠ ISHLOVDAN OLDIN yoziladi, ataylab. Maqsad — signal KELGANINI
+ * bilish. Agar ishlov xato bersa ham, yoki deadline'dan oshib ketsa
+ * ham, signalning o'zi kelganini bilishimiz kerak: "kelmadi" va
+ * "keldi-yu ishlamadi" — butunlay boshqa ikki muammo va ularni
+ * chalkashtirish bir kun yo'qotadi.
+ *
+ * ⚠ FAIL-SOFT. Bu yozuv tashxis uchun, atribusiya uchun emas. Baza
+ * javob bermasa webhook baribir ishlashda davom etadi — tashxis
+ * yozuvi tufayli real lid yo'qolishi mumkin emas.
+ */
+async function signalQaydEt(workspaceId: string, turlar: string): Promise<void> {
+  try {
+    await pool.query(
+      `UPDATE workspaces
+          SET oxirgi_webhook = now(),
+              oxirgi_webhook_turi = $2,
+              webhook_soni = webhook_soni + 1
+        WHERE id = $1`,
+      [workspaceId, turlar.slice(0, 200)]
+    );
+  } catch (err) {
+    console.warn('webhook signal qayd etilmadi:', (err as Error).message);
+  }
+}
+
 // ---- POST /api/webhooks/amocrm ----
 export async function amocrmWebhook(req: Request, res: Response): Promise<void> {
   const body = req.body as AmoWebhookBody;
@@ -476,6 +516,9 @@ export async function amocrmWebhook(req: Request, res: Response): Promise<void> 
     res.status(200).json({ ok: true, processed: false });
     return;
   }
+
+  // Signal keldi. Ishlov natijasidan qat'i nazar shu fakt yoziladi.
+  await signalQaydEt(workspace.id, hodisaTurlari(body));
 
   /**
    * ⚠ SERVERLESS: oldin kod "200 qaytar → keyin async qayta ishla" qilardi.

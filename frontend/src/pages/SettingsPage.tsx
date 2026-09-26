@@ -60,6 +60,10 @@ interface Tarif {
  * amoCRM'ga, Lead Ads esa Facebook'ga tayanadi. Yangi integratsiya
  * qo'shilganda ham shu mantiqqa qo'yiladi.
  *
+ * ⚠ Bu ASOSIY tartib, EKRANDAGI tartib emas. Ekranda kartalar avval
+ * holat bo'yicha guruhlanadi (pastdagi `kartalar` izohiga qarang), bu
+ * ro'yxat esa bir xil holatdagilar orasida tartibni belgilaydi.
+ *
  * ⚠ lucide v1 da brend belgilari olib tashlangan (Facebook, Telegram
  * yo'q) — shuning uchun umumiy belgilar ishlatiladi.
  */
@@ -139,6 +143,44 @@ export default function SettingsPage() {
     void load();
   }, [load]);
 
+  /**
+   * ⚠ UMUMIY QOIDA — HOLATGA EGA HAR QANDAY TO'R/RO'YXAT SHUNDAY TARTIBLANADI.
+   *
+   * Bir xil holatdagi kartalar YONMA-YON turadi. Aralash tartib
+   * (ulangan · ulangan · tekshirilmagan · ulangan · ulangan · ulangan)
+   * ko'zni har kartada qayta ishlashga majbur qiladi — odam "nima
+   * qilishim kerak?" degan savolga darhol javob ololmaydi.
+   *
+   * Guruhlangan tartibda esa bitta qarash yetadi: yashil blok — tegmaysiz,
+   * undan keyingisi — ish bor.
+   *
+   * Tartib mantiqi: AVVAL TUGAGANLAR, KEYIN ISH TALAB QILADIGANLAR.
+   *   1. ok       — ulangan, ishlayapti
+   *   2. ogoh     — ulangan, lekin yarim ishlaydi (eng shoshilinch ish)
+   *   3. yoq      — ulanmagan, ulash mumkin
+   *   4. nomalum  — bilmaymiz, ochib tekshirish kerak
+   *
+   * ⚠ `sort` BARQAROR (ES2019+): bir xil holatdagilar `TARIFLAR` dagi
+   * o'rnatish ketma-ketligini saqlaydi — Facebook har doim amoCRM'dan
+   * oldin turadi.
+   *
+   * ⚠ Holatlar hali yuklanmagan bo'lsa TARTIBLANMAYDI. Aks holda
+   * kartalar yuklangandan keyin sakrab joyini almashtiradi va odam
+   * bosmoqchi bo'lgan karta qo'l ostidan qochadi.
+   */
+  const kartalar = useMemo(() => {
+    if (!holatlar) return TARIFLAR;
+    const RANG: Record<IntegratsiyaHolat['holat'], number> = {
+      ok: 0,
+      ogoh: 1,
+      yoq: 2,
+      nomalum: 3,
+    };
+    // Backend yangi kalitni hali qaytarmasa — oxiriga, yiqilmasdan.
+    const r = (k: Kalit) => RANG[holatlar[k]?.holat ?? 'nomalum'];
+    return [...TARIFLAR].sort((a, b) => r(a.kalit) - r(b.kalit));
+  }, [holatlar]);
+
   const tanlangan = useMemo(() => TARIFLAR.find((t) => t.kalit === ochiq) ?? null, [ochiq]);
 
   const yop = () => {
@@ -163,7 +205,7 @@ export default function SettingsPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {TARIFLAR.map((t) => (
+        {kartalar.map((t) => (
           <IntegratsiyaKartasi
             key={t.kalit}
             tarif={t}

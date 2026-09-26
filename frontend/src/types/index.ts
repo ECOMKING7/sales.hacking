@@ -370,6 +370,16 @@ export interface WebhookRoyxat {
   bizniki: number;
   yetishmayotgan: string[];
   xulosa: string;
+  /**
+   * ⚠ RO'YXAT ≠ ISHLAYAPTI. Yuqoridagi maydonlar amoCRM "obuna bor"
+   * deganini aytadi; bu esa bizga HAQIQATAN signal kelganini aytadi.
+   * `oxirgi: null` — hech qachon kelmagan.
+   */
+  signal: {
+    oxirgi: string | null;
+    turi: string | null;
+    soni: number;
+  };
   webhooklar: Array<{
     id: number | null;
     manzil: string;
