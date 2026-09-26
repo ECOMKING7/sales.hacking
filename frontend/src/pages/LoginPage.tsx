@@ -81,6 +81,23 @@ export default function LoginPage() {
             Register
           </Link>
         </p>
+
+        {/*
+          ⚠ Huquqiy havolalar OCHIQ sahifada turishi kerak. Meta
+          tekshiruvchisi ularni loginsiz topa olishi shart — kirish
+          ortiga yashirilgan siyosat "yo'q" bilan barobar.
+        */}
+        <nav className="mt-5 flex justify-center gap-4 text-xs text-ink-3">
+          <Link to="/privacy" className="hover:text-ink-2">
+            Maxfiylik
+          </Link>
+          <Link to="/terms" className="hover:text-ink-2">
+            Shartlar
+          </Link>
+          <Link to="/data-deletion" className="hover:text-ink-2">
+            Ma'lumotni o'chirish
+          </Link>
+        </nav>
       </Card>
     </div>
   );

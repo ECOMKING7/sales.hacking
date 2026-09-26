@@ -11,6 +11,9 @@ import PurchasesPage from './pages/PurchasesPage';
 import OnboardingPage from './pages/OnboardingPage';
 import UpgradePage from './pages/UpgradePage';
 import PlaceholderPage from './pages/PlaceholderPage';
+import PrivacyPage from './pages/legal/PrivacyPage';
+import TermsPage from './pages/legal/TermsPage';
+import DataDeletionPage from './pages/legal/DataDeletionPage';
 import { ToastHost } from './components/ui';
 
 function App() {
@@ -28,6 +31,17 @@ function App() {
         path="/register"
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
       />
+
+      {/*
+        ⚠ HUQUQIY SAHIFALAR — OCHIQ, LOGINSIZ.
+        Meta / amoCRM / Bitrix24 tekshiruvchilari bu manzillarni akkauntsiz
+        ochadi. Agar ular login sahifasiga yo'naltirsa — review RAD ETILADI.
+        Shuning uchun ular `ProtectedRoute` dan TASHQARIDA turadi va
+        `*` yo'nalishidan OLDIN e'lon qilinadi.
+      */}
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/data-deletion" element={<DataDeletionPage />} />
 
       {/* Onboarding is protected but outside the main Layout (full-screen wizard) */}
       <Route
