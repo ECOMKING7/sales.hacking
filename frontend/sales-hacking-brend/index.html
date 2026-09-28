@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preload" href="/fonts/lato-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/schibsted-grotesk-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <!--
+      ⚠ BITTA BREND NOMI. Meta App Review formasida yoziladigan nom
+      sahifadagi nom bilan MOS bo'lishi shart — nomuvofiqlik rad
+      etishning ko'p uchraydigan sababi. Domen, GitHub repo va Vercel
+      loyihasi allaqachon "sales hacking", shuning uchun shu nom asos.
+      O'zgartirilsa — `src/config/huquqiy.ts` dagi `mahsulot` ham birga.
+    -->
+    <title>Sales Hacking</title>
+    <!-- Tema — birinchi bo'yoqdan oldin. Standart yorug': OS qorong'i
+         rejimda bo'lsa ham platforma yorug' ochiladi. -->
+    <script>
+      (function () {
+        var t = 'light';
+        try {
+          var v = localStorage.getItem('ap-theme');
+          if (v === 'dark' || v === 'light') t = v;
+        } catch (e) {
+          /* incognito / bloklangan localStorage */
+        }
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.style.colorScheme = t;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
