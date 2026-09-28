@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  BarChart3,
   Check,
   Database,
   ExternalLink,
@@ -106,12 +105,7 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center bg-ground px-4 py-10">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex justify-center">
-          <span
-            aria-hidden
-            className="grid h-12 w-12 place-items-center rounded-md border-[1.5px] border-edge bg-tint text-accent shadow-glow-sm"
-          >
-            <BarChart3 className="h-6 w-6" />
-          </span>
+          <img src="/logo-192.png" alt="Sales Hacking" className="h-12 w-12" />
         </div>
 
         <Steps step={step} />

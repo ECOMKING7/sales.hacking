@@ -1,6 +1,5 @@
 import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3 } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { Button, Card, Input } from '../components/ui';
@@ -41,7 +40,7 @@ export default function LoginPage() {
           {/* Kvadrat ikonka o'rniga brend orbi: uchinchi rang shu yerda
               birinchi marta ko'rinadi. */}
           <Orb size={112} className="mb-2">
-            <BarChart3 className="h-7 w-7 text-accent" />
+            <img src="/logo-192.png" alt="Sales Hacking" className="h-14 w-14" />
           </Orb>
           <h1 className="text-xl font-bold text-ink">Welcome back</h1>
           <p className="mt-1 text-sm text-ink-2">Sign in to your Attribution account</p>

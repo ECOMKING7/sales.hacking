@@ -1,6 +1,5 @@
 import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3 } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { Button, Card, Input } from '../components/ui';
@@ -74,12 +73,11 @@ export default function RegisterPage() {
       <ThemeToggle variant="inline" className="absolute right-4 top-4" />
       <Card padding="lg" className="w-full max-w-sm">
         <div className="mb-7 flex flex-col items-center text-center">
-          <span
-            aria-hidden
-            className="mb-3 grid h-12 w-12 place-items-center rounded-md border-[1.5px] border-edge bg-tint text-accent shadow-glow-sm"
-          >
-            <BarChart3 className="h-6 w-6" />
-          </span>
+          <img
+            src="/logo-192.png"
+            alt="Sales Hacking"
+            className="mb-3 h-12 w-12"
+          />
           <h1 className="text-xl font-bold text-ink">Create account</h1>
           <p className="mt-1 text-sm text-ink-2">Start attributing your revenue</p>
         </div>
