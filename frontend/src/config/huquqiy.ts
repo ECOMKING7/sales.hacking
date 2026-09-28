@@ -68,10 +68,10 @@ export const HUQUQIY: HuquqiyMalumot = {
   // TODO: o'z domeningizda privacy@ ochilgach almashtiring.
   email: 'abdurohmanmurad@gmail.com',
 
-  // TODO: o'z domeningiz ulangach almashtiring.
-  domen: 'sales-hacking-web.vercel.app',
+  // Asosiy domen (ahost.uz → Vercel). Meta va amoCRM formalarida ham shu.
+  domen: 'www.mcqueen.uz',
 
-  yangilandi: '2026-09-26',
+  yangilandi: '2026-09-28',
 };
 
 /** `https://domen/yo'l` — sahifalarda havola qurish uchun. */
