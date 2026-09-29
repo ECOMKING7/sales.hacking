@@ -1,10 +1,20 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { pool } from '../db/pool';
-import { signOAuthState, verifyOAuthState } from '../utils/jwt';
+import {
+  signOAuthState,
+  verifyOAuthState,
+  signAmoClaim,
+  verifyAmoClaim,
+} from '../utils/jwt';
+import { encrypt, decrypt } from '../utils/encryption';
 import {
   generateAuthURL,
   exchangeCodeForTokens,
+  resolveConnectCredentials,
+  credentialsForKind,
+  requestTokens,
+  saveTokens,
   getPipelines,
   saveCredentials,
   amoGetPath,
@@ -12,6 +22,11 @@ import {
 import { discoverLeadFields, type MaydonTahlili } from '../services/amocrmFields';
 import { bizniki, hostAjrat } from '../services/webhookIdentity';
 import { webhookniTaminla } from '../services/webhookTaminla';
+import {
+  ensureAmoPublicSchema,
+  publicCreds,
+  validAmoDomain,
+} from '../services/amocrmPublic';
 
 function frontendUrl(): string {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -23,12 +38,14 @@ export async function connect(req: Request, res: Response): Promise<void> {
     res.status(400).json({ error: 'No workspace associated with this account' });
     return;
   }
-  const state = signOAuthState({
-    userId: req.user.userId,
-    workspaceId: req.user.workspaceId,
-  });
   try {
-    res.json({ url: await generateAuthURL(req.user.workspaceId, state) });
+    const creds = await resolveConnectCredentials(req.user.workspaceId);
+    const state = signOAuthState({
+      userId: req.user.userId,
+      workspaceId: req.user.workspaceId,
+      amo: creds.kind,
+    });
+    res.json({ url: await generateAuthURL(creds.clientId, state) });
   } catch (err) {
     // Kalitlar yo'q — foydalanuvchiga nima qilishni aytamiz.
     res.status(400).json({
@@ -50,14 +67,22 @@ export async function callback(req: Request, res: Response): Promise<void> {
     redirectTo('denied');
     return;
   }
-  if (!code || !state || !referer) {
+  const domain = validAmoDomain(referer);
+  if (!code || !domain) {
     redirectTo('error');
     return;
   }
 
+  // state yo'q — o'rnatish amoMarket'dan boshlangan (bizning tugmadan emas).
+  if (!state) {
+    await marketplaceInstall(req, res, code, domain);
+    return;
+  }
+
   let workspaceId: string | null;
+  let amoKind: OAuthKind | undefined;
   try {
-    ({ workspaceId } = verifyOAuthState(state));
+    ({ workspaceId, amo: amoKind } = verifyOAuthState(state));
   } catch {
     redirectTo('error');
     return;
@@ -68,8 +93,24 @@ export async function callback(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    // `referer` is the account domain, e.g. "example.amocrm.ru".
-    await exchangeCodeForTokens(code, referer, workspaceId);
+    // Ulanish qaysi kalit bilan boshlangan bo'lsa — o'sha bilan almashtiramiz.
+    const creds = await credentialsForKind(workspaceId, amoKind);
+
+    // Ommaviy integratsiyada bitta amoCRM boshqa workspace'da band bo'lmasin (§3.7).
+    if (creds.kind === 'public') {
+      const taken = await pool.query<{ id: string }>(
+        `SELECT id FROM workspaces
+          WHERE amocrm_domain = $1 AND amocrm_access_token IS NOT NULL AND id <> $2
+          LIMIT 1`,
+        [domain, workspaceId]
+      );
+      if (taken.rows[0]) {
+        redirectTo('taken');
+        return;
+      }
+    }
+
+    await exchangeCodeForTokens(code, domain, workspaceId, creds);
 
     // Webhook siri bo'lmasa yasaymiz — keyingi qadam unga tayanadi.
     await pool.query(
@@ -90,9 +131,217 @@ export async function callback(req: Request, res: Response): Promise<void> {
 
     redirectTo('connected');
   } catch (err) {
-    console.error('amocrm callback error:', err);
+    // axios xatosi config.data ichida client_secret va code'ni olib yuradi —
+    // butun obyektni log'ga yozmaymiz, faqat holat va sabab.
+    const amo = (err as { response?: { status?: number; data?: { hint?: string } } }).response;
+    console.error('amocrm callback error:', {
+      status: amo?.status ?? null,
+      hint: amo?.data?.hint ?? (err as Error).message,
+    });
     redirectTo('error');
   }
+}
+
+type OAuthKind = 'public' | 'private' | 'legacy';
+
+/** O'rnatish natijasi sahifasi (loginsiz ochiladi). */
+function installPage(res: Response, query: Record<string, string>): void {
+  res.redirect(`${frontendUrl()}/amocrm/install?${new URLSearchParams(query).toString()}`);
+}
+
+/**
+ * amoMarket'dan o'rnatish. Bu yerda bizda foydalanuvchi YO'Q —
+ * shuning uchun tokenlar vaqtincha `amocrm_pending_installs` ga yoziladi
+ * (shifrlangan) va brauzer imzolangan da'vo kaliti bilan saytga
+ * yuboriladi. Foydalanuvchi kirgach /claim orqali biriktiradi.
+ *
+ * Kod 20 daqiqa yashaydi — shuning uchun uni shu zahoti almashtiramiz,
+ * foydalanuvchi ro'yxatdan o'tguncha kutib turmaymiz.
+ */
+async function marketplaceInstall(
+  _req: Request,
+  res: Response,
+  code: string,
+  domain: string
+): Promise<void> {
+  const pub = publicCreds();
+  if (!pub) {
+    console.error('amocrm install: AMOCRM_PUBLIC_CLIENT_ID/SECRET sozlanmagan');
+    installPage(res, { error: 'not_configured' });
+    return;
+  }
+
+  try {
+    await ensureAmoPublicSchema();
+    const t = await requestTokens(code, domain, pub);
+
+    // Bir domen — bitta kutilayotgan o'rnatma. Qayta o'rnatilsa yangilanadi.
+    const { rows } = await pool.query<{ id: string }>(
+      `INSERT INTO amocrm_pending_installs (domain, access_token, refresh_token, expires_at)
+       VALUES ($1, $2, $3, now() + make_interval(secs => $4::int))
+       ON CONFLICT (domain) DO UPDATE
+         SET id            = gen_random_uuid(),  -- eski da'vo kaliti yangi tokenga ishlamasin
+             access_token  = EXCLUDED.access_token,
+             refresh_token = EXCLUDED.refresh_token,
+             expires_at    = EXCLUDED.expires_at,
+             created_at    = now()
+       RETURNING id`,
+      [domain, encrypt(t.access_token), encrypt(t.refresh_token), t.expires_in]
+    );
+
+    // Da'vo kaliti 15 daqiqa yashaydi — undan keyin yozuvdan foyda yo'q,
+    // shifrlangan token ham bazada ortiqcha turmasin. Zaxira bilan 2 soat.
+    // (amoCRM kodni serverdan-serverga yuborsa, foydalanuvchi baribir
+    // saytdagi "Ulash" tugmasi orqali ulaydi — bu yozuv kerak bo'lmaydi.)
+    await pool.query(
+      `DELETE FROM amocrm_pending_installs WHERE created_at < now() - interval '2 hours'`
+    );
+
+    installPage(res, { claim: signAmoClaim(rows[0].id), domain });
+  } catch (err) {
+    const amo = (err as { response?: { status?: number; data?: { hint?: string } } }).response;
+    // Kod/token hech qachon log'ga tushmaydi.
+    console.error('amocrm marketplace install failed:', {
+      domain,
+      status: amo?.status ?? null,
+      hint: amo?.data?.hint ?? (err as Error).message,
+    });
+    installPage(res, { error: 'exchange_failed' });
+  }
+}
+
+// ---- POST /api/auth/amocrm/claim (protected) ----
+const claimSchema = z.object({ claim: z.string().min(20).max(2000) });
+
+export async function claimInstall(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    // 401 emas: frontend 401 ni "sessiya tugadi" deb logout qiladi.
+    res.status(400).json({ error: 'Create a workspace first, then open the link again.' });
+    return;
+  }
+
+  const parsed = claimSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'claim is required' });
+    return;
+  }
+
+  let pid: string;
+  try {
+    ({ pid } = verifyAmoClaim(parsed.data.claim));
+  } catch {
+    res.status(400).json({
+      error: 'Link expired. Open the integration in amoCRM and install it again.',
+    });
+    return;
+  }
+
+  // Sxema tranzaksiyadan OLDIN — ichkarida pool'ga murojaat bo'lmasin.
+  try {
+    await ensureAmoPublicSchema();
+  } catch (err) {
+    console.error('amocrm claim schema:', (err as Error).message);
+    res.status(500).json({ error: 'Could not connect amoCRM. Try again.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  let domain: string;
+  try {
+    await client.query('BEGIN');
+
+    // DELETE ... RETURNING birinchi: ikki parallel so'rovdan faqat BITTASI
+    // yozuvni oladi. Aks holda bitta refresh token ikki workspace'ga
+    // tushadi, birinchi yangilash uni aylantiradi va ikkinchisi jim o'ladi.
+    const { rows } = await client.query<{
+      domain: string;
+      access_token: string;
+      refresh_token: string;
+      expires_at: Date;
+    }>(
+      `DELETE FROM amocrm_pending_installs WHERE id = $1
+       RETURNING domain, access_token, refresh_token, expires_at`,
+      [pid]
+    );
+    const p = rows[0];
+    if (!p) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'Installation not found or already connected.' });
+      return;
+    }
+    domain = p.domain;
+
+    // §3.7 izolyatsiya: bitta amoCRM — bitta workspace. Webhook domen
+    // bo'yicha yo'naltiriladi; ikki workspace bir domenda bo'lsa lidlar
+    // aralashib ketadi.
+    const taken = await client.query<{ id: string }>(
+      `SELECT id FROM workspaces
+        WHERE amocrm_domain = $1 AND amocrm_access_token IS NOT NULL AND id <> $2
+        LIMIT 1`,
+      [p.domain, workspaceId]
+    );
+    if (taken.rows[0]) {
+      await client.query('ROLLBACK');
+      res.status(409).json({
+        error: `${p.domain} is already connected to another workspace.`,
+      });
+      return;
+    }
+
+    // Workspace boshqa amoCRM'ga ulangan bo'lsa — jimgina almashtirmaymiz.
+    const cur = await client.query<{
+      amocrm_domain: string | null;
+      amocrm_access_token: string | null;
+    }>(
+      `SELECT amocrm_domain, amocrm_access_token FROM workspaces WHERE id = $1 FOR UPDATE`,
+      [workspaceId]
+    );
+    const w = cur.rows[0];
+    if (w?.amocrm_access_token && w.amocrm_domain && w.amocrm_domain !== p.domain) {
+      await client.query('ROLLBACK');
+      res.status(409).json({
+        error: `This workspace is already connected to ${w.amocrm_domain}. Create a new workspace for ${p.domain}.`,
+      });
+      return;
+    }
+
+    const expiresInSec = Math.max(
+      0,
+      Math.floor((new Date(p.expires_at).getTime() - Date.now()) / 1000)
+    );
+    await saveTokens(
+      workspaceId,
+      p.domain,
+      { access: decrypt(p.access_token), refresh: decrypt(p.refresh_token), expiresInSec },
+      'public',
+      client
+    );
+    await client.query(
+      `UPDATE workspaces
+          SET amocrm_webhook_secret = replace(gen_random_uuid()::text, '-', '')
+        WHERE id = $1 AND amocrm_webhook_secret IS NULL`,
+      [workspaceId]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error('amocrm claim failed:', (err as Error).message);
+    res.status(500).json({ error: 'Could not connect amoCRM. Try again.' });
+    return;
+  } finally {
+    client.release();
+  }
+
+  // Webhook tranzaksiyadan TASHQARIDA: tarmoq so'rovi, yiqilsa ulanish qoladi.
+  let webhook: Awaited<ReturnType<typeof webhookniTaminla>> | null = null;
+  try {
+    webhook = await webhookniTaminla(workspaceId, apiBaseUrl(req));
+  } catch (err) {
+    console.error('webhook taminlash xatosi:', (err as Error).message);
+  }
+
+  res.json({ success: true, domain, webhook });
 }
 
 // ---- POST /api/auth/amocrm/manual (protected) ----

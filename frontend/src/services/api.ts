@@ -96,6 +96,11 @@ export const amocrmApi = {
       .post<{ success: boolean; domain: string }>('/api/auth/amocrm/manual', payload)
       .then((r) => r.data),
   status: () => api.get<AmocrmStatus>('/api/workspace/amocrm-status').then((r) => r.data),
+  /** amoMarket'dan o'rnatilgan integratsiyani shu workspace'ga biriktiradi. */
+  claimInstall: (claim: string) =>
+    api
+      .post<{ success: boolean; domain: string }>('/api/auth/amocrm/claim', { claim })
+      .then((r) => r.data),
 
   /** Webhook ro'yxati — faqat o'qiydi. */
   webhooks: () =>

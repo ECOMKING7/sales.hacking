@@ -40,7 +40,7 @@ import PixelSection from '../components/settings/PixelSection';
 import TelegramSection from '../components/settings/TelegramSection';
 import { workspaceApi } from '../services/api';
 import type { IntegratsiyaHolat, IntegratsiyaHolatlari } from '../types';
-import { Badge, Modal, Skeleton, cn } from '../components/ui';
+import { Badge, Modal, Skeleton, cn, toast } from '../components/ui';
 
 type Kalit = keyof IntegratsiyaHolatlari;
 
@@ -142,6 +142,17 @@ export default function SettingsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /* amoCRM callback natijasi — xato bo'lsa foydalanuvchi jim qolmasin. */
+  const amoNatija = params.get('amocrm');
+  useEffect(() => {
+    const matn: Record<string, string> = {
+      taken: 'This amoCRM account is already connected to another workspace.',
+      denied: 'Access was not granted in amoCRM.',
+      error: 'amoCRM connection failed. Try again.',
+    };
+    if (amoNatija && matn[amoNatija]) toast.bad(matn[amoNatija]);
+  }, [amoNatija]);
 
   /**
    * ⚠ UMUMIY QOIDA — HOLATGA EGA HAR QANDAY TO'R/RO'YXAT SHUNDAY TARTIBLANADI.

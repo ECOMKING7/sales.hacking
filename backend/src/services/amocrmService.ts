@@ -4,6 +4,13 @@ import { pool } from '../db/pool';
 import { encrypt, decrypt } from '../utils/encryption';
 import { normalizePhoneE164 } from '../utils/phone';
 import {
+  ensureAmoPublicSchema,
+  isUndefinedColumn,
+  legacyRedirectUri,
+  publicCreds,
+  type ResolvedAmoCreds,
+} from './amocrmPublic';
+import {
   oraliqniKut,
   sovishHolati,
   sovishniBelgila,
@@ -13,11 +20,6 @@ import {
 
 const AUTH_BASE = 'https://www.amocrm.ru/oauth';
 
-function redirectUri(): string {
-  const v = process.env.AMOCRM_REDIRECT_URI;
-  if (!v) throw new Error('AMOCRM_REDIRECT_URI is not set');
-  return v;
-}
 
 /* ─────────────────────────────────────────────────────────────
    OAuth kalitlari: workspace'dan, .env fallback bilan.
@@ -89,6 +91,191 @@ export async function saveCredentials(
   );
 }
 
+/**
+ * MAVJUD token qaysi kalit bilan olingan bo'lsa — o'shani qaytaradi
+ * (yangilash uchun). `amocrm_oauth_client = 'public'` bo'lsa ommaviy
+ * integratsiya, aks holda eski xatti-harakat: workspace → .env.
+ */
+export async function resolveTokenCredentials(workspaceId: string): Promise<ResolvedAmoCreds> {
+  // DDL yo'q: bu yo'l furninglass'ning har kungi yangilanishi. Ustun hali
+  // yaratilmagan bo'lsa — demak ommaviy ulanish ham yo'q, eski yo'l.
+  let oauthClient: string | null = null;
+  try {
+    const { rows } = await pool.query<{ amocrm_oauth_client: string | null }>(
+      `SELECT amocrm_oauth_client FROM workspaces WHERE id = $1`,
+      [workspaceId]
+    );
+    oauthClient = rows[0]?.amocrm_oauth_client ?? null;
+  } catch (err) {
+    if (!isUndefinedColumn(err)) throw err;
+  }
+  if (oauthClient === 'public') {
+    const pub = publicCreds();
+    if (!pub) throw new Error('AMOCRM_PUBLIC_CLIENT_ID / SECRET sozlanmagan');
+    return pub;
+  }
+  const c = await loadCredentials(workspaceId);
+  return {
+    kind: envCredentials()?.clientId === c.clientId ? 'legacy' : 'private',
+    ...c,
+    redirectUri: legacyRedirectUri(),
+  };
+}
+
+/**
+ * YANGI ulanish uchun kalit tanlash ("Ulash" tugmasi):
+ *   workspace'da o'z kaliti bor → xususiy integratsiya;
+ *   yo'q va ommaviy sozlangan → amoMarket integratsiyasi;
+ *   aks holda → .env (eski yo'l).
+ *
+ * Ilgari kalitsiz workspace har doim .env ga tushardi — bu furninglass'ning
+ * xususiy integratsiyasi va boshqa akkauntda ishlamaydi.
+ */
+export async function resolveConnectCredentials(workspaceId: string): Promise<ResolvedAmoCreds> {
+  const { rows } = await pool.query<{
+    amocrm_client_id: string | null;
+    amocrm_client_secret: string | null;
+    amocrm_domain: string | null;
+  }>(
+    `SELECT amocrm_client_id, amocrm_client_secret, amocrm_domain
+       FROM workspaces WHERE id = $1`,
+    [workspaceId]
+  );
+  const ws = rows[0];
+  if (ws?.amocrm_client_id && ws.amocrm_client_secret) {
+    return {
+      kind: 'private',
+      clientId: ws.amocrm_client_id,
+      clientSecret: decrypt(ws.amocrm_client_secret),
+      redirectUri: legacyRedirectUri(),
+    };
+  }
+  const env = envCredentials();
+
+  // Allaqachon .env kaliti bilan ulangan workspace (furninglass) qayta
+  // ulansa ham ESKI kalitda qoladi — ommaviyga jimgina ko'chib ketmaydi.
+  if (ws?.amocrm_domain && env) {
+    let oauthClient: string | null = null;
+    try {
+      const r = await pool.query<{ amocrm_oauth_client: string | null }>(
+        `SELECT amocrm_oauth_client FROM workspaces WHERE id = $1`,
+        [workspaceId]
+      );
+      oauthClient = r.rows[0]?.amocrm_oauth_client ?? null;
+    } catch (err) {
+      if (!isUndefinedColumn(err)) throw err;
+    }
+    if (oauthClient !== 'public') {
+      return { kind: 'legacy', ...env, redirectUri: legacyRedirectUri() };
+    }
+  }
+
+  const pub = publicCreds();
+  if (pub) return pub;
+  if (env) return { kind: 'legacy', ...env, redirectUri: legacyRedirectUri() };
+  throw new Error("amoCRM kalitlari topilmadi: workspace'da ham, .env da ham yo'q");
+}
+
+/**
+ * Callback: ulanish QAYSI kalit bilan boshlangan bo'lsa (state.amo) —
+ * aynan o'shani qaytaradi. Oraliqda sozlama o'zgargan bo'lsa ham
+ * (masalan AMOCRM_PUBLIC_* endi qo'shilgan) boshqa kalitga o'tib ketmaydi.
+ */
+export async function credentialsForKind(
+  workspaceId: string,
+  kind: ResolvedAmoCreds['kind'] | undefined
+): Promise<ResolvedAmoCreds> {
+  if (kind === 'public') {
+    const pub = publicCreds();
+    if (!pub) throw new Error('AMOCRM_PUBLIC_CLIENT_ID / SECRET sozlanmagan');
+    return pub;
+  }
+  if (kind === 'legacy') {
+    const env = envCredentials();
+    if (!env) throw new Error('AMOCRM_CLIENT_ID / SECRET sozlanmagan');
+    return { kind: 'legacy', ...env, redirectUri: legacyRedirectUri() };
+  }
+  if (kind === 'private') {
+    const c = await loadCredentials(workspaceId);
+    return { kind: 'private', ...c, redirectUri: legacyRedirectUri() };
+  }
+  // Eski state (amo maydonisiz) — deploy'dan oldingi xatti-harakat.
+  return resolveConnectCredentialsPrivateFirst(workspaceId);
+}
+
+/** Kalit turini state/bazada saqlash uchun: faqat 'public' belgilanadi. */
+function oauthClientColumn(kind: AmoClientKindLike): string | null {
+  return kind === 'public' ? 'public' : null;
+}
+type AmoClientKindLike = ResolvedAmoCreds['kind'];
+
+export interface AmoTokens {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+/** Kodni tokenga almashtiradi, lekin HECH QAYERGA yozmaydi. */
+export async function requestTokens(
+  code: string,
+  domain: string,
+  creds: ResolvedAmoCreds
+): Promise<AmoTokens> {
+  const res = await axios.post<AmoTokens>(
+    `https://${domain}/oauth2/access_token`,
+    {
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: creds.redirectUri,
+    },
+    { timeout: 15_000 }
+  );
+  return res.data;
+}
+
+/** Tokenlarni workspace'ga yozadi va qaysi kalit ekanini belgilaydi. */
+export async function saveTokens(
+  workspaceId: string,
+  domain: string,
+  tokens: { access: string; refresh: string; expiresInSec: number },
+  kind: AmoClientKindLike,
+  db: { query: typeof pool.query } = pool
+): Promise<void> {
+  // Ommaviy yo'lda ustun SHART; eski yo'l esa DDL'siz ishlashi kerak.
+  // Tranzaksiya ichida (db !== pool) sxemani chaqiruvchi ta'minlagan bo'ladi —
+  // bu yerda pool'ga murojaat qilsak, max=1 pool'da o'zini kutib qoladi.
+  if (kind === 'public' && db === pool) await ensureAmoPublicSchema();
+
+  await db.query(
+    `UPDATE workspaces
+       SET amocrm_domain = $1,
+           amocrm_access_token = $2,
+           amocrm_refresh_token = $3,
+           amocrm_token_expires_at = now() + make_interval(secs => $4::int),
+           updated_at = now()
+     WHERE id = $5`,
+    [
+      domain,
+      encrypt(tokens.access),
+      encrypt(tokens.refresh),
+      Math.max(0, Math.floor(tokens.expiresInSec)),
+      workspaceId,
+    ]
+  );
+
+  try {
+    await db.query(`UPDATE workspaces SET amocrm_oauth_client = $1 WHERE id = $2`, [
+      oauthClientColumn(kind),
+      workspaceId,
+    ]);
+  } catch (err) {
+    // Ustun yo'q = ommaviy ulanish hech qachon bo'lmagan; NULL ma'nosi bir xil.
+    if (kind === 'public' || !isUndefinedColumn(err)) throw err;
+  }
+}
+
 // ---------- hashing ----------
 
 /**
@@ -115,10 +302,9 @@ export function hashEmail(email: string): string {
 // ---------- OAuth ----------
 
 export async function generateAuthURL(
-  workspaceId: string,
+  clientId: string,
   state: string
 ): Promise<string> {
-  const { clientId } = await loadCredentials(workspaceId);
   const params = new URLSearchParams({
     client_id: clientId,
     state,
@@ -136,38 +322,37 @@ interface TokenResponse {
 /**
  * Exchange an authorization code for tokens and persist them (encrypted) to the
  * workspace. `domain` is the account domain from the callback `referer` param.
+ * `creds` berilmasa — workspace/.env dagi kalit (xususiy integratsiya yo'li).
  */
 export async function exchangeCodeForTokens(
   code: string,
   domain: string,
-  workspaceId: string
+  workspaceId: string,
+  creds?: ResolvedAmoCreds
 ): Promise<void> {
-  const creds = await loadCredentials(workspaceId);
-
-  const res = await axios.post<TokenResponse>(`https://${domain}/oauth2/access_token`, {
-    client_id: creds.clientId,
-    client_secret: creds.clientSecret,
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: redirectUri(),
-  });
-
-  await pool.query(
-    `UPDATE workspaces
-       SET amocrm_domain = $1,
-           amocrm_access_token = $2,
-           amocrm_refresh_token = $3,
-           amocrm_token_expires_at = now() + make_interval(secs => $4::int),
-           updated_at = now()
-     WHERE id = $5`,
-    [
-      domain,
-      encrypt(res.data.access_token),
-      encrypt(res.data.refresh_token),
-      res.data.expires_in,
-      workspaceId,
-    ]
+  const c = creds ?? (await resolveConnectCredentialsPrivateFirst(workspaceId));
+  const t = await requestTokens(code, domain, c);
+  await saveTokens(
+    workspaceId,
+    domain,
+    { access: t.access_token, refresh: t.refresh_token, expiresInSec: t.expires_in },
+    c.kind
   );
+}
+
+/**
+ * manualConnect (qo'lda kod) har doim XUSUSIY integratsiya kodidir —
+ * ommaviy kalitga tushib qolmasin: workspace → .env.
+ */
+async function resolveConnectCredentialsPrivateFirst(
+  workspaceId: string
+): Promise<ResolvedAmoCreds> {
+  const c = await loadCredentials(workspaceId);
+  return {
+    kind: envCredentials()?.clientId === c.clientId ? 'legacy' : 'private',
+    ...c,
+    redirectUri: legacyRedirectUri(),
+  };
 }
 
 interface AmoWorkspaceRow {
@@ -213,7 +398,7 @@ export async function refreshAccessToken(workspaceId: string): Promise<string> {
   if (!ws.amocrm_domain || !ws.amocrm_refresh_token) {
     throw new Error('AmoCRM is not connected');
   }
-  const creds = await loadCredentials(workspaceId);
+  const creds = await resolveTokenCredentials(workspaceId);
 
   const res = await axios.post<TokenResponse>(
     `https://${ws.amocrm_domain}/oauth2/access_token`,
@@ -222,8 +407,9 @@ export async function refreshAccessToken(workspaceId: string): Promise<string> {
       client_secret: creds.clientSecret,
       grant_type: 'refresh_token',
       refresh_token: decrypt(ws.amocrm_refresh_token),
-      redirect_uri: redirectUri(),
-    }
+      redirect_uri: creds.redirectUri,
+    },
+    { timeout: 15_000 }
   );
 
   await pool.query(

@@ -15,6 +15,8 @@ import PrivacyPage from './pages/legal/PrivacyPage';
 import TermsPage from './pages/legal/TermsPage';
 import DataDeletionPage from './pages/legal/DataDeletionPage';
 import { ToastHost } from './components/ui';
+import AmoInstallPage from './pages/AmoInstallPage';
+import PendingAmoClaim from './components/PendingAmoClaim';
 
 function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -22,6 +24,7 @@ function App() {
   return (
     <>
       <ToastHost />
+      <PendingAmoClaim />
       <Routes>
       <Route
         path="/login"
@@ -42,6 +45,9 @@ function App() {
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/data-deletion" element={<DataDeletionPage />} />
+
+      {/* amoMarket'dan o'rnatilgandan keyin — loginsiz ochiladi. */}
+      <Route path="/amocrm/install" element={<AmoInstallPage />} />
 
       {/* Onboarding is protected but outside the main Layout (full-screen wizard) */}
       <Route
