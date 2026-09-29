@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { frontendUrl } from '../utils/frontendUrl';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import {
@@ -28,9 +29,6 @@ import {
   validAmoDomain,
 } from '../services/amocrmPublic';
 
-function frontendUrl(): string {
-  return process.env.FRONTEND_URL || 'http://localhost:5173';
-}
 
 // ---- GET /api/auth/amocrm/connect (protected) ----
 export async function connect(req: Request, res: Response): Promise<void> {

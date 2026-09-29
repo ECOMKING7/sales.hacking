@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { frontendUrl } from '../utils/frontendUrl';
 import { pool } from '../db/pool';
 import { encrypt } from '../utils/encryption';
 import { signOAuthState, verifyOAuthState } from '../utils/jwt';
@@ -8,9 +9,6 @@ import {
   getAdAccounts,
 } from '../services/facebookOAuth';
 
-function frontendUrl(): string {
-  return process.env.FRONTEND_URL || 'http://localhost:5173';
-}
 
 // ---- GET /api/auth/facebook/connect (protected) ----
 export async function connect(req: Request, res: Response): Promise<void> {
