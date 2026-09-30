@@ -4,6 +4,7 @@ import BrandMark from '../components/BrandMark';
 import ThemeToggle from '../components/ThemeToggle';
 import { Button, Card } from '../components/ui';
 import { amocrmApi } from '../services/api';
+import { HUQUQIY } from '../config/huquqiy';
 import { useAuthStore } from '../store/authStore';
 import {
   claimError,
@@ -121,7 +122,11 @@ export default function AmoInstallPage() {
             </p>
             {xato && (
               <p role="alert" className="mb-4 text-sm text-bad">
-                {xato}
+                {xato} If it keeps failing, write to{' '}
+                <a className="underline" href={`mailto:${HUQUQIY.email}`}>
+                  {HUQUQIY.email}
+                </a>
+                .
               </p>
             )}
             <div className="space-y-2">
@@ -167,8 +172,14 @@ export default function AmoInstallPage() {
 
         {holat === 'xato' && (
           <>
-            <p role="alert" className="mb-5 text-sm text-bad">
+            <p role="alert" className="mb-3 text-sm text-bad">
               {xato}
+            </p>
+            <p className="mb-5 text-xs text-ink-3">
+              Need help? Write to{' '}
+              <a className="underline" href={`mailto:${HUQUQIY.email}`}>
+                {HUQUQIY.email}
+              </a>
             </p>
             <Link to={isAuthenticated ? '/settings' : '/login'} className="block">
               <Button variant="secondary" fullWidth>

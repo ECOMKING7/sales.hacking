@@ -30,6 +30,12 @@ import {
   currencyMeta,
 } from '../utils/currencyGuard';
 
+/**
+ * CRM lidi bilan solishtirsa bo'ladigan Facebook natija turlari.
+ * Tafovut (FB ↔ CRM) faqat shular bo'yicha hisoblanadi.
+ */
+export const LEAD_RESULT_TYPES = ['lead', 'call'];
+
 type Level = 'campaigns' | 'adsets' | 'ads';
 
 /** Qaysi darajada guruhlaymiz va ad qaysi ustun orqali bog'lanadi. */
@@ -151,7 +157,10 @@ export async function funnel(req: Request, res: Response): Promise<void> {
 
              -- TAFOVUT: Facebook nechta natija dedi, CRM nechtasini ko'rdi.
              -- Musbat = yo'qotish. 10% dan yuqorisi tekshirishni talab qiladi.
-             CASE WHEN e.results > 0
+             -- Faqat natijasi LID bo'lgan (lid-forma, qo'ng'iroq) obyektlarda.
+             -- Qamrov/ko'rish kampaniyasining "natijasi" — 7 mln taassurot;
+             -- uni CRM lidi bilan solishtirish 99.99% "yo'qotish" chiqarardi.
+             CASE WHEN e.results > 0 AND e.result_type = ANY($4::text[])
                   THEN (e.results - COALESCE(g.leads, 0))::numeric / e.results * 100
              END                                  AS "gapPct"
         FROM ${table} e
@@ -161,7 +170,7 @@ export async function funnel(req: Request, res: Response): Promise<void> {
        ORDER BY e.spend DESC
        LIMIT $3
       `,
-      [workspaceId, stuckDays, limit]
+      [workspaceId, stuckDays, limit, LEAD_RESULT_TYPES]
     );
 
     // Jami qatori — butun ro'yxat bo'yicha. O'rtacha ustunlar qo'shilmaydi,
@@ -169,7 +178,9 @@ export async function funnel(req: Request, res: Response): Promise<void> {
     const t = rows.reduce(
       (acc, r) => {
         acc.spend += num(r.spend);
-        acc.fbResults += num(r.fbResults);
+        // FB natijasi faqat lid turidagilardan yig'iladi: taassurot,
+        // ko'rish va lidni qo'shish ma'nosiz raqam beradi (23 mln "natija").
+        if (LEAD_RESULT_TYPES.includes(String(r.resultType))) acc.fbResults += num(r.fbResults);
         acc.leads += num(r.leads);
         acc.qualified += num(r.qualified);
         acc.won += num(r.won);

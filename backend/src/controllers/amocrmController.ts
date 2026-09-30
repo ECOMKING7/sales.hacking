@@ -23,6 +23,7 @@ import {
 import { discoverLeadFields, type MaydonTahlili } from '../services/amocrmFields';
 import { bizniki, hostAjrat } from '../services/webhookIdentity';
 import { webhookniTaminla } from '../services/webhookTaminla';
+import { demoOchir } from '../services/demoWorkspace';
 import {
   ensureAmoPublicSchema,
   publicCreds,
@@ -31,6 +32,16 @@ import {
 
 
 // ---- GET /api/auth/amocrm/connect (protected) ----
+
+/** Haqiqiy CRM ulandi — demo lidlar real lidlar bilan aralashmasin. Fail-soft. */
+async function demoniTozala(workspaceId: string): Promise<void> {
+  try {
+    await demoOchir(workspaceId);
+  } catch (err) {
+    console.error('demo tozalanmadi:', (err as Error).message);
+  }
+}
+
 export async function connect(req: Request, res: Response): Promise<void> {
   if (!req.user?.workspaceId) {
     res.status(400).json({ error: 'No workspace associated with this account' });
@@ -127,6 +138,7 @@ export async function callback(req: Request, res: Response): Promise<void> {
       console.error('webhook taminlash xatosi:', (err as Error).message);
     }
 
+    await demoniTozala(workspaceId);
     redirectTo('connected');
   } catch (err) {
     // axios xatosi config.data ichida client_secret va code'ni olib yuradi —
@@ -339,6 +351,7 @@ export async function claimInstall(req: Request, res: Response): Promise<void> {
     console.error('webhook taminlash xatosi:', (err as Error).message);
   }
 
+  await demoniTozala(workspaceId);
   res.json({ success: true, domain, webhook });
 }
 
@@ -442,6 +455,7 @@ export async function manualConnect(req: Request, res: Response): Promise<void> 
       console.error('webhook taminlash xatosi:', (err as Error).message);
     }
 
+    await demoniTozala(req.user.workspaceId);
     res.json({ success: true, domain, webhook });
   } catch (err) {
     // amoCRM javobidan sababni olamiz; kod/token hech qachon log'ga tushmaydi.

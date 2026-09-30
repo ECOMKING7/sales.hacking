@@ -491,7 +491,7 @@ export async function zanjir(req: Request, res: Response): Promise<void> {
       jami === 0
         ? `Oxirgi ${soat} soatda BIRORTA yangi lid kelmadi. Yo reklama lid keltirmayapti, yo webhook ishlamayapti. Reklama faol bo'lsa — webhook'ni tekshiring.`
         : uzilgan === 'fb_lead_id'
-          ? `${jami} ta yangi lid keldi, lekin birortasida Meta Lead ID yo'q. Zanjir shu yerda uzilgan — 'amocrm_lead_id_source' sozlamasi noto'g'ri bo'lishi mumkin.`
+          ? `${jami} ta yangi lid keldi, birortasida Meta Lead ID yo'q. Ikki sabab bo'lishi mumkin: (1) bu lidlar reklamadan emas — menejer qo'lda yoki telefoniya orqali yaratgan (lid-forma kampaniyasi faol bo'lmasa bu normal); (2) Lead ID manbasi sozlamasi noto'g'ri. Qaysi biri ekanini bitta lidni "Xom lid" tashxisida ochib ko'ring.`
           : uzilgan === 'boglanish'
             ? `${jami} ta lid keldi va Lead ID bor, lekin hech biri reklamaga bog'lanmadi. Reklama sinxronida o'sha lead ID yo'q bo'lishi mumkin.`
             : uzilgan === 'capi'

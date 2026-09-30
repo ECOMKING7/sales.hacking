@@ -105,7 +105,7 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center bg-ground px-4 py-10">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex justify-center">
-          <img src="/logo-192.png" alt="Sales Hacking" className="h-12 w-12" />
+          <img src="/logo-192.png" alt="McQueen AI" className="h-12 w-12" />
         </div>
 
         <Steps step={step} />

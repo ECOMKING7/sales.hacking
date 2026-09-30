@@ -6,6 +6,7 @@ import type { AmocrmStatus, Pipeline } from '../../types';
 import { Button, Card, CardHeader, EmptyState, Input, SkeletonText, cn, toast } from '../ui';
 import { CardFooterRow, ConnectionBadge, ErrorRow, LABEL, errMsg } from './shared';
 import LeadIdField from './LeadIdField';
+import { HUQUQIY } from '../../config/huquqiy';
 
 const CONNECT_STEPS = [
   "amoCRM'ga kiring → amoМаркет bo'limi",
@@ -234,7 +235,7 @@ export default function AmocrmSection() {
       const xato: Record<string, string> = {
         taken: 'Bu amoCRM akkaunti boshqa workspace\'ga ulangan.',
         denied: 'amoCRM\'da ruxsat berilmadi.',
-        error: 'amoCRM ulanmadi. Qayta urinib ko\'ring.',
+        error: `amoCRM ulanmadi. Qayta urinib ko'ring yoki yozing: ${HUQUQIY.email}`,
       };
       if (data.status === 'connected') toast.ok('amoCRM ulandi');
       else if (data.status && xato[data.status]) toast.bad(xato[data.status]);

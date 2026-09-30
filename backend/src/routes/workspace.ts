@@ -28,6 +28,7 @@ import {
   save as metaCapiSave,
   test as metaCapiTest,
 } from '../controllers/metaCapiController';
+import * as demo from '../controllers/demoController';
 import { verifyToken } from '../middleware/auth';
 
 const router = Router();
@@ -90,5 +91,9 @@ router.post('/invite', verifyToken, invite);
 router.get('/members', verifyToken, members);
 router.delete('/members/:userId', verifyToken, removeMember);
 router.get('/usage', verifyToken, usage);
+
+// Bo'sh workspace uchun namunaviy ma'lumot (moderator va yangi mijoz uchun).
+router.post('/demo', verifyToken, demo.yarat);
+router.delete('/demo', verifyToken, demo.ochir);
 
 export default router;

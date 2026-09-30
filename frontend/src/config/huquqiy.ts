@@ -54,7 +54,7 @@ export interface HuquqiyMalumot {
 }
 
 export const HUQUQIY: HuquqiyMalumot = {
-  mahsulot: 'Sales Hacking',
+  mahsulot: 'McQueen AI',
 
   yuridikNom: "YaTT Maxmudov Abduraxmonjon Murodjon o'g'li",
   royxatdanOtgan: true,
@@ -71,7 +71,7 @@ export const HUQUQIY: HuquqiyMalumot = {
   // Asosiy domen (ahost.uz → Vercel). Meta va amoCRM formalarida ham shu.
   domen: 'www.mcqueen.uz',
 
-  yangilandi: '2026-09-28',
+  yangilandi: '2026-09-30',
 };
 
 /** `https://domen/yo'l` — sahifalarda havola qurish uchun. */

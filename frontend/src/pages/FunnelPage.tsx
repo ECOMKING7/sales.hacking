@@ -315,7 +315,7 @@ export default function FunnelPage() {
           <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 flex-none text-bad" />
           <div className="text-ink-2">
             <span className="font-medium text-ink">
-              Facebook {formatNumber(totals.fbResults)} natija dedi, CRM'da{' '}
+              Facebook {formatNumber(totals.fbResults)} ta lid dedi (lid-forma va qo'ng'iroq kampaniyalari), CRM'da{' '}
               {formatNumber(totals.leads)} ta — {n(totals.gapPct).toFixed(1)}% yo'qolgan.
             </span>{' '}
             Norma ≤{GAP_LIMIT}%. Tekshirish tartibi: UTM maydoni CRM'ga tushmagan → landing

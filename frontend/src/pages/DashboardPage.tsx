@@ -10,7 +10,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { dashboardApi, facebookApi, amocrmApi } from '../services/api';
+import api, { dashboardApi, facebookApi, amocrmApi, workspaceApi } from '../services/api';
 import KpiCard from '../components/KpiCard';
 import PeriodLabel from '../components/PeriodLabel';
 import SourceDonut from '../components/dashboard/SourceDonut';
@@ -30,7 +30,7 @@ import {
   formatDaysOrDash,
   n,
 } from '../utils/format';
-import { Button, Input, cn } from '../components/ui';
+import { Button, Input, cn, toast } from '../components/ui';
 
 type Model = 'first_click' | 'last_click';
 
@@ -148,6 +148,34 @@ export default function DashboardPage() {
     !crmStatus.isLoading &&
     !fbStatus.data?.connected &&
     !crmStatus.data?.connected;
+
+  /* Demo: bo'sh workspace'da mahsulot nima ko'rsatishini ko'rish uchun.
+     Server faqat Facebook/amoCRM ulanmagan workspace'da ruxsat beradi. */
+  const demo = useQuery({
+    queryKey: ['demo-status'],
+    queryFn: () =>
+      api
+        .get<{ demo: boolean; demoLeads: number }>('/api/dashboard/demo-status')
+        .then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const [demoBusy, setDemoBusy] = useState(false);
+  const demoniYoq = async () => {
+    setDemoBusy(true);
+    try {
+      const r = await workspaceApi.demoYarat();
+      toast.ok(`Demo tayyor: ${r.kampaniya} kampaniya, ${r.lid} lid, ${r.sotuv} sotuv`);
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      toast.bad(
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          "Demo yaratilmadi. Qayta urinib ko'ring."
+      );
+    } finally {
+      setDemoBusy(false);
+    }
+  };
 
   const d = overview.data;
   const loading = overview.isLoading;
@@ -288,12 +316,24 @@ export default function DashboardPage() {
             <AlertTriangle aria-hidden className="h-4 w-4 flex-none" />
             Setup incomplete — connect Facebook Ads and your CRM to see real data.
           </div>
-          <Link
-            to="/onboarding"
-            className="inline-flex h-8 items-center rounded-sm border-[1.5px] border-edge bg-surface px-3 text-xs font-semibold text-accent transition-shadow duration-200 hover:shadow-glow-xs"
-          >
-            Finish setup
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {!demo.data?.demo && (
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={demoBusy}
+                onClick={() => void demoniYoq()}
+              >
+                Demo ma'lumot bilan ko'rish
+              </Button>
+            )}
+            <Link
+              to="/onboarding"
+              className="inline-flex h-8 items-center rounded-sm border-[1.5px] border-edge bg-surface px-3 text-xs font-semibold text-accent transition-shadow duration-200 hover:shadow-glow-xs"
+            >
+              Finish setup
+            </Link>
+          </div>
         </div>
       )}
 

@@ -47,16 +47,39 @@ function DemoBanner() {
     retry: false,
   });
 
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
   if (!data?.demo) return null;
 
+  const ochir = async () => {
+    setBusy(true);
+    try {
+      await workspaceApi.demoOchir();
+      await queryClient.invalidateQueries();
+    } catch {
+      /* banner qoladi — foydalanuvchi qayta bosishi mumkin */
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="flex items-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-ink-2">
+    <div className="flex flex-wrap items-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-ink-2">
       <FlaskConical aria-hidden className="h-3.5 w-3.5 flex-none text-warn" />
-      <span>
-        <span className="font-semibold text-ink">DEMO</span> — reklama raqamlari Facebook'dan
-        real, CRM qismi ({data.demoLeads.toLocaleString()} lid, sotuv, daromad) simulyatsiya.
-        amoCRM ulangach real ma'lumot bilan almashadi.
+      <span className="min-w-0 flex-1">
+        <span className="font-semibold text-ink">DEMO</span> — namunaviy ma'lumot (
+        {data.demoLeads.toLocaleString()} lid, sotuv, daromad). Haqiqiy raqamlar Facebook va
+        amoCRM ulangach ko'rinadi, demo o'shanda o'zi o'chadi.
       </span>
+      <button
+        type="button"
+        onClick={() => void ochir()}
+        disabled={busy}
+        className="font-semibold text-accent underline-offset-2 hover:underline disabled:opacity-50"
+      >
+        {busy ? "O'chirilmoqda…" : "Demo'ni o'chirish"}
+      </button>
     </div>
   );
 }

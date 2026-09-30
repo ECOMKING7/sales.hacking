@@ -21,6 +21,7 @@
  * chiziladi. Modal sarlavha chizmaydi (Modal.tsx dagi izohga qarang).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { HUQUQIY } from '../config/huquqiy';
 import {
   Code2,
   Database,
@@ -167,7 +168,7 @@ export default function SettingsPage() {
     const matn: Record<string, string> = {
       taken: 'This amoCRM account is already connected to another workspace.',
       denied: 'Access was not granted in amoCRM.',
-      error: 'amoCRM connection failed. Try again.',
+      error: `amoCRM connection failed. Try again or write to ${HUQUQIY.email}.`,
     };
     if (amoNatija && matn[amoNatija]) toast.bad(matn[amoNatija]);
   }, [amoNatija, popupdami]);

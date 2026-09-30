@@ -75,7 +75,7 @@ export default function RegisterPage() {
         <div className="mb-7 flex flex-col items-center text-center">
           <img
             src="/logo-192.png"
-            alt="Sales Hacking"
+            alt="McQueen AI"
             className="mb-3 h-12 w-12"
           />
           <h1 className="text-xl font-bold text-ink">Create account</h1>

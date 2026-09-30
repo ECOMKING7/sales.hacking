@@ -17,7 +17,7 @@ export default function BrandMark({ size = 64, className = '' }: Props) {
   return (
     <span
       role="img"
-      aria-label="Sales Hacking"
+      aria-label="McQueen AI"
       className={`bm-wrap ${className}`}
       style={{ width: size, height: size }}
     >

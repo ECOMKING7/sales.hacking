@@ -6,6 +6,7 @@ import { getAdAccounts } from '../services/facebookOAuth';
 import { getUsage } from '../middleware/planLimits';
 import { signToken } from '../utils/jwt';
 import { runInBackground } from '../utils/background';
+import { demoOchir } from '../services/demoWorkspace';
 import { syncWorkspace } from '../services/facebookAdsService';
 
 const selectAdAccountSchema = z.object({
@@ -127,6 +128,11 @@ export async function selectAdAccount(req: Request, res: Response): Promise<void
     } catch (err) {
       console.error('ad account currency not read:', (err as Error).message);
     }
+
+    // Haqiqiy reklama akkaunti tanlandi — demo kampaniya va lidlar ketadi.
+    await demoOchir(workspaceId).catch((err) =>
+      console.error('demo tozalanmadi:', (err as Error).message)
+    );
 
     await pool.query(
       `UPDATE workspaces

@@ -312,6 +312,15 @@ export const workspaceApi = {
   integratsiyalar: () =>
     api.get<IntegratsiyaHolatlari>('/api/workspace/integratsiyalar').then((r) => r.data),
   usage: () => api.get<Usage>('/api/workspace/usage').then((r) => r.data),
+  /** Bo'sh workspace'ni namunaviy (demo) ma'lumot bilan to'ldiradi. */
+  demoYarat: () =>
+    api
+      .post<{ success: boolean; kampaniya: number; ad: number; lid: number; sotuv: number }>(
+        '/api/workspace/demo'
+      )
+      .then((r) => r.data),
+  /** Faqat demo qatorlarni o'chiradi. */
+  demoOchir: () => api.delete<{ success: boolean }>('/api/workspace/demo').then((r) => r.data),
   members: () =>
     api.get<{ members: Member[] }>('/api/workspace/members').then((r) => r.data.members),
   invite: (email: string, role?: string) =>
