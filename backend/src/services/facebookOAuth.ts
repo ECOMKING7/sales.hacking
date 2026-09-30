@@ -116,16 +116,47 @@ export async function getFbUserProfile(accessToken: string): Promise<FbUserProfi
   return res.data as FbUserProfile;
 }
 
+const AD_ACCOUNT_FIELDS = 'id,account_id,name,account_status,currency,timezone_name,business_name';
+
 /**
  * Fetch the ad accounts the authenticated user can access.
+ *
+ * 1) `/me/adaccounts` (ads_read) — accounts the person has a role on.
+ * 2) Business portfolio accounts (business_management, READ only):
+ *    `/me/businesses` → `/{business}/owned_ad_accounts` + `/client_ad_accounts`.
+ *    Agencies usually reach client accounts only this way. If the token has
+ *    no business_management (older login config), step 2 is skipped silently
+ *    and the list from step 1 is returned unchanged.
  */
 export async function getAdAccounts(accessToken: string): Promise<AdAccount[]> {
   const res = await axios.get(`${GRAPH_URL}/me/adaccounts`, {
-    params: {
-      fields: 'id,account_id,name,account_status,currency,timezone_name,business_name',
-      access_token: accessToken,
-      limit: 100,
-    },
+    params: { fields: AD_ACCOUNT_FIELDS, access_token: accessToken, limit: 100 },
   });
-  return (res.data.data ?? []) as AdAccount[];
+  const byId = new Map<string, AdAccount>();
+  for (const a of (res.data.data ?? []) as AdAccount[]) byId.set(a.id, a);
+
+  try {
+    const biz = await axios.get(`${GRAPH_URL}/me/businesses`, {
+      params: { fields: 'id,name', access_token: accessToken, limit: 25 },
+    });
+    const businesses = (biz.data.data ?? []) as Array<{ id: string; name?: string }>;
+    for (const b of businesses) {
+      for (const edge of ['owned_ad_accounts', 'client_ad_accounts']) {
+        try {
+          const r = await axios.get(`${GRAPH_URL}/${b.id}/${edge}`, {
+            params: { fields: AD_ACCOUNT_FIELDS, access_token: accessToken, limit: 100 },
+          });
+          for (const a of (r.data.data ?? []) as AdAccount[]) {
+            if (!byId.has(a.id)) byId.set(a.id, { ...a, business_name: a.business_name ?? b.name });
+          }
+        } catch {
+          /* bitta biznesning ro'yxati o'qilmasa — qolganlari davom etadi */
+        }
+      }
+    }
+  } catch {
+    /* business_management yo'q yoki biznes yo'q — faqat /me/adaccounts */
+  }
+
+  return [...byId.values()];
 }
