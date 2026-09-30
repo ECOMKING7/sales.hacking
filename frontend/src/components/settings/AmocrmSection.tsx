@@ -207,12 +207,69 @@ export default function AmocrmSection() {
     void load();
   }, [load]);
 
+  /**
+   * OAuth oynasi. amoCRM ruxsatdan keyin shu popup'ni bizning callback'ga,
+   * u esa /settings?amocrm=... ga yo'naltiradi. SettingsPage popup ichida
+   * natijani asosiy oynaga postMessage qiladi va o'zini yopadi.
+   * postMessage yetib kelmasa ham (boshqa domen) — popup yopilganini
+   * kuzatib holatni qayta yuklaymiz.
+   */
+  const [connecting, setConnecting] = useState(false);
+  const pollRef = useRef<number | null>(null);
+
+  const stopPoll = useCallback(() => {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      const data = e.data as { type?: string; status?: string } | null;
+      if (data?.type !== 'amocrm-oauth') return;
+      stopPoll();
+      setConnecting(false);
+      const xato: Record<string, string> = {
+        taken: 'Bu amoCRM akkaunti boshqa workspace\'ga ulangan.',
+        denied: 'amoCRM\'da ruxsat berilmadi.',
+        error: 'amoCRM ulanmadi. Qayta urinib ko\'ring.',
+      };
+      if (data.status === 'connected') toast.ok('amoCRM ulandi');
+      else if (data.status && xato[data.status]) toast.bad(xato[data.status]);
+      void load();
+    };
+    window.addEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      stopPoll();
+    };
+  }, [load, stopPoll]);
+
   const connect = async () => {
+    setError('');
+    setConnecting(true);
     try {
       const { url } = await amocrmApi.connect();
-      window.open(url, '_blank', 'width=600,height=700');
+      const popup = window.open(url, 'amocrm-oauth', 'width=600,height=700');
+      if (!popup) {
+        // Popup bloklangan — shu oynaning o'zida ochamiz, callback
+        // /settings ga qaytaradi.
+        window.location.href = url;
+        return;
+      }
+      stopPoll();
+      pollRef.current = window.setInterval(() => {
+        if (popup.closed) {
+          stopPoll();
+          setConnecting(false);
+          void load();
+        }
+      }, 1000);
     } catch (err) {
-      setError(errMsg(err, 'Failed to start amoCRM connect'));
+      setConnecting(false);
+      setError(errMsg(err, 'amoCRM ulashni boshlab bo\'lmadi'));
     }
   };
 
@@ -573,18 +630,61 @@ export default function AmocrmSection() {
             hint="lid yo'q · daromad atribusiya qilinmaydi"
           />
 
-          <AmocrmManualConnect onConnected={() => void load()} />
+          {status?.publicAvailable ? (
+            <>
+              {/* Asosiy yo'l: McQueen AI ommaviy integratsiyasi — bir tugma. */}
+              <div className="mt-5 border-t border-line pt-5">
+                <ol className="mb-4 flex flex-col gap-1.5">
+                  {[
+                    "«amoCRM'ni ulash» ni bosing — amoCRM oynasi ochiladi",
+                    'amoCRM akkauntingizni tanlang',
+                    '«Разрешить» ni bosing — oyna o\'zi yopiladi',
+                  ].map((step, i) => (
+                    <li key={i} className="flex gap-2.5 text-xs leading-relaxed text-ink-2">
+                      <span className="flex-none font-mono text-ink-3">{i + 1}.</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+                <Button
+                  onClick={connect}
+                  loading={connecting}
+                  icon={<ExternalLink className="h-4 w-4" />}
+                  className="sm:w-56"
+                >
+                  amoCRM'ni ulash
+                </Button>
+                {connecting && (
+                  <p className="mt-2 text-xs text-ink-3" aria-live="polite">
+                    amoCRM oynasida ruxsat berilishini kutyapmiz…
+                  </p>
+                )}
+              </div>
 
-          <CardFooterRow>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={connect}
-              icon={<ExternalLink className="h-4 w-4" />}
-            >
-              amoMarket orqali ulash (ommaviy integratsiya uchun)
-            </Button>
-          </CardFooterRow>
+              {/* Zaxira yo'l: o'z xususiy integratsiyasi bilan ulash. */}
+              <details className="mt-5 border-t border-line pt-4">
+                <summary className="cursor-pointer text-xs font-semibold text-ink-3 hover:text-ink-2">
+                  Boshqa usul: o'z xususiy integratsiyangiz orqali ulash
+                </summary>
+                <AmocrmManualConnect onConnected={() => void load()} />
+              </details>
+            </>
+          ) : (
+            <>
+              <AmocrmManualConnect onConnected={() => void load()} />
+              <CardFooterRow>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={connect}
+                  loading={connecting}
+                  icon={<ExternalLink className="h-4 w-4" />}
+                >
+                  amoMarket orqali ulash (ommaviy integratsiya uchun)
+                </Button>
+              </CardFooterRow>
+            </>
+          )}
         </div>
       )}
     </Card>

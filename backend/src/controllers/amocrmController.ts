@@ -523,6 +523,12 @@ export async function status(req: Request, res: Response): Promise<void> {
       clientSecretConfigured: Boolean(ws?.amocrm_client_secret),
       webhookUrl,
       tokenExpiresAt: ws?.amocrm_token_expires_at ?? null,
+      /**
+       * Ommaviy integratsiya (McQueen AI) serverda sozlanganmi. Rost bo'lsa
+       * UI bitta "Ulash" tugmasini beradi — mijoz o'z integratsiyasini
+       * yaratmaydi va kalit ko'chirmaydi. Kalitning o'zi qaytarilmaydi.
+       */
+      publicAvailable: Boolean(publicCreds()),
     });
   } catch (err) {
     console.error('amocrm status error:', err);

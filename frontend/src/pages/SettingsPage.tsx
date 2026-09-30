@@ -145,14 +145,32 @@ export default function SettingsPage() {
 
   /* amoCRM callback natijasi — xato bo'lsa foydalanuvchi jim qolmasin. */
   const amoNatija = params.get('amocrm');
+
+  /* OAuth popup ichida ochilgan bo'lsak — natijani asosiy oynaga beramiz
+     va popup'ni yopamiz. Asosiy oyna holatni o'zi qayta yuklaydi. */
+  const popupdami = Boolean(amoNatija && window.opener && window.opener !== window);
   useEffect(() => {
+    if (!popupdami) return;
+    try {
+      window.opener.postMessage(
+        { type: 'amocrm-oauth', status: amoNatija },
+        window.location.origin
+      );
+    } catch {
+      /* boshqa domendagi opener — popup yopilishi baribir kuzatiladi */
+    }
+    window.close();
+  }, [popupdami, amoNatija]);
+
+  useEffect(() => {
+    if (popupdami) return;
     const matn: Record<string, string> = {
       taken: 'This amoCRM account is already connected to another workspace.',
       denied: 'Access was not granted in amoCRM.',
       error: 'amoCRM connection failed. Try again.',
     };
     if (amoNatija && matn[amoNatija]) toast.bad(matn[amoNatija]);
-  }, [amoNatija]);
+  }, [amoNatija, popupdami]);
 
   /**
    * ⚠ UMUMIY QOIDA — HOLATGA EGA HAR QANDAY TO'R/RO'YXAT SHUNDAY TARTIBLANADI.

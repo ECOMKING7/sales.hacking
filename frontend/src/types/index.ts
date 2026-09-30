@@ -57,6 +57,8 @@ export interface AmocrmStatus {
   /** amoCRM'ga joylanadigan to'liq webhook manzili. */
   webhookUrl: string | null;
   tokenExpiresAt: string | null;
+  /** Ommaviy integratsiya sozlangan — bir tugma bilan ulash mumkin. */
+  publicAvailable?: boolean;
 }
 
 /**
