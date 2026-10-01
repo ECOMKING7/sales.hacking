@@ -99,7 +99,31 @@ export async function status(req: Request, res: Response): Promise<void> {
       [req.user.workspaceId]
     );
 
+    /* Kanal bo'yicha (042). Ustun hali yo'q bo'lsa — bo'sh ro'yxat. */
+    let kanallar: Array<{ kanal: string; actionSource: string | null; ok: number; xato: number }> = [];
+    try {
+      const k = await pool.query<{ kanal: string | null; action_source: string | null; ok: string; xato: string }>(
+        `SELECT kanal, action_source,
+                COUNT(*) FILTER (WHERE status = 'ok')::text    AS ok,
+                COUNT(*) FILTER (WHERE status = 'error')::text AS xato
+           FROM capi_events
+          WHERE workspace_id = $1 AND kanal IS NOT NULL
+          GROUP BY kanal, action_source
+          ORDER BY kanal`,
+        [req.user.workspaceId]
+      );
+      kanallar = k.rows.map((r) => ({
+        kanal: r.kanal ?? 'boshqa',
+        actionSource: r.action_source,
+        ok: Number(r.ok),
+        xato: Number(r.xato),
+      }));
+    } catch {
+      /* 042 hali yo'q */
+    }
+
     res.json({
+      kanallar,
       enabled: Boolean(ws?.meta_capi_enabled),
       datasetId: ws?.meta_dataset_id ?? null,
       currency: ws?.currency ?? 'UZS',

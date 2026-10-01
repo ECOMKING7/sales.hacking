@@ -36,7 +36,8 @@ type Bajaruvchi = Pick<typeof pool, 'query'>;
  * kalitlarning hech biri ishlamaydi (UTM ham, fbclid ham linkda
  * keladi, link esa yo'q).
  */
-export type MatchMethod = 'lead_id' | 'utm' | 'fbclid' | 'contact';
+/** `lead_form` — Lead ID'siz lid, leadgen webhook'idagi telefon/email hash orqali (041). */
+export type MatchMethod = 'lead_id' | 'utm' | 'fbclid' | 'lead_form' | 'contact';
 
 export interface MatchResult {
   adId: string | null;
@@ -211,6 +212,12 @@ export interface LeadSignals {
    * maydonda keladi.
    */
   fbAdId?: string | null;
+  /**
+   * Leadgen webhook'idan telefon/email hash bo'yicha topilgan reklama.
+   * Lead ID'dan ZAIF: UTM va fbclid'dan keyin tekshiriladi — odam
+   * formadan keyin sayt reklamasini bosgan bo'lsa, oxirgi klik yutadi.
+   */
+  formAdId?: string | null;
   utmTerm?: string | null;
   utmContent?: string | null;
   utmCampaign?: string | null;
@@ -254,6 +261,11 @@ export async function matchLeadToAd(
 
   const byFbclid = await matchByFbclid(workspaceId, signals.fbclid ?? null, db);
   if (byFbclid.adId) return byFbclid;
+
+  const byForm = await matchByFbAdId(workspaceId, signals.formAdId ?? null, db);
+  if (byForm.adId) {
+    return { ...byForm, method: 'lead_form', note: `Lead forma (telefon/email) orqali: ${byForm.note ?? ''}` };
+  }
 
   return matchByContact(workspaceId, signals.phoneHash ?? null, signals.emailHash ?? null, db);
 }

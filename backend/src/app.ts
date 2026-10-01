@@ -83,7 +83,18 @@ app.use(
   )
 );
 
-app.use(express.json({ limit: '1mb' }));
+/* Meta webhook imzosi XOM tana ustida hisoblanadi — JSON'dan qayta
+   yig'ilgan matn bayt-bayt bir xil bo'lmaydi. Faqat shu yo'l uchun saqlanadi. */
+app.use(
+  express.json({
+    limit: '1mb',
+    verify: (req, _res, buf) => {
+      if ((req as Request).url?.startsWith('/api/webhooks/meta')) {
+        (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      }
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 /**

@@ -8,6 +8,7 @@ import {
   exchangeCodeForToken,
   getAdAccounts,
 } from '../services/facebookOAuth';
+import { sahifalarniYangila } from '../services/metaSahifalar';
 
 
 // ---- GET /api/auth/facebook/connect (protected) ----
@@ -21,6 +22,7 @@ export async function connect(req: Request, res: Response): Promise<void> {
   const state = signOAuthState({
     userId: req.user.userId,
     workspaceId: null,
+    popup: req.query.popup === '1',
   });
   const url = generateAuthURL(state);
   res.json({ url });
@@ -28,8 +30,9 @@ export async function connect(req: Request, res: Response): Promise<void> {
 
 // ---- GET /api/auth/facebook/callback (public; called by Facebook redirect) ----
 export async function callback(req: Request, res: Response): Promise<void> {
+  let popup = false;
   const redirectTo = (status: string) =>
-    res.redirect(`${frontendUrl()}/settings?fb=${status}`);
+    res.redirect(`${frontendUrl()}/settings?fb=${status}${popup ? '&popup=1' : ''}`);
 
   const { code, state, error } = req.query as Record<string, string | undefined>;
 
@@ -44,7 +47,9 @@ export async function callback(req: Request, res: Response): Promise<void> {
 
   let userId: string;
   try {
-    ({ userId } = verifyOAuthState(state));
+    const st = verifyOAuthState(state);
+    userId = st.userId;
+    popup = Boolean(st.popup);
   } catch {
     redirectTo('error');
     return;
@@ -72,6 +77,16 @@ export async function callback(req: Request, res: Response): Promise<void> {
        WHERE id = $3`,
       [encryptedToken, expiresAt, userId]
     );
+
+    /* Lead Ads: sahifa tokenlari + leadgen obunasi. FAIL-SOFT — mijoz
+       sahifa tanlamagan yoki ruxsat yo'q bo'lsa Facebook ulanishi
+       baribir muvaffaqiyatli. */
+    try {
+      const sahifalar = await sahifalarniYangila(userId, accessToken);
+      console.log(`facebook callback: ${sahifalar.length} sahifa, ${sahifalar.filter((x) => x.leadgenObuna).length} tasi leadgen'ga obuna`);
+    } catch (err) {
+      console.warn('facebook callback: sahifalar yangilanmadi —', (err as Error).message);
+    }
 
     redirectTo('connected');
   } catch (err) {

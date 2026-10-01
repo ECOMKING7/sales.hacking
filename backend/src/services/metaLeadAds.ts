@@ -17,12 +17,10 @@
    Qoladigan yagona iz — Meta Lead ID (amoCRM lid nomida, 98%).
    Lekin u reklamani aytmaydi: uni Meta'dan so'rash kerak.
 
-   ⚠ RUXSAT. `GET /{leadgen_id}` chaqiruvi `ads_management` +
-   `pages_read_engagement` + `pages_show_list` talab qiladi. Bizning
-   OAuth tokenimizda faqat `ads_read` bor. Shuning uchun `fb_lead_token`
-   (System User tokeni) ishlatiladi. Bo'lmasa OAuth tokeni bilan
-   urinib ko'riladi — natija odatda 200 emas, va xato SAQLANADI,
-   jim o'tmaydi.
+   ⚠ RUXSAT. `GET /{leadgen_id}` chaqiruvi `leads_retrieval` va sahifa
+   huquqlarini talab qiladi. Tokenlar tartib bilan sinaladi
+   (`tokenlarniOl`): System User → sahifa tokenlari (bitta tugma,
+   metaSahifalar.ts) → foydalanuvchi OAuth. Xato SAQLANADI, jim o'tmaydi.
 
    ⚠ CHEKLOV — TEKSHIRILISHI KERAK: Meta lid ma'lumotini ma'lum
    muddatdan keyin o'chiradi (hujjatda 90 kun deyiladi, amalda
@@ -34,6 +32,7 @@ import axios from 'axios';
 import { pool } from '../db/pool';
 import { GRAPH_URL as GRAPH } from '../config/graph';
 import { decrypt } from '../utils/encryption';
+import { sahifaTokenlari } from './metaSahifalar';
 
 /** Meta javobidan bizga keraklisi. */
 export interface LidReklama {
@@ -45,7 +44,7 @@ export interface LidReklama {
 export interface TokenManba {
   token: string;
   /** Qaysi tokendan foydalanildi — xato xabarida ko'rsatish uchun. */
-  manba: 'lead_token' | 'oauth';
+  manba: 'lead_token' | 'sahifa' | 'oauth';
 }
 
 /**
@@ -112,6 +111,45 @@ export async function tokenniOl(workspaceId: string): Promise<TokenManba> {
 }
 
 /**
+ * Lid o'qish uchun sinab ko'riladigan BARCHA tokenlar, tartib bilan:
+ *   1. System User tokeni (mijoz qo'lda kiritgan bo'lsa — eng kuchli)
+ *   2. Sahifa tokenlari (bitta tugma bilan ulanganda, 041)
+ *   3. Foydalanuvchi OAuth tokeni (leads_retrieval bo'lsa ishlaydi)
+ * Lid qaysi sahifaga tegishliligini oldindan bilmaymiz, shuning uchun
+ * sahifa tokenlari ketma-ket sinaladi.
+ */
+export async function tokenlarniOl(workspaceId: string): Promise<TokenManba[]> {
+  const { rows } = await pool.query<{
+    fb_lead_token: string | null;
+    fb_access_token: string | null;
+  }>(
+    `SELECT w.fb_lead_token, u.fb_access_token
+       FROM workspaces w
+       LEFT JOIN users u ON u.id = w.owner_id
+      WHERE w.id = $1`,
+    [workspaceId]
+  );
+  const r = rows[0];
+  if (!r) throw new Error('Workspace topilmadi');
+
+  const royxat: TokenManba[] = [];
+  if (r.fb_lead_token) royxat.push({ token: decrypt(r.fb_lead_token), manba: 'lead_token' });
+  for (const t of await sahifaTokenlari(workspaceId)) royxat.push({ token: t, manba: 'sahifa' });
+  if (r.fb_access_token) royxat.push({ token: decrypt(r.fb_access_token), manba: 'oauth' });
+  if (!royxat.length) {
+    throw new Error("Facebook tokeni yo'q. Facebook'ni ulang va ruxsat oynasida sahifalarni tanlang.");
+  }
+  return royxat;
+}
+
+/** Keyingi token bilan qayta urinishga arziydigan xato (ruxsat/topilmadi). */
+export function boshqaTokenSinalsinmi(err: unknown): boolean {
+  const e = err as { response?: { status?: number; data?: { error?: { code?: number } } } };
+  const code = e.response?.data?.error?.code;
+  return code === 10 || code === 200 || code === 100 || code === 190 || e.response?.status === 403;
+}
+
+/**
  * Bitta lidni Meta'dan so'raydi.
  *
  * Xatoni YUTMAYDI: chaqiruvchi uni `fb_lead_ads.xato` ga yozadi.
@@ -138,7 +176,7 @@ export function xatoSababi(err: unknown): string {
   const meta = e.response?.data?.error;
   if (meta?.code === 190) return 'Token yaroqsiz yoki muddati tugagan (190)';
   if (meta?.code === 10 || meta?.code === 200) {
-    return `Ruxsat yetarli emas (${meta.code}): ads_management va sahifa huquqlari kerak`;
+    return `Ruxsat yetarli emas (${meta.code}): Facebook'ni qayta ulab, ruxsat oynasida sahifalarni tanlang`;
   }
   if (e.response?.status === 404) return "Lid Meta'da topilmadi (eskirgan yoki o'chirilgan)";
   const xom = meta?.message ?? e.message ?? 'nomalum xato';
@@ -178,15 +216,28 @@ export async function lidReklamasiniTop(
     };
   }
 
-  const token = opts.token ?? (await tokenniOl(workspaceId)).token;
+  const tokenlar: string[] = opts.token
+    ? [opts.token]
+    : (await tokenlarniOl(workspaceId)).map((t) => t.token);
 
   try {
-    const natija = await metadanSora(token, fbLeadId);
+    let natija: LidReklama | null = null;
+    let oxirgi: unknown = null;
+    for (const t of tokenlar) {
+      try {
+        natija = await metadanSora(t, fbLeadId);
+        break;
+      } catch (err) {
+        oxirgi = err;
+        if (!boshqaTokenSinalsinmi(err)) break;
+      }
+    }
+    if (!natija) throw oxirgi ?? new Error("Token yo'q");
     await pool.query(
       `INSERT INTO fb_lead_ads (workspace_id, fb_lead_id, fb_ad_id, fb_form_id, holat, xato)
        VALUES ($1, $2, $3, $4, 'ok', NULL)
        ON CONFLICT (workspace_id, fb_lead_id)
-       DO UPDATE SET fb_ad_id = EXCLUDED.fb_ad_id,
+       DO UPDATE SET fb_ad_id = COALESCE(EXCLUDED.fb_ad_id, fb_lead_ads.fb_ad_id),
                      fb_form_id = EXCLUDED.fb_form_id,
                      holat = 'ok',
                      xato = NULL`,

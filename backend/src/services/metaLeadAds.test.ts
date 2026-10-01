@@ -87,9 +87,9 @@ test('190 — token yaroqsiz', () => {
   assert.match(s, /Token yaroqsiz/);
 });
 
-test('10 — ruxsat yetarli emas, kerakli huquq nomlanadi', () => {
+test('10 — ruxsat yetarli emas, mijozga nima qilish aytiladi', () => {
   const s = xatoSababi({ response: { data: { error: { code: 10, message: 'no perm' } } } });
-  assert.match(s, /ads_management/);
+  assert.match(s, /sahifalarni tanlang/);
 });
 
 test('404 — lid Meta\'da yo\'q', () => {

@@ -5,6 +5,14 @@ import type { MetaCapiStatus } from '../../types';
 import { Badge, Button, Card, CardHeader, Input, SkeletonText, cn, toast } from '../ui';
 import { CardFooterRow, ErrorRow, LABEL, StatRow, errMsg } from './shared';
 
+/** Lid kanali — backend `kanalAniqla` bilan bir xil kalitlar. */
+const KANAL_NOMI: Record<string, string> = {
+  forma: 'Lead forma',
+  qongiroq: "Qo'ng'iroq",
+  sayt: 'Sayt',
+  boshqa: 'Boshqa',
+};
+
 export default function MetaCapiSection() {
   const [status, setStatus] = useState<MetaCapiStatus | null>(null);
   const [datasetId, setDatasetId] = useState('');
@@ -267,6 +275,18 @@ export default function MetaCapiSection() {
               label="Yuborilgan hodisalar"
               value={sent.length ? sent.map((e) => `${e.eventName} ${e.count}`).join(' · ') : '—'}
             />
+            {(status?.kanallar ?? []).map((k) => (
+              <StatRow
+                key={`${k.kanal}:${k.actionSource}`}
+                label={`${KANAL_NOMI[k.kanal] ?? k.kanal} · ${k.actionSource ?? '—'}`}
+                value={
+                  <span>
+                    {k.ok}
+                    {k.xato > 0 && <span className="text-bad"> · xato {k.xato}</span>}
+                  </span>
+                }
+              />
+            ))}
             {failed.length > 0 && (
               <StatRow
                 label="Xatolar"

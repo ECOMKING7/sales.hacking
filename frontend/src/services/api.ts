@@ -18,6 +18,7 @@ import type {
   CurrencyState,
   FieldReport,
   LeadAdsStatus,
+  LeadAdsSahifa,
   TelegramHolat,
   TelegramChat,
   TelegramKod,
@@ -68,7 +69,11 @@ export const authApi = {
 
 // ---- Facebook ----
 export const facebookApi = {
-  connect: () => api.get<{ url: string }>('/api/auth/facebook/connect').then((r) => r.data),
+  /** `popup` — ruxsat oynasi popup'da: callback'dan keyin oyna o'zi yopiladi. */
+  connect: (popup = false) =>
+    api
+      .get<{ url: string }>('/api/auth/facebook/connect', { params: popup ? { popup: 1 } : undefined })
+      .then((r) => r.data),
   status: () => api.get<FbStatus>('/api/workspace/fb-status').then((r) => r.data),
   adAccounts: () =>
     api.get<{ adAccounts: AdAccount[] }>('/api/workspace/ad-accounts').then((r) => r.data),
@@ -143,6 +148,11 @@ export const amocrmApi = {
 // ---- Meta Conversions API ----
 export const leadAdsApi = {
   status: () => api.get<LeadAdsStatus>('/api/workspace/lead-ads').then((r) => r.data),
+  /** Sahifalarni Meta'dan qayta o'qiydi va leadgen obunasini yangilaydi. */
+  sahifalarniYangila: () =>
+    api
+      .post<{ success: boolean; sahifalar: LeadAdsSahifa[] }>('/api/workspace/lead-ads/sahifalar')
+      .then((r) => r.data),
   /** '' — tokenni o'chiradi. Javobdagi `sinov` — saqlangach darhol qilingan sinov natijasi. */
   saveToken: (token: string) =>
     api

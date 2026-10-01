@@ -13,6 +13,7 @@ import { processLeadAttribution } from '../services/attributionEngine';
 import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
 import { leadIdniOl, extractLine, type LeadIdManbasi } from '../services/amocrmFields';
 import { lidReklamasiniTop } from '../services/metaLeadAds';
+import { hashBoyichaReklama } from '../services/metaSahifalar';
 import { sotuvXabariniYubor } from '../services/telegramSotuv';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
@@ -203,6 +204,18 @@ async function handleLeadAdd(
     }
   }
 
+  /* Lead ID yo'q — leadgen webhook'idan kelgan lid bilan telefon/email
+     hash'i bo'yicha (CRM integratsiyasi Lead ID'ni yozmagan holat). */
+  let formAdId: string | null = null;
+  if (!fbAdId && (phoneHash || emailHash)) {
+    formAdId = await hashBoyichaReklama(
+      workspaceId,
+      phoneHash,
+      emailHash,
+      lead.created_at ? new Date(Number(lead.created_at) * 1000) : null
+    );
+  }
+
   // Reklamani darhol topamiz — sotuvni kutmasdan. Shunda lid hali yangi
   // bo'lganda ham "qaysi reklamadan keldi" ma'lum bo'ladi va voronkaning
   // birinchi bosqichi ishlaydi.
@@ -210,6 +223,7 @@ async function handleLeadAdd(
     workspaceId,
     {
       fbAdId,
+      formAdId,
       utmTerm: utm.utm_term,
       utmContent: utm.utm_content,
       utmCampaign: utm.utm_campaign,

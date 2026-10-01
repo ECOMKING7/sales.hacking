@@ -301,10 +301,41 @@ export async function processLeadAttribution(
         fbAdId = la.rows[0]?.fb_ad_id ?? null;
       }
 
+      /* Lead ID yo'q (CRM integratsiyasi yozmagan) — leadgen webhook'i
+         orqali kelgan lid bilan TELEFON/EMAIL HASH bo'yicha bog'laymiz.
+         Oyna: CRM lididan 30 kun oldin … 1 kun keyin, eng yangisi.
+
+         ⚠ SAVEPOINT: `fb_lead_ads.phone_hash` ustuni 041 dan keyin
+         paydo bo'ladi. Ustun hali yo'q bo'lsa so'rov yiqiladi va butun
+         tranzaksiyani buzardi — savepoint faqat shu qadamni bekor qiladi. */
+      let formAdId: string | null = null;
+      if (!fbAdId && (lead.phone_hash || lead.email_hash)) {
+        await client.query('SAVEPOINT lead_ads_hash');
+        try {
+          const lh = await client.query<{ fb_ad_id: string | null }>(
+            `SELECT fb_ad_id FROM fb_lead_ads
+              WHERE workspace_id = $1 AND holat = 'ok' AND fb_ad_id IS NOT NULL
+                AND ((phone_hash IS NOT NULL AND phone_hash = $2)
+                  OR (email_hash IS NOT NULL AND email_hash = $3))
+                AND ($4::timestamptz IS NULL OR lid_vaqti IS NULL
+                     OR lid_vaqti BETWEEN $4::timestamptz - interval '30 days'
+                                      AND $4::timestamptz + interval '1 day')
+              ORDER BY lid_vaqti DESC NULLS LAST
+              LIMIT 1`,
+            [workspaceId, lead.phone_hash, lead.email_hash, lead.crm_created_at]
+          );
+          formAdId = lh.rows[0]?.fb_ad_id ?? null;
+          await client.query('RELEASE SAVEPOINT lead_ads_hash');
+        } catch {
+          await client.query('ROLLBACK TO SAVEPOINT lead_ads_hash');
+        }
+      }
+
       const m = await matchLeadToAd(
         workspaceId,
         {
           fbAdId,
+          formAdId,
           utmTerm: lead.utm_term,
           utmContent: lead.utm_content,
           utmCampaign: lead.utm_campaign,

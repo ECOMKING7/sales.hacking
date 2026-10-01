@@ -41,6 +41,8 @@ export interface OAuthStatePayload {
    * kalit bilan almashtirishi kerak (redirect_uri ham kalitga bog'liq).
    */
   amo?: 'public' | 'private' | 'legacy';
+  /** Facebook: ulanish popup oynada boshlangan — callback oynani yopadi. */
+  popup?: boolean;
 }
 
 export function signOAuthState(payload: OAuthStatePayload): string {
@@ -58,7 +60,12 @@ export function verifyOAuthState(token: string): OAuthStatePayload {
   // (Eski, typ'siz state'lar 10 daqiqada o'ladi — ularni ham qabul qilamiz.)
   if (p.typ && p.typ !== 'oauth-state') throw new Error('Not an OAuth state');
   if (p.email) throw new Error('Not an OAuth state');
-  return { userId: p.userId, workspaceId: p.workspaceId, amo: p.amo };
+  return {
+    userId: p.userId,
+    workspaceId: p.workspaceId,
+    amo: p.amo,
+    ...(p.popup === true ? { popup: true } : {}),
+  };
 }
 
 // ---- amoMarket o'rnatish "da'vo" kaliti ----

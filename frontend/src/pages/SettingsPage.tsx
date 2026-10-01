@@ -43,6 +43,7 @@ import { workspaceApi } from '../services/api';
 import type { IntegratsiyaHolat, IntegratsiyaHolatlari } from '../types';
 import { Badge, Modal, Skeleton, cn, toast } from '../components/ui';
 import { useTr, type Tr } from '../lib/til';
+import { oauthXabarYubor } from '../lib/oauthKanal';
 
 type Kalit = keyof IntegratsiyaHolatlari;
 
@@ -180,6 +181,16 @@ export default function SettingsPage() {
     }
     window.close();
   }, [popupdami, amoNatija]);
+
+  /* Facebook popup (`?popup=1` — callback qo'yadi). `window.opener`
+     COOP sabab null bo'lishi mumkin, shuning uchun BroadcastChannel. */
+  const fbNatija = params.get('fb');
+  const fbPopup = Boolean(fbNatija && params.get('popup') === '1');
+  useEffect(() => {
+    if (!fbPopup || !fbNatija) return;
+    oauthXabarYubor({ tur: 'fb', holat: fbNatija });
+    window.close();
+  }, [fbPopup, fbNatija]);
 
   useEffect(() => {
     if (popupdami) return;
@@ -320,6 +331,9 @@ const IZOH_TARJIMA: Array<[RegExp, string, string]> = [
   [/^Signal hozirgina keldi$/, 'Signal just received', 'Сигнал только что получен'],
   [/^System User tokeni saqlangan$/, 'System User token saved', 'Токен System User сохранён'],
   [/^Token kiritilmagan$/, 'No token entered', 'Токен не введён'],
+  [/^(\d+) ta sahifa ulangan$/, '$1 page(s) connected', 'Подключено страниц: $1'],
+  [/^Sahifa bor, lekin webhook obunasi yo'q$/, 'Pages found, but not subscribed to leads', 'Страницы есть, но нет подписки на лиды'],
+  [/^Sahifa ulanmagan$/, 'No pages connected', 'Страницы не подключены'],
   [/^Bot sozlanmagan$/, 'Bot not configured', 'Бот не настроен'],
   [/^Chat ulanmagan$/, 'No chat connected', 'Чат не подключён'],
   [/^(\d+) ta chat \((\d+) to'xtatilgan\)$/, '$1 chat(s) ($2 paused)', 'Чатов: $1 ($2 приостановлено)'],

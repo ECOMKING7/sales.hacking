@@ -4,6 +4,7 @@ import { facebookApi } from '../../services/api';
 import type { AdAccount, FbStatus } from '../../types';
 import { Button, Card, CardHeader, EmptyState, SkeletonText, cn, toast } from '../ui';
 import { useTr } from '../../lib/til';
+import { oauthXabargaObuna } from '../../lib/oauthKanal';
 import { CardFooterRow, ConnectionBadge, ErrorRow, LABEL, SELECT, StatRow, errMsg } from './shared';
 
 // ---------- Facebook ----------
@@ -39,12 +40,18 @@ export default function FacebookSection() {
 
   useEffect(() => {
     void load();
+    return oauthXabargaObuna((x) => {
+      if (x.tur === 'fb') void load();
+    });
   }, [load]);
 
   const connect = async () => {
     try {
-      const { url } = await facebookApi.connect();
-      window.open(url, '_blank', 'width=600,height=700');
+      const { url } = await facebookApi.connect(true);
+      const w = window.open(url, 'fb-oauth', 'width=600,height=720');
+      // Popup bloklangan — joriy oynada, `popup` belgisisiz (aks holda
+      // callback'dan keyin asosiy oyna o'zini yopib qo'yardi).
+      if (!w) window.location.href = (await facebookApi.connect(false)).url;
     } catch (err) {
       setError(errMsg(err, 'Failed to start Facebook connect'));
     }

@@ -85,6 +85,8 @@ export interface MetaCapiStatus {
     count: number;
     lastAt: string | null;
   }>;
+  /** Kanal bo'yicha yuborilganlar (forma / qongiroq / sayt / boshqa). */
+  kanallar?: Array<{ kanal: string; actionSource: string | null; ok: number; xato: number }>;
 }
 
 export interface PipelineStatus {
@@ -358,7 +360,18 @@ export interface FieldReport {
 
 
 /** Lead Ads bo'limi holati (`GET /api/workspace/lead-ads`). */
+/** Bitta tugma bilan ulangan Facebook sahifasi (token hech qachon kelmaydi). */
+export interface LeadAdsSahifa {
+  id: string;
+  nom: string | null;
+  /** Sahifa leadgen webhook'iga obuna — lidlar darhol keladi. */
+  leadgenObuna: boolean;
+  xato: string | null;
+}
+
 export interface LeadAdsStatus {
+  /** Eski backend'da yo'q bo'lishi mumkin. */
+  sahifalar?: LeadAdsSahifa[];
   tokenBor: boolean;
   lidlar: { jami: number; leadIdBor: number; reklamagaBoglangan: number };
   yechilgan: { ok: number; reklamaliOk: number; xato: number };

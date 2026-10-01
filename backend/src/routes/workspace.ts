@@ -60,6 +60,8 @@ router.post('/amocrm-webhook', verifyToken, amocrmEnsureWebhook);
 router.get('/lead-ads', verifyToken, leadAds.status);
 router.post('/lead-ads/token', verifyToken, leadAds.saveToken);
 router.post('/lead-ads/yech', verifyToken, leadAds.yech);
+// ⚠ Meta'ga YOZADI: sahifalarni leadgen webhook'iga obuna qiladi.
+router.post('/lead-ads/sahifalar', verifyToken, leadAds.sahifalarniYangila);
 
 router.get('/meta-capi', verifyToken, metaCapiStatus);
 router.post('/meta-capi', verifyToken, metaCapiSave);

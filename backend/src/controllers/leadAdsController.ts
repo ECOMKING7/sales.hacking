@@ -17,6 +17,11 @@ import { pool } from '../db/pool';
 import { encrypt } from '../utils/encryption';
 import { xatoQayd } from '../utils/xatolar';
 import { lidReklamasiniTop, tokenniOl } from '../services/metaLeadAds';
+import {
+  workspaceSahifalari,
+  workspaceSahifalariniYangila,
+  type Sahifa,
+} from '../services/metaSahifalar';
 import { matchLeadToAd } from '../services/leadMatcher';
 import { processLeadAttribution } from '../services/attributionEngine';
 
@@ -42,7 +47,7 @@ export async function status(req: Request, res: Response): Promise<void> {
     const lidlar = await pool.query<{ jami: string; leadidli: string; boglangan: string }>(
       `SELECT COUNT(*)                                          AS jami,
               COUNT(*) FILTER (WHERE fb_lead_id IS NOT NULL)    AS leadidli,
-              COUNT(*) FILTER (WHERE match_method = 'lead_id')  AS boglangan
+              COUNT(*) FILTER (WHERE match_method IN ('lead_id', 'lead_form')) AS boglangan
          FROM leads WHERE workspace_id = $1 AND is_demo = false`,
       [workspaceId]
     );
@@ -57,7 +62,17 @@ export async function status(req: Request, res: Response): Promise<void> {
     const q = (h: string, f: 'soni' | 'reklamali') =>
       son(kesh.rows.find((r) => r.holat === h)?.[f]);
 
+    /* Bitta tugma bilan ulangan sahifalar. Jadval hali yo'q yoki xato —
+       bo'sh ro'yxat, holat baribir qaytadi. */
+    let sahifalar: Sahifa[] = [];
+    try {
+      sahifalar = await workspaceSahifalari(workspaceId);
+    } catch (e) {
+      console.warn('lead-ads status: sahifalar o\'qilmadi —', (e as Error).message);
+    }
+
     res.json({
+      sahifalar,
       tokenBor: Boolean(ws.rows[0]?.fb_lead_token),
       lidlar: {
         jami: son(lidlar.rows[0]?.jami),
@@ -232,5 +247,31 @@ export async function yech(req: Request, res: Response): Promise<void> {
   } catch (err) {
     xatoQayd(err, { joy: 'lead-ads-yech', workspaceId });
     res.status(500).json({ error: 'Qayta yechish bajarilmadi' });
+  }
+}
+
+/**
+ * Sahifalarni Meta'dan qayta o'qish va leadgen obunasini yangilash.
+ * Egasining OAuth tokeni bilan — mijoz Facebook'ni qayta ulamasdan.
+ * ⚠ Meta'ga YOZADI: sahifani ilovamizning leadgen webhook'iga obuna
+ * qiladi (POST /{page}/subscribed_apps). CRM'ga tegmaydi.
+ */
+export async function sahifalarniYangila(req: Request, res: Response): Promise<void> {
+  const workspaceId = req.user?.workspaceId;
+  if (!workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const sahifalar = await workspaceSahifalariniYangila(workspaceId);
+    res.json({ success: true, sahifalar });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.startsWith('Facebook ulanmagan')) {
+      res.status(400).json({ error: msg });
+      return;
+    }
+    xatoQayd(err, { joy: 'lead-ads-sahifalar', workspaceId });
+    res.status(500).json({ error: 'Sahifalar yangilanmadi' });
   }
 }

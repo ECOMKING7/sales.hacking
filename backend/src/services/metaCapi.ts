@@ -31,6 +31,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import axios, { AxiosError } from 'axios';
+import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
 import { GRAPH_URL } from '../config/graph';
@@ -54,9 +55,23 @@ export type CapiStage = 'lead' | 'qualified' | 'purchase';
 /** Orqaga moslik uchun eski nom. */
 export type CapiEventName = CapiStage;
 
+/**
+ * Lid qaysi kanaldan kelgan — Meta'ga `action_source` shu bo'yicha ketadi.
+ *
+ * Bitta mijozda bir nechta reklama maqsadi aralash ishlaydi (forma,
+ * qo'ng'iroq, sayt). Ilgari `action_source` butun workspace uchun BITTA
+ * edi va Meta hammasini bir xil turdagi konversiya deb ko'rardi.
+ */
+export type CapiKanal = 'forma' | 'qongiroq' | 'sayt' | 'boshqa';
+
 export interface CapiLead {
   id: string;
   crm_lead_id: string | null;
+  /** external_id uchun: bir odamning hamma voqealari bitta ID'ga bog'lanadi. */
+  crm_contact_id?: string | null;
+  /** Qo'ng'iroq lidi qaysi liniyaga tushgan (030). */
+  source_line?: string | null;
+  utm_source?: string | null;
   phone_hash: string | null;
   email_hash: string | null;
   fbclid: string | null;
@@ -94,8 +109,13 @@ interface CapiConfig {
   currency: string;
   /** Bosqich -> Meta hodisa nomi. Konfiguratsiyadan keladi. */
   eventNames: Record<CapiStage, string>;
-  /** Meta CRM talabi: 'system_generated'. Sozlamadan o'zgartirish mumkin. */
-  actionSource: string;
+  /**
+   * Qo'lda qotirilgan `action_source`. `null` — AVTOMATIK: har lid
+   * o'z kanali bo'yicha (`kanalAniqla` → `actionSourceFor`).
+   */
+  actionSource: string | null;
+  /** Reklama liniyalari (030) — qo'ng'iroq kanalini aniqlash uchun. */
+  adLines: string[];
   /** custom_data.lead_event_source — manba tizim nomi. */
   leadEventSource: string;
 }
@@ -146,15 +166,17 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     capi_action_source: string | null;
     capi_lead_event_source: string | null;
     meta_capi_token: string | null;
+    amocrm_ad_lines: string[] | null;
   }>(
     `SELECT meta_dataset_id, meta_capi_enabled, secret_key,
             COALESCE(currency, 'UZS')              AS currency,
             COALESCE(capi_event_lead, 'Lead')      AS capi_event_lead,
             COALESCE(capi_event_qualified, 'QualifiedLead') AS capi_event_qualified,
             COALESCE(capi_event_purchase, 'Purchase')  AS capi_event_purchase,
-            COALESCE(capi_action_source, 'system_generated') AS capi_action_source,
+            NULLIF(TRIM(capi_action_source), '')             AS capi_action_source,
             COALESCE(capi_lead_event_source, 'amoCRM')       AS capi_lead_event_source,
-            meta_capi_token
+            meta_capi_token,
+            amocrm_ad_lines
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
@@ -178,9 +200,105 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
       qualified: ws.capi_event_qualified ?? 'QualifiedLead',
       purchase: ws.capi_event_purchase ?? 'Purchase',
     },
-    actionSource: ws.capi_action_source ?? 'system_generated',
+    actionSource: ws.capi_action_source ?? null,
+    adLines: ws.amocrm_ad_lines ?? [],
     leadEventSource: ws.capi_lead_event_source ?? 'amoCRM',
   };
+}
+
+/**
+ * Lid kanalini aniqlaydi. Tartib — ishonchlilik bo'yicha:
+ *   1. Meta Lead ID bor        → forma (Instant Form)
+ *   2. Liniya bor              → qo'ng'iroq. Reklama liniyalari ro'yxati
+ *      sozlangan bo'lsa — faqat o'shalar; bo'sh bo'lsa har qanday liniya
+ *      (030 bilan bir xil qoida: bo'sh ro'yxat = filtr yo'q).
+ *   3. fbclid yoki UTM bor     → sayt
+ *   4. qolgani                 → boshqa
+ */
+export function kanalAniqla(
+  lead: Pick<CapiLead, 'fb_lead_id' | 'source_line' | 'fbclid' | 'utm_source'>,
+  adLines: string[] = []
+): CapiKanal {
+  if (lead.fb_lead_id) return 'forma';
+  const liniya = lead.source_line?.trim();
+  if (liniya && (adLines.length === 0 || adLines.includes(liniya))) return 'qongiroq';
+  if (lead.fbclid || lead.utm_source) return 'sayt';
+  return 'boshqa';
+}
+
+/**
+ * Kanal → Meta `action_source`.
+ *
+ *   forma    → system_generated  (Meta "Conversions API for CRM" talabi)
+ *   qongiroq → phone_call        (Meta ro'yxatida: "Conversion was made
+ *                                 over the phone")
+ *   sayt     → system_generated  ⚠ `website` EMAS: u `client_user_agent`
+ *              va `event_source_url` ni MAJBURIY qiladi, bizda ular hali
+ *              yo'q — Meta hodisani rad etardi. Sotuv baribir CRM'da
+ *              bo'lgan; fbc kaliti bilan moslik ishlaydi.
+ *   boshqa   → system_generated
+ */
+export function actionSourceFor(kanal: CapiKanal): string {
+  return kanal === 'qongiroq' ? 'phone_call' : 'system_generated';
+}
+
+/**
+ * external_id — Meta bir odamning lid → sifatli → sotuv voqealarini
+ * bitta odamga bog'lashi uchun. Kontakt bo'lsa kontakt (bir odam — bir
+ * nechta lid), bo'lmasa lid. Workspace bilan aralashtiriladi: boshqa
+ * mijozning bir xil CRM raqami to'qnashmasin. SHA-256, xom ID chiqmaydi.
+ */
+export function externalIdOf(
+  workspaceId: string,
+  lead: Pick<CapiLead, 'crm_contact_id' | 'crm_lead_id' | 'id'>
+): string {
+  const asos = lead.crm_contact_id
+    ? `c:${lead.crm_contact_id}`
+    : `l:${lead.crm_lead_id ?? lead.id}`;
+  return crypto.createHash('sha256').update(`${workspaceId}:${asos}`).digest('hex');
+}
+
+/* capi_events.kanal / action_source (042). Production'da migratsiya
+   qo'lda ishga tushmasligi mumkin — birinchi chaqiruvda yaratiladi.
+   Yaratib bo'lmasa (huquq yo'q) — ustunlarsiz davom etamiz: diagnostika
+   yo'qoladi, yuborish emas. */
+let kanalSxemasi: Promise<boolean> | null = null;
+function kanalSxemasiniTaminla(): Promise<boolean> {
+  if (!kanalSxemasi) {
+    kanalSxemasi = (async () => {
+      try {
+        // Avval katalogdan: ALTER har sovuq startda jadvalni qulflamasin.
+        const bor = await pool.query<{ n: number }>(
+          `SELECT COUNT(*)::int AS n FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = 'capi_events'
+              AND column_name IN ('kanal', 'action_source')`
+        );
+        if ((bor.rows[0]?.n ?? 0) >= 2) return true;
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query("SET LOCAL lock_timeout = '3s'");
+          await client.query(
+            `ALTER TABLE capi_events
+               ADD COLUMN IF NOT EXISTS kanal TEXT,
+               ADD COLUMN IF NOT EXISTS action_source TEXT`
+          );
+          await client.query('COMMIT');
+        } catch (e) {
+          await client.query('ROLLBACK').catch(() => undefined);
+          throw e;
+        } finally {
+          client.release();
+        }
+        return true;
+      } catch (err) {
+        console.warn('CAPI: kanal ustunlari yaratilmadi —', (err as Error).message);
+        kanalSxemasi = null;
+        return false;
+      }
+    })();
+  }
+  return kanalSxemasi;
 }
 
 /** `fbc` — Meta kutgan format: fb.1.<klik vaqti ms>.<fbclid> */
@@ -274,15 +392,27 @@ export async function sendCapiEvent(
       return false;
     }
 
+    const kanal = kanalAniqla(lead, cfg.adLines);
+    const actionSource = cfg.actionSource ?? actionSourceFor(kanal);
+
     // Takror yuborishni bazada to'samiz — Meta'ning 48 soatlik dedup
     // oynasidan uzoqroq muddatda ham ishlaydi.
-    const claimed = await pool.query(
-      `INSERT INTO capi_events (workspace_id, lead_id, event_name, event_id, status)
-            VALUES ($1, $2, $3, $4, 'pending')
-       ON CONFLICT (workspace_id, event_id, event_name) DO NOTHING
-         RETURNING id`,
-      [workspaceId, lead.id, eventName, eventId]
-    );
+    const kanalBor = await kanalSxemasiniTaminla();
+    const claimed = kanalBor
+      ? await pool.query(
+          `INSERT INTO capi_events (workspace_id, lead_id, event_name, event_id, status, kanal, action_source)
+                VALUES ($1, $2, $3, $4, 'pending', $5, $6)
+           ON CONFLICT (workspace_id, event_id, event_name) DO NOTHING
+             RETURNING id`,
+          [workspaceId, lead.id, eventName, eventId, kanal, actionSource]
+        )
+      : await pool.query(
+          `INSERT INTO capi_events (workspace_id, lead_id, event_name, event_id, status)
+                VALUES ($1, $2, $3, $4, 'pending')
+           ON CONFLICT (workspace_id, event_id, event_name) DO NOTHING
+             RETURNING id`,
+          [workspaceId, lead.id, eventName, eventId]
+        );
     if (!claimed.rowCount) return false; // allaqachon yuborilgan
 
     const userData: Record<string, unknown> = {};
@@ -294,7 +424,12 @@ export async function sendCapiEvent(
     if (lead.phone_hash) userData.ph = [lead.phone_hash];
     if (lead.email_hash) userData.em = [lead.email_hash];
 
-    if (!Object.keys(userData).length) {
+    // Moslik kaliti EMAS — o'zi yolg'iz Meta'ga odamni topib bermaydi.
+    // Shuning uchun "kalit yo'q" tekshiruvidan KEYIN qo'shiladi.
+    const haqiqiyKalitBor = Object.keys(userData).length > 0;
+    userData.external_id = [externalIdOf(workspaceId, lead)];
+
+    if (!haqiqiyKalitBor) {
       await pool.query(
         `UPDATE capi_events SET status = 'error', match_keys = 'none',
                 error = 'moslik kaliti yo''q (fbc/ph/em)'
@@ -332,10 +467,9 @@ export async function sendCapiEvent(
       event_name: eventName,
       event_time: eventTime,
       event_id: eventId,
-      // CRM'dan kelib chiqqan, foydalanuvchi qurilmasida sodir bo'lmagan
-      // hodisa. Meta CRM talabi 'system_generated'; qo'ng'iroq voronkasi
-      // uchun boshqacha bo'lishi mumkin, shuning uchun sozlamadan (§3.1).
-      action_source: cfg.actionSource,
+      // Lid kanali bo'yicha (kanalAniqla/actionSourceFor). Sozlamada
+      // qotirilgan bo'lsa — o'sha (§3.1).
+      action_source: actionSource,
       user_data: userData,
       custom_data: customData,
     };
@@ -382,7 +516,8 @@ export async function loadCapiLead(
   leadId: string
 ): Promise<CapiLead | null> {
   const { rows } = await pool.query<CapiLead>(
-    `SELECT id, crm_lead_id, phone_hash, email_hash, fbclid, fb_lead_id,
+    `SELECT id, crm_lead_id, crm_contact_id, source_line, utm_source,
+            phone_hash, email_hash, fbclid, fb_lead_id,
             revenue, crm_created_at, qualified_at, won_at
        FROM leads
       WHERE workspace_id = $1 AND id = $2`,
@@ -453,7 +588,7 @@ export async function sendCapiTest(
     event_name: eventName,
     event_time: Math.floor(Date.now() / 1000),
     event_id: `test:${Date.now()}`,
-    action_source: cfg.actionSource,
+    action_source: cfg.actionSource ?? 'system_generated',
     user_data: { ph: [ph] },
     custom_data: {
       event_source: 'crm',

@@ -123,6 +123,22 @@ export async function holatlar(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  /* Bitta tugma bilan ulangan sahifalar (041). Jadval hali bo'lmasa — 0. */
+  let sahifa = 0;
+  let obunaSahifa = 0;
+  try {
+    const p = await pool.query<{ jami: string; obuna: string }>(
+      `SELECT COUNT(*) AS jami, COUNT(*) FILTER (WHERE p.leadgen_obuna) AS obuna
+         FROM fb_pages p JOIN workspaces w ON w.owner_id = p.user_id
+        WHERE w.id = $1`,
+      [workspaceId]
+    );
+    sahifa = Number(p.rows[0]?.jami ?? 0);
+    obunaSahifa = Number(p.rows[0]?.obuna ?? 0);
+  } catch {
+    /* 041 hali qo'llanmagan */
+  }
+
   const tgFaol = Number(w.telegram_faol ?? 0);
   const tgJami = Number(w.telegram_chatlar ?? 0);
 
@@ -153,8 +169,15 @@ export async function holatlar(req: Request, res: Response): Promise<void> {
     },
     webhook: webhookHolati(amoUlangan, w.oxirgi_webhook),
     leadAds: {
-      holat: w.fb_lead_token ? 'ok' : 'yoq',
-      izoh: w.fb_lead_token ? 'System User tokeni saqlangan' : 'Token kiritilmagan',
+      holat: obunaSahifa > 0 || w.fb_lead_token ? 'ok' : sahifa > 0 ? 'ogoh' : 'yoq',
+      izoh:
+        obunaSahifa > 0
+          ? `${obunaSahifa} ta sahifa ulangan`
+          : sahifa > 0
+            ? 'Sahifa bor, lekin webhook obunasi yo\'q'
+            : w.fb_lead_token
+              ? 'System User tokeni saqlangan'
+              : 'Sahifa ulanmagan',
     },
     capi: {
       holat: w.meta_capi_enabled && w.meta_dataset_id ? 'ok' : 'yoq',
