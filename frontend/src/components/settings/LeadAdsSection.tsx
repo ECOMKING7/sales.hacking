@@ -48,11 +48,16 @@ export default function LeadAdsSection() {
   useEffect(() => {
     void load();
     // Popup callback'i tugagach (BroadcastChannel) — holatni yangilaymiz.
+    // Sahifalar obunasi callback'dan keyin FONDA tugaydi — 3 s va 8 s da ham.
+    const taymerlar: number[] = [];
     const bekor = oauthXabargaObuna((x) => {
-      if (x.tur === 'fb') void load();
+      if (x.tur !== 'fb') return;
+      void load();
+      taymerlar.push(...[3000, 8000, 15000].map((ms) => window.setTimeout(() => void load(), ms)));
     });
     return () => {
       bekor();
+      taymerlar.forEach((t) => window.clearTimeout(t));
       if (popupTimer.current) window.clearInterval(popupTimer.current);
     };
   }, [load]);

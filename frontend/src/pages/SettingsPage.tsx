@@ -43,7 +43,7 @@ import { workspaceApi } from '../services/api';
 import type { IntegratsiyaHolat, IntegratsiyaHolatlari } from '../types';
 import { Badge, Modal, Skeleton, cn, toast } from '../components/ui';
 import { useTr, type Tr } from '../lib/til';
-import { oauthXabarYubor } from '../lib/oauthKanal';
+import { oauthXabarYubor, oauthXabargaObuna } from '../lib/oauthKanal';
 
 type Kalit = keyof IntegratsiyaHolatlari;
 
@@ -189,8 +189,39 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!fbPopup || !fbNatija) return;
     oauthXabarYubor({ tur: 'fb', holat: fbNatija });
-    window.close();
+    // Natija ko'rinib tursin (qora/bo'sh oyna emas), keyin yopiladi.
+    const t = window.setTimeout(() => window.close(), 1200);
+    return () => window.clearTimeout(t);
   }, [fbPopup, fbNatija]);
+
+  /* ASOSIY oyna: Facebook natijasi — har doim aniq bildirishnoma.
+     Ikki yo'l: popup (BroadcastChannel) yoki popup bloklanganda to'g'ridan
+     redirect (`?fb=` URL'da). Sahifalar obunasi fonda tugaydi — shuning
+     uchun holat 3 s va 8 s dan keyin ham qayta yuklanadi. */
+  useEffect(() => {
+    if (fbPopup) return;
+    const taymerlar: number[] = [];
+    const natija = (holat: string) => {
+      if (holat === 'connected') {
+        toast.ok(tr('Facebook ulandi ✓', 'Facebook connected ✓', 'Facebook подключён ✓'), 5000);
+        void load();
+        taymerlar.push(...[3000, 8000, 15000].map((ms) => window.setTimeout(() => void load(), ms)));
+      } else if (holat === 'denied') {
+        toast.bad(tr("Facebook'da ruxsat berilmadi", 'Access was not granted in Facebook', 'Доступ в Facebook не предоставлен'), 5000);
+      } else {
+        toast.bad(tr('Facebook ulanmadi — qayta urinib ko\'ring', 'Facebook connection failed — try again', 'Не удалось подключить Facebook — попробуйте снова'), 5000);
+      }
+    };
+    if (fbNatija) natija(fbNatija);
+    const bekor = oauthXabargaObuna((x) => {
+      if (x.tur === 'fb') natija(x.holat);
+    });
+    return () => {
+      bekor();
+      taymerlar.forEach((t) => window.clearTimeout(t));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (popupdami) return;
@@ -247,6 +278,22 @@ export default function SettingsPage() {
     // Modal ichida nimadir ulangan bo'lishi mumkin — belgilarni yangilaymiz.
     void load();
   };
+
+  /* Popup ichida butun sozlamalar sahifasi emas — faqat natija. */
+  if (fbPopup) {
+    const ok = fbNatija === 'connected';
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className={cn('text-4xl', ok ? 'text-ok' : 'text-bad')}>{ok ? '✓' : '!'}</div>
+        <p className="text-lg font-semibold text-ink">
+          {ok
+            ? tr('Facebook ulandi', 'Facebook connected', 'Facebook подключён')
+            : tr('Facebook ulanmadi', 'Facebook not connected', 'Facebook не подключён')}
+        </p>
+        <p className="text-sm text-ink-2">{tr('Oyna yopilmoqda…', 'Closing this window…', 'Окно закрывается…')}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

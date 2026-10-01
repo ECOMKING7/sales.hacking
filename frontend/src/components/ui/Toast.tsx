@@ -24,6 +24,8 @@ export interface ToastItem {
   id: number;
   matn: string;
   tone: ToastTone;
+  /** Ekranda turish vaqti (ms). Berilmasa — MUDDAT_MS. */
+  ms?: number;
 }
 
 type Tinglovchi = (t: ToastItem) => void;
@@ -31,15 +33,15 @@ type Tinglovchi = (t: ToastItem) => void;
 const tinglovchilar = new Set<Tinglovchi>();
 let keyingiId = 1;
 
-function chiqar(matn: string, tone: ToastTone): void {
-  const item: ToastItem = { id: keyingiId++, matn, tone };
+function chiqar(matn: string, tone: ToastTone, ms?: number): void {
+  const item: ToastItem = { id: keyingiId++, matn, tone, ms };
   for (const f of tinglovchilar) f(item);
 }
 
 export const toast = {
-  ok: (matn: string) => chiqar(matn, 'ok'),
-  bad: (matn: string) => chiqar(matn, 'bad'),
-  info: (matn: string) => chiqar(matn, 'info'),
+  ok: (matn: string, ms?: number) => chiqar(matn, 'ok', ms),
+  bad: (matn: string, ms?: number) => chiqar(matn, 'bad', ms),
+  info: (matn: string, ms?: number) => chiqar(matn, 'info', ms),
 };
 
 /**
@@ -103,7 +105,7 @@ export function ToastHost() {
       setRoyxat((oldingi) => [...oldingi, t].slice(-MAX_KORINADI));
       window.setTimeout(() => {
         setRoyxat((oldingi) => oldingi.filter((x) => x.id !== t.id));
-      }, MUDDAT_MS);
+      }, t.ms ?? MUDDAT_MS);
     };
     tinglovchilar.add(qoshish);
     return () => {

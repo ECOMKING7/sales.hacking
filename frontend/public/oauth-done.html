@@ -1,0 +1,82 @@
+<!doctype html>
+<!--
+  OAuth popup yakuni. NEGA SPA EMAS: popup'da butun ilovani (≈260 KB JS)
+  yuklab, darhol yopish — bekorga 1–2 soniya qora ekran. Bu sahifa ~2 KB,
+  bir zumda chiziladi: natijani ko'rsatadi, asosiy oynaga BroadcastChannel
+  orqali xabar beradi va yopiladi. window.opener ishlatilmaydi —
+  facebook.com COOP uni uzadi.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>McQueen AI</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f7f7f5; --ink:#16181d; --ink2:#5b616e; --ok:#1f8a4c; --bad:#c2410c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --ink:#eef0f3; --ink2:#9aa1ad; --ok:#4ade80; --bad:#fb923c; } }
+  html,body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; box-sizing:border-box; }
+  .i { font-size:44px; font-weight:700; line-height:1; margin-bottom:12px; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  h1 { font-size:18px; margin:0 0 6px; }
+  p { margin:0; color:var(--ink2); font-size:14px; }
+  a { color:inherit; }
+</style>
+</head>
+<body>
+<main>
+  <div id="i" class="i ok">✓</div>
+  <h1 id="t"></h1>
+  <p id="s"></p>
+</main>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var holat = q.get('fb') || 'error';
+  var til = 'en';
+  try { til = localStorage.getItem('mcq-til') || 'en'; } catch (e) {}
+  if (['uz', 'en', 'ru'].indexOf(til) < 0) til = 'en';
+  var M = {
+    connected: { uz: 'Facebook ulandi', en: 'Facebook connected', ru: 'Facebook подключён' },
+    denied:    { uz: 'Ruxsat berilmadi', en: 'Access was not granted', ru: 'Доступ не предоставлен' },
+    error:     { uz: 'Facebook ulanmadi', en: 'Facebook connection failed', ru: 'Не удалось подключить Facebook' },
+    closing:   { uz: 'Oyna yopilmoqda…', en: 'Closing this window…', ru: 'Окно закрывается…' },
+    back:      { uz: 'Sozlamalarga qaytish', en: 'Back to settings', ru: 'Вернуться в настройки' }
+  };
+  var ok = holat === 'connected';
+  var m = M[holat] || M.error;
+  document.getElementById('t').textContent = m[til];
+  var ic = document.getElementById('i');
+  if (!ok) { ic.textContent = '!'; ic.className = 'i bad'; }
+  document.getElementById('s').textContent = M.closing[til];
+
+  var yetkazildi = false;
+  try {
+    var k = new BroadcastChannel('mcq-oauth');
+    k.postMessage({ tur: 'fb', holat: holat });
+    k.close();
+    yetkazildi = true;
+  } catch (e) {}
+
+  if (!yetkazildi) {
+    // Eski brauzer: asosiy oynaga xabar yetmaydi — shu oynada sozlamalarga.
+    location.replace('/settings?fb=' + encodeURIComponent(holat));
+    return;
+  }
+  setTimeout(function () {
+    window.close();
+    // Brauzer yopishga ruxsat bermasa (oyna popup emas) — havola qoladi.
+    setTimeout(function () {
+      var s = document.getElementById('s');
+      s.textContent = '';
+      var a = document.createElement('a');
+      a.href = '/settings?fb=' + encodeURIComponent(holat);
+      a.textContent = M.back[til];
+      s.appendChild(a);
+    }, 400);
+  }, 900);
+})();
+</script>
+</body>
+</html>

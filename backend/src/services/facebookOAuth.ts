@@ -140,18 +140,24 @@ export async function getAdAccounts(accessToken: string): Promise<AdAccount[]> {
       params: { fields: 'id,name', access_token: accessToken, limit: 25 },
     });
     const businesses = (biz.data.data ?? []) as Array<{ id: string; name?: string }>;
-    for (const b of businesses) {
-      for (const edge of ['owned_ad_accounts', 'client_ad_accounts']) {
-        try {
-          const r = await axios.get(`${GRAPH_URL}/${b.id}/${edge}`, {
-            params: { fields: AD_ACCOUNT_FIELDS, access_token: accessToken, limit: 100 },
-          });
-          for (const a of (r.data.data ?? []) as AdAccount[]) {
-            if (!byId.has(a.id)) byId.set(a.id, { ...a, business_name: a.business_name ?? b.name });
-          }
-        } catch {
-          /* bitta biznesning ro'yxati o'qilmasa — qolganlari davom etadi */
-        }
+    /* PARALLEL: 25 biznes × 2 edge ketma-ket = 50 so'rov × ~300 ms ≈ 15 s
+       edi. Hammasi birga — eng sekin bitta so'rov vaqti. */
+    const javoblar = await Promise.all(
+      businesses.flatMap((b) =>
+        ['owned_ad_accounts', 'client_ad_accounts'].map((edge) =>
+          axios
+            .get(`${GRAPH_URL}/${b.id}/${edge}`, {
+              params: { fields: AD_ACCOUNT_FIELDS, access_token: accessToken, limit: 100 },
+            })
+            .then((r) => ({ b, data: (r.data.data ?? []) as AdAccount[] }))
+            // bitta biznesning ro'yxati o'qilmasa — qolganlari davom etadi
+            .catch(() => ({ b, data: [] as AdAccount[] }))
+        )
+      )
+    );
+    for (const { b, data } of javoblar) {
+      for (const a of data) {
+        if (!byId.has(a.id)) byId.set(a.id, { ...a, business_name: a.business_name ?? b.name });
       }
     }
   } catch {
