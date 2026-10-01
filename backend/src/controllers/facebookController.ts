@@ -42,25 +42,28 @@ export async function callback(req: Request, res: Response): Promise<void> {
 
   const { code, state, error } = req.query as Record<string, string | undefined>;
 
+  /* STATE BIRINCHI tekshiriladi — `popup` belgisi shunda. Ilgari `error`
+     (foydalanuvchi "Cancel" bosdi) undan oldin qaytardi: popup=false bo'lib
+     qolardi, popup ichida butun sayt ochilib, yopilmay turardi va asosiy
+     oyna natijani bilmasdi. */
+  let userId = '';
+  let stateOk = false;
+  if (state) {
+    try {
+      const st = verifyOAuthState(state);
+      userId = st.userId;
+      popup = Boolean(st.popup);
+      stateOk = true;
+    } catch {
+      /* imzosi yaroqsiz — pastda 'error' */
+    }
+  }
+
   if (error) {
     redirectTo('denied');
     return;
   }
-  if (!code || !state) {
-    redirectTo('error');
-    return;
-  }
-
-  let userId: string;
-  try {
-    const st = verifyOAuthState(state);
-    userId = st.userId;
-    popup = Boolean(st.popup);
-  } catch {
-    redirectTo('error');
-    return;
-  }
-  if (!userId) {
+  if (!code || !stateOk || !userId) {
     redirectTo('error');
     return;
   }

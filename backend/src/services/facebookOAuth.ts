@@ -140,21 +140,32 @@ export async function getAdAccounts(accessToken: string): Promise<AdAccount[]> {
       params: { fields: 'id,name', access_token: accessToken, limit: 25 },
     });
     const businesses = (biz.data.data ?? []) as Array<{ id: string; name?: string }>;
-    /* PARALLEL: 25 biznes × 2 edge ketma-ket = 50 so'rov × ~300 ms ≈ 15 s
-       edi. Hammasi birga — eng sekin bitta so'rov vaqti. */
-    const javoblar = await Promise.all(
-      businesses.flatMap((b) =>
-        ['owned_ad_accounts', 'client_ad_accounts'].map((edge) =>
+    /* PARALLEL, lekin CHEKLANGAN: ketma-ket 50 so'rov ≈ 15 s edi; 50 tasi
+       birdan — Facebook rate limit (4/17/613) xavfi. 6 tadan — ~2–3 s. */
+    const vazifalar = businesses.flatMap((b) =>
+      ['owned_ad_accounts', 'client_ad_accounts'].map((edge) => ({ b, edge }))
+    );
+    const javoblar: Array<{ b: { id: string; name?: string }; data: AdAccount[] }> = [];
+    let xatolar = 0;
+    for (let i = 0; i < vazifalar.length; i += 6) {
+      const bolak = await Promise.all(
+        vazifalar.slice(i, i + 6).map(({ b, edge }) =>
           axios
             .get(`${GRAPH_URL}/${b.id}/${edge}`, {
               params: { fields: AD_ACCOUNT_FIELDS, access_token: accessToken, limit: 100 },
             })
             .then((r) => ({ b, data: (r.data.data ?? []) as AdAccount[] }))
             // bitta biznesning ro'yxati o'qilmasa — qolganlari davom etadi
-            .catch(() => ({ b, data: [] as AdAccount[] }))
+            .catch((err: unknown) => {
+              xatolar++;
+              if (xatolar === 1) console.warn('getAdAccounts: biznes ro\'yxati o\'qilmadi —', (err as Error).message);
+              return { b, data: [] as AdAccount[] };
+            })
         )
-      )
-    );
+      );
+      javoblar.push(...bolak);
+    }
+    if (xatolar > 1) console.warn(`getAdAccounts: ${xatolar}/${vazifalar.length} biznes so'rovi o'qilmadi`);
     for (const { b, data } of javoblar) {
       for (const a of data) {
         if (!byId.has(a.id)) byId.set(a.id, { ...a, business_name: a.business_name ?? b.name });

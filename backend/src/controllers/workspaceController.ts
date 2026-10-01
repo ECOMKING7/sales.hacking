@@ -66,8 +66,17 @@ export async function listAdAccounts(req: Request, res: Response): Promise<void>
       })),
     });
   } catch (err) {
-    console.error('listAdAccounts error:', err);
-    res.status(500).json({ error: 'Failed to load ad accounts' });
+    const fb = (err as { response?: { data?: { error?: { code?: number } } } }).response?.data?.error;
+    /* 190 = token yaroqsiz (ilova olib tashlangan, parol o'zgargan, muddati
+       tugagan). Bu SERVER xatosi emas — foydalanuvchi qayta ulashi kerak.
+       Frontend `reconnect` ni ko'rib "Facebook'ni qayta ulang" deydi. */
+    // 10/200 = ruxsat yo'q (ruxsat oynasida akkauntlar belgilanmagan) — ham qayta ulash.
+    if (fb?.code === 190 || fb?.code === 10 || fb?.code === 200) {
+      res.status(409).json({ error: 'Facebook token is no longer valid — reconnect Facebook', reconnect: true });
+      return;
+    }
+    console.error('listAdAccounts error:', (err as Error).message);
+    res.status(502).json({ error: 'Facebook did not return the ad accounts — try again' });
   }
 }
 

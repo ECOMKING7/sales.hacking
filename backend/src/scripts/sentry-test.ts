@@ -1,3 +1,4 @@
+import '../utils/axiosXavfsiz';
 /**
  * Sentry ulanishini tekshirish. BIR MARTALIK, hech narsani o'zgartirmaydi.
  *

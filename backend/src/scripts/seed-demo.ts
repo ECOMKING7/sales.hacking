@@ -1,3 +1,4 @@
+import '../utils/axiosXavfsiz';
 /* ═══════════════════════════════════════════════════════════════════════
    DEMO MA'LUMOT GENERATORI
 

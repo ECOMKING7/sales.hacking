@@ -20,7 +20,7 @@
  * ⚠ Bo'limlar modal ichida o'z `<Card>` va `<CardHeader>` i bilan
  * chiziladi. Modal sarlavha chizmaydi (Modal.tsx dagi izohga qarang).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HUQUQIY } from '../config/huquqiy';
 import {
   Code2,
@@ -42,7 +42,7 @@ import TelegramSection from '../components/settings/TelegramSection';
 import { workspaceApi } from '../services/api';
 import type { IntegratsiyaHolat, IntegratsiyaHolatlari } from '../types';
 import { Badge, Modal, Skeleton, cn, toast } from '../components/ui';
-import { useTr, type Tr } from '../lib/til';
+import { trNow, useTr, type Tr } from '../lib/til';
 import { oauthXabarYubor, oauthXabargaObuna } from '../lib/oauthKanal';
 
 type Kalit = keyof IntegratsiyaHolatlari;
@@ -147,7 +147,8 @@ export default function SettingsPage() {
   const [ochiq, setOchiq] = useState<Kalit | null>(null);
 
   const params = new URLSearchParams(window.location.search);
-  const justConnected = params.get('fb') === 'connected' || params.get('amocrm') === 'connected';
+  // Facebook natijasini toast ko'rsatadi (ikki marta "ulandi" chiqmasin) — banner faqat amoCRM uchun.
+  const justConnected = params.get('amocrm') === 'connected';
 
   const load = useCallback(async () => {
     try {
@@ -198,21 +199,31 @@ export default function SettingsPage() {
      Ikki yo'l: popup (BroadcastChannel) yoki popup bloklanganda to'g'ridan
      redirect (`?fb=` URL'da). Sahifalar obunasi fonda tugaydi — shuning
      uchun holat 3 s va 8 s dan keyin ham qayta yuklanadi. */
+  const fbUrlIshlandi = useRef(false);
   useEffect(() => {
     if (fbPopup) return;
     const taymerlar: number[] = [];
     const natija = (holat: string) => {
       if (holat === 'connected') {
-        toast.ok(tr('Facebook ulandi ✓', 'Facebook connected ✓', 'Facebook подключён ✓'), 5000);
+        toast.ok(trNow('Facebook ulandi ✓', 'Facebook connected ✓', 'Facebook подключён ✓'), 5000);
         void load();
         taymerlar.push(...[3000, 8000, 15000].map((ms) => window.setTimeout(() => void load(), ms)));
       } else if (holat === 'denied') {
-        toast.bad(tr("Facebook'da ruxsat berilmadi", 'Access was not granted in Facebook', 'Доступ в Facebook не предоставлен'), 5000);
+        toast.bad(trNow("Facebook'da ruxsat berilmadi", 'Access was not granted in Facebook', 'Доступ в Facebook не предоставлен'), 5000);
       } else {
-        toast.bad(tr('Facebook ulanmadi — qayta urinib ko\'ring', 'Facebook connection failed — try again', 'Не удалось подключить Facebook — попробуйте снова'), 5000);
+        toast.bad(trNow('Facebook ulanmadi — qayta urinib ko\'ring', 'Facebook connection failed — try again', 'Не удалось подключить Facebook — попробуйте снова'), 5000);
       }
     };
-    if (fbNatija) natija(fbNatija);
+    /* URL'dagi natija BIR MARTA: keyin `?fb=` olib tashlanadi — aks holda
+       har refreshda toast qayta chiqardi. Ref — StrictMode effektni ikki
+       marta ishga tushirganda ham ikki toast bo'lmasin. */
+    if (fbNatija && !fbUrlIshlandi.current) {
+      fbUrlIshlandi.current = true;
+      natija(fbNatija);
+      const u = new URL(window.location.href);
+      u.searchParams.delete('fb');
+      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+    }
     const bekor = oauthXabargaObuna((x) => {
       if (x.tur === 'fb') natija(x.holat);
     });

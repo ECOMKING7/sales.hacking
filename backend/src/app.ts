@@ -1,3 +1,5 @@
+// ⚠ ENG BIRINCHI: axios xatolaridan tokenlarni tozalovchi interceptor.
+import './utils/axiosXavfsiz';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';

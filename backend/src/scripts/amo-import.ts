@@ -1,3 +1,4 @@
+import '../utils/axiosXavfsiz';
 /**
  * amoCRM tarixini import qilish.
  *

@@ -1,3 +1,4 @@
+import '../utils/axiosXavfsiz';
 /**
  * Kursni qo'lda yangilash.
  *

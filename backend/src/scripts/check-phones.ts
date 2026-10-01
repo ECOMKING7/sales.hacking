@@ -1,3 +1,4 @@
+import '../utils/axiosXavfsiz';
 /**
  * Diagnostika: amoCRM kontaktlaridagi telefon raqamlari qanday
  * formatda saqlanganini ko'rish va normalizatsiya ularni E.164 ga
