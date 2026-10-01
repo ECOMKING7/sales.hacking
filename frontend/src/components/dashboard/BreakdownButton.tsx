@@ -1,8 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { Button, cn } from '../ui';
+import { trNow } from '../../lib/til';
 
 const BREAKDOWNS = ['Placement', 'Age', 'Gender', 'Region'];
+const BREAKDOWN_RU: Record<string, string> = {
+  Placement: 'Плейсмент',
+  Age: 'Возраст',
+  Gender: 'Пол',
+  Region: 'Регион',
+};
+const nomi = (b: string) => trNow(b, b, BREAKDOWN_RU[b] ?? b);
 
 export default function BreakdownButton() {
   const [open, setOpen] = useState(false);
@@ -19,7 +27,13 @@ export default function BreakdownButton() {
 
   const pick = (b: string) => {
     // Breakdown data isn't synced from the FB Insights API yet — degrade gracefully.
-    setNote(`${b} breakdown is not available yet.`);
+    setNote(
+      trNow(
+        `${b} bo'yicha taqsimot hali mavjud emas.`,
+        `${b} breakdown is not available yet.`,
+        `Разбивка «${nomi(b)}» пока недоступна.`
+      )
+    );
     setOpen(false);
     setTimeout(() => setNote(''), 3000);
   };
@@ -39,7 +53,7 @@ export default function BreakdownButton() {
           open && 'border-edge text-accent shadow-glow-xs'
         )}
       >
-        Breakdown
+        {trNow('Breakdown', 'Breakdown', 'Разбивка')}
       </Button>
 
       {open && (
@@ -55,7 +69,7 @@ export default function BreakdownButton() {
               onClick={() => pick(b)}
               className="block w-full rounded-sm px-3 py-1.5 text-left text-sm text-ink-2 transition-colors duration-150 hover:bg-tint hover:text-accent"
             >
-              By {b}
+              {trNow(`${b} bo'yicha`, `By ${b}`, nomi(b))}
             </button>
           ))}
         </div>

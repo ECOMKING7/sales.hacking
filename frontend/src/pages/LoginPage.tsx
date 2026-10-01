@@ -5,10 +5,13 @@ import BrandMark from '../components/BrandMark';
 import { useAuthStore } from '../store/authStore';
 import { Button, Card, Input } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
+import LangToggle from '../components/LangToggle';
+import { useTr } from '../lib/til';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const tr = useTr();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,7 +28,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'Login failed';
+        tr('Kirib bo‘lmadi', 'Login failed', 'Не удалось войти');
       setError(msg);
     } finally {
       setLoading(false);
@@ -34,14 +37,17 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-ground px-4">
-      <ThemeToggle variant="inline" className="absolute right-4 top-4" />
+      <div className="absolute right-4 top-4 flex gap-2">
+        <LangToggle variant="inline" />
+        <ThemeToggle variant="inline" />
+      </div>
       <Card padding="lg" className="w-full max-w-sm">
         <div className="mb-7 flex flex-col items-center text-center">
           {/* Brend belgisi: qora kvadrat, oq aylanuvchi chiziqlar, orqasida
               yonib-o'chib turuvchi rangli nur. */}
           <BrandMark size={56} className="mb-5 mt-2" />
-          <h1 className="text-xl font-bold text-ink">Welcome back</h1>
-          <p className="mt-1 text-sm text-ink-2">Sign in to your Attribution account</p>
+          <h1 className="text-xl font-bold text-ink">{tr('Xush kelibsiz', 'Welcome back', 'С возвращением')}</h1>
+          <p className="mt-1 text-sm text-ink-2">{tr('McQueen AI akkauntingizga kiring', 'Sign in to your McQueen AI account', 'Войдите в аккаунт McQueen AI')}</p>
         </div>
 
         {error && (
@@ -60,7 +66,7 @@ export default function LoginPage() {
             placeholder="you@example.com"
           />
           <Input
-            label="Password"
+            label={tr('Parol', 'Password', 'Пароль')}
             type="password"
             required
             value={password}
@@ -68,14 +74,14 @@ export default function LoginPage() {
             placeholder="••••••••"
           />
           <Button type="submit" variant="primary" fullWidth loading={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? tr('Kirilmoqda…', 'Signing in…', 'Вход…') : tr('Kirish', 'Sign in', 'Войти')}
           </Button>
         </form>
 
         <p className="mt-6 text-center text-sm text-ink-2">
-          Don't have an account?{' '}
+          {tr('Akkauntingiz yo‘qmi?', "Don't have an account?", 'Нет аккаунта?')}{' '}
           <Link to="/register" className="font-semibold text-accent hover:underline">
-            Register
+            {tr('Ro‘yxatdan o‘tish', 'Register', 'Регистрация')}
           </Link>
         </p>
 
@@ -86,13 +92,13 @@ export default function LoginPage() {
         */}
         <nav className="mt-5 flex justify-center gap-4 text-xs text-ink-3">
           <Link to="/privacy" className="hover:text-ink-2">
-            Maxfiylik
+            {tr('Maxfiylik', 'Privacy', 'Конфиденциальность')}
           </Link>
           <Link to="/terms" className="hover:text-ink-2">
-            Shartlar
+            {tr('Shartlar', 'Terms', 'Условия')}
           </Link>
           <Link to="/data-deletion" className="hover:text-ink-2">
-            Ma'lumotni o'chirish
+            {tr("Ma'lumotni o'chirish", 'Data deletion', 'Удаление данных')}
           </Link>
         </nav>
       </Card>

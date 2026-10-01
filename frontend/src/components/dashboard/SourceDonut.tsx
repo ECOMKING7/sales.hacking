@@ -2,6 +2,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { PieChart as PieChartIcon } from 'lucide-react';
 import { formatMoney } from '../../utils/format';
 import { Card, EmptyState, Skeleton, SkeletonText } from '../ui';
+import { trNow } from '../../lib/til';
 
 interface SourceData {
   metaAds: number;
@@ -50,10 +51,10 @@ export default function SourceDonut({
 
   return (
     <Card padding="md">
-      <h3 className="mb-4 text-sm font-semibold text-ink">Revenue by Source</h3>
+      <h3 className="mb-4 text-sm font-semibold text-ink">{trNow('Daromad manbalari', 'Revenue by Source', 'Выручка по источникам')}</h3>
 
       {loading ? (
-        <div role="status" aria-label="Yuklanmoqda">
+        <div role="status" aria-label={trNow('Yuklanmoqda', 'Loading', 'Загрузка')}>
           <Skeleton className="mx-auto h-44 w-44 rounded-full" />
           <div className="mt-4">
             <SkeletonText lines={4} />
@@ -92,8 +93,11 @@ export default function SourceDonut({
           ) : (
             <EmptyState
               icon={<PieChartIcon />}
-              title="No data"
-              hint="daromad yo'q · manba bo'yicha taqsimot hisoblanmaydi"
+              title={trNow("Ma'lumot yo'q", 'No data', 'Нет данных')}
+              hint={trNow(
+                "daromad yo'q · manba bo'yicha taqsimot hisoblanmaydi",
+                'no revenue yet · source split not available'
+              , 'выручки пока нет · разбивка по источникам недоступна')}
             />
           )}
 

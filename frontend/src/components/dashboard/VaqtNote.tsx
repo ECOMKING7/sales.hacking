@@ -13,6 +13,7 @@
  */
 import { CalendarRange, Info } from 'lucide-react';
 import { cn } from '../ui';
+import { trNow } from '../../lib/til';
 
 export interface VaqtHolati {
   rejim: 'kunlik' | 'butun_davr';
@@ -76,9 +77,10 @@ export default function VaqtNote({
       >
         <Info aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-none text-warn" />
         <span>
-          Tanlangan boshlanish sanasi ({uz(state.from)}) kunlik tarixdan oldin — kunlik tarix{' '}
-          <span className="font-medium tabular-nums">{uz(state.qamrov.start)}</span> dan boshlanadi.
-          Undan oldingi kunlar uchun raqam <span className="font-medium">yo'q</span>, nol emas.
+          {trNow(
+            `Tanlangan boshlanish sanasi (${uz(state.from)}) kunlik tarixdan oldin — kunlik tarix ${uz(state.qamrov.start)} dan boshlanadi. Undan oldingi kunlar uchun raqam yo'q, nol emas.`,
+            `The selected start date (${uz(state.from)}) is before the daily history, which starts on ${uz(state.qamrov.start)}. Earlier days have no data — not zero.`
+          , `Выбранная дата начала (${uz(state.from)}) раньше дневной истории, которая начинается с ${uz(state.qamrov.start)}. За более ранние дни данных нет — это не ноль.`)}
         </span>
       </div>
     );
@@ -96,18 +98,18 @@ export default function VaqtNote({
 
       {kunlik ? (
         <span>
-          Oraliq:{' '}
+          {trNow('Oraliq:', 'Range:', 'Период:')}{' '}
           <span className="font-medium tabular-nums text-ink-2">
             {uz(state.from)} → {uz(state.to)}
           </span>
         </span>
       ) : (
-        <span className="font-medium text-ink-2">Butun davr</span>
+        <span className="font-medium text-ink-2">{trNow('Butun davr', 'All time', 'За всё время')}</span>
       )}
 
       {kunlik && (
         <span className="text-ink-3">
-          · kunlik tarix:{' '}
+          · {trNow('kunlik tarix:', 'daily history:', 'дневная история:')}{' '}
           <span className="tabular-nums">
             {uz(state.qamrov.start)} → {uz(state.qamrov.end)}
           </span>
@@ -116,13 +118,24 @@ export default function VaqtNote({
 
       <span className="inline-flex items-center gap-1 text-ink-3">
         <Info aria-hidden className="h-3 w-3 flex-none" />
-        {state.izoh}
+        {trNow(
+          state.izoh,
+          kunlik
+            ? 'Spend, clicks, impressions and leads are for the selected days. Sales, revenue and ROAS are not in the daily table, so they show "—".'
+            : 'All time. Pick dates to see spend and leads for those days.',
+          kunlik
+            ? 'Расход, клики, показы и лиды — за выбранные дни. Продаж, выручки и ROAS нет в дневной таблице, поэтому «—».'
+            : 'За всё время. Выберите даты, чтобы увидеть расход и лиды за эти дни.'
+        )}
       </span>
 
       {tashqarida && (
         <span className="font-medium text-warn">
-          ⚠ Tanlangan boshlanish sanasi kunlik tarixdan oldin — u kunlar uchun raqam yo'q, nol
-          emas.
+          ⚠{' '}
+          {trNow(
+            "Tanlangan boshlanish sanasi kunlik tarixdan oldin — u kunlar uchun raqam yo'q, nol emas.",
+            'The selected start date is before the daily history — those days have no data, not zero.'
+          , 'Выбранная дата начала раньше дневной истории — за эти дни данных нет, это не ноль.')}
         </span>
       )}
     </div>

@@ -32,6 +32,8 @@ import {
   cn,
 } from '../ui';
 import { ALL_COLUMNS } from './columns';
+import { trNow } from '../../lib/til';
+import { ustunNomi } from './columns';
 
 export type View = 'campaigns' | 'adsets' | 'ads';
 export type Sel = { id: string; name: string } | null;
@@ -87,7 +89,7 @@ function CreativeTile({ url, type }: { url?: string | null; type?: string | null
   return (
     <span
       aria-hidden
-      title={type ?? 'kreativ'}
+      title={type ?? trNow('kreativ', 'creative', 'креатив')}
       className="grid h-8 w-8 flex-none place-items-center rounded-sm border border-line bg-surface-2 text-ink-3"
     >
       <Icon className="h-3.5 w-3.5" />
@@ -299,7 +301,7 @@ function renderTotal(
           <span className="ml-1 text-xs font-normal text-ink-3">
             {/* Turlar aralash bo'lsa aniq nom yozib bo'lmaydi: 500 lid + 40
                 sotuvning yig'indisi "540 lid" emas. */}
-            {t.resultType ?? 'natija'}
+            {t.resultType ?? trNow('natija', 'results', 'результаты')}
           </span>
         </span>
       );
@@ -369,10 +371,13 @@ const KUNLIK_YOQ = new Set(['purchases', 'costPerPurchase', 'revenue', 'roas']);
 
 function ustunIzoh(key: string, kunlik: boolean): string | undefined {
   if (kunlik && KUNLIK_YOQ.has(key)) {
-    return "Bu ustun kunlik jadvalda yo'q — sotuv va daromad CRM'dan, sotuv yopilgan sana bo'yicha keladi. Shuning uchun tanlangan oraliqda \"—\". Sana tanlagichida \"Butun davr\" ni tanlang.";
+    return trNow(
+      "Bu ustun kunlik jadvalda yo'q — sotuv va daromad CRM'dan, sotuv yopilgan sana bo'yicha keladi. Shuning uchun tanlangan oraliqda \"—\". Sana tanlagichida \"Butun davr\" ni tanlang.",
+      'Not in the daily table — sales and revenue come from the CRM by close date, so the selected range shows "—". Choose "Maximum" in the date picker.'
+    , 'Нет в дневной таблице — продажи и выручка берутся из CRM по дате закрытия, поэтому в выбранном периоде «—». Выберите «Максимум» в выборе дат.');
   }
   if (kunlik && (key === 'spend' || key === 'results' || key === 'leads' || key === 'clicks' || key === 'impressions')) {
-    return 'Tanlangan kunlar bo\'yicha, Facebook ma\'lumoti.';
+    return trNow("Tanlangan kunlar bo'yicha, Facebook ma'lumoti.", 'For the selected days, from Facebook.', 'За выбранные дни, данные Facebook.');
   }
   return undefined;
 }
@@ -539,7 +544,7 @@ export default function EntityTable({
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-tint/50 px-4 py-2.5 text-sm">
           <span className="font-semibold text-ink">
-            {selected.size} ta {entityLabel} tanlandi
+            {trNow(`${selected.size} ta ${entityLabel} tanlandi`, `${selected.size} ${entityLabel} selected`, `Выбрано: ${selected.size}`)}
           </span>
 
           {allChecked && total > selected.size && (
@@ -556,7 +561,7 @@ export default function EntityTable({
                 }
               }}
             >
-              Barcha {total} tasini tanlash
+              {trNow(`Barcha ${total} tasini tanlash`, `Select all ${total}`, `Выбрать все ${total}`)}
             </Button>
           )}
 
@@ -568,7 +573,7 @@ export default function EntityTable({
             icon={<X className="h-3.5 w-3.5" />}
             onClick={onClearSelection}
           >
-            Tanlovni bekor qilish
+            {trNow('Tanlovni bekor qilish', 'Clear selection', 'Снять выбор')}
           </Button>
         </div>
       )}
@@ -616,7 +621,7 @@ export default function EntityTable({
                   checked={allChecked}
                   indeterminate={someChecked && !allChecked}
                   onChange={(v) => onToggleAll(selectableRows, v)}
-                  label="Hammasini tanlash"
+                  label={trNow('Hammasini tanlash', 'Select all', 'Выбрать все')}
                 />
               </Th>
               {cols.map((c) => {
@@ -647,7 +652,7 @@ export default function EntityTable({
                         c.align === 'right' && 'flex-row-reverse'
                       )}
                     >
-                      {c.label}
+                      {ustunNomi(c)}
                       {c.sortKey && (
                         <ArrowUpDown
                           aria-hidden
@@ -682,17 +687,21 @@ export default function EntityTable({
 
             {!query.isLoading && query.isError && (
               <TableEmpty colSpan={cols.length + 1}>
-                <span className="text-bad">Could not load {entityLabel}.</span>
+                <span className="text-bad">
+                  {trNow(`${entityLabel} yuklanmadi.`, `Could not load ${entityLabel}.`, 'Не удалось загрузить данные.')}
+                </span>
                 <span className="mt-3 flex justify-center">
                   <Button variant="secondary" size="sm" onClick={() => query.refetch()}>
-                    Retry
+                    {trNow('Qayta urinish', 'Retry', 'Повторить')}
                   </Button>
                 </span>
               </TableEmpty>
             )}
 
             {!query.isLoading && !query.isError && rows.length === 0 && (
-              <TableEmpty colSpan={cols.length + 1}>No {entityLabel} found.</TableEmpty>
+              <TableEmpty colSpan={cols.length + 1}>
+                {trNow(`${entityLabel} topilmadi.`, `No ${entityLabel} found.`, 'Ничего не найдено.')}
+              </TableEmpty>
             )}
 
             {!query.isLoading &&
@@ -712,7 +721,7 @@ export default function EntityTable({
                     <Checkbox
                       checked={selected.has(r.id)}
                       onChange={(v) => onToggle({ id: r.id, name: r.name ?? '—' }, v)}
-                      label={`Tanlash: ${r.name ?? r.id}`}
+                      label={`${trNow('Tanlash', 'Select', 'Выбрать')}: ${r.name ?? r.id}`}
                     />
                   </Td>
                   {cols.map((c) => (
@@ -748,11 +757,15 @@ export default function EntityTable({
                   >
                     {i === 0 ? (
                       <span className="whitespace-nowrap">
-                        Jami
+                        {trNow('Jami', 'Total', 'Итого')}
                         <span className="ml-1.5 text-xs font-normal text-ink-3">
                           {filtered
-                            ? `${rows.length} ta ${entityLabel} (filtr)`
-                            : `${total} ta ${entityLabel}`}
+                            ? trNow(
+                                `${rows.length} ta ${entityLabel} (filtr)`,
+                                `${rows.length} ${entityLabel} (filtered)`,
+                                `${rows.length} (фильтр)`
+                              )
+                            : trNow(`${total} ta ${entityLabel}`, `${total} ${entityLabel}`, `Всего: ${total}`)}
                         </span>
                       </span>
                     ) : (

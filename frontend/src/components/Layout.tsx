@@ -20,6 +20,8 @@ import { useAuthStore } from '../store/authStore';
 import Orb from './Orb';
 import api, { workspaceApi } from '../services/api';
 import ThemeToggle from './ThemeToggle';
+import LangToggle from './LangToggle';
+import { useTr } from '../lib/til';
 import { Badge, Button, Input, cn } from './ui';
 import type { BadgeTone } from './ui';
 
@@ -49,6 +51,7 @@ function DemoBanner() {
 
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const tr = useTr();
 
   if (!data?.demo) return null;
 
@@ -68,9 +71,11 @@ function DemoBanner() {
     <div className="flex flex-wrap items-center gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-ink-2">
       <FlaskConical aria-hidden className="h-3.5 w-3.5 flex-none text-warn" />
       <span className="min-w-0 flex-1">
-        <span className="font-semibold text-ink">DEMO</span> — namunaviy ma'lumot (
-        {data.demoLeads.toLocaleString()} lid, sotuv, daromad). Haqiqiy raqamlar Facebook va
-        amoCRM ulangach ko'rinadi, demo o'shanda o'zi o'chadi.
+        <span className="font-semibold text-ink">DEMO</span> —{' '}
+        {tr(
+          `namunaviy ma'lumot (${data.demoLeads.toLocaleString()} lid, sotuv, daromad). Haqiqiy raqamlar Facebook va amoCRM ulangach ko'rinadi, demo o'shanda o'zi o'chadi.`,
+          `sample data (${data.demoLeads.toLocaleString()} leads, sales, revenue). Real numbers appear once Facebook and amoCRM are connected; the demo then removes itself.`
+        , `демо-данные (${data.demoLeads.toLocaleString()} лидов, продажи, выручка). Реальные цифры появятся после подключения Facebook и amoCRM — демо удалится само.`)}
       </span>
       <button
         type="button"
@@ -78,19 +83,19 @@ function DemoBanner() {
         disabled={busy}
         className="font-semibold text-accent underline-offset-2 hover:underline disabled:opacity-50"
       >
-        {busy ? "O'chirilmoqda…" : "Demo'ni o'chirish"}
+        {busy ? tr("O'chirilmoqda…", 'Removing…', 'Удаление…') : tr("Demo'ni o'chirish", 'Remove demo', 'Удалить демо')}
       </button>
     </div>
   );
 }
 
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/funnel', label: 'Voronka', icon: Filter },
-  { to: '/purchases', label: 'Purchases', icon: ShoppingCart },
-  { to: '/leads', label: 'Leads', icon: Users },
-  { to: '/reports', label: 'Reports', icon: FileBarChart },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/dashboard', uz: 'Dashboard', en: 'Dashboard', ru: 'Дашборд', icon: LayoutDashboard },
+  { to: '/funnel', uz: 'Voronka', en: 'Funnel', ru: 'Воронка', icon: Filter },
+  { to: '/purchases', uz: 'Sotuvlar', en: 'Purchases', ru: 'Продажи', icon: ShoppingCart },
+  { to: '/leads', uz: 'Lidlar', en: 'Leads', ru: 'Лиды', icon: Users },
+  { to: '/reports', uz: 'Hisobotlar', en: 'Reports', ru: 'Отчёты', icon: FileBarChart },
+  { to: '/settings', uz: 'Sozlamalar', en: 'Settings', ru: 'Настройки', icon: Settings },
 ];
 
 export default function Layout() {
@@ -102,6 +107,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { workspace, user, logout, switchWorkspace } = useAuthStore();
+  const tr = useTr();
 
   const usage = useQuery({ queryKey: ['usage'], queryFn: workspaceApi.usage });
   const workspaces = useQuery({
@@ -251,12 +257,12 @@ export default function Layout() {
                         if (e.key === 'Enter') handleCreate();
                         if (e.key === 'Escape') setCreating(false);
                       }}
-                      placeholder="Workspace nomi..."
-                      aria-label="Yangi workspace nomi"
+                      placeholder={tr('Workspace nomi...', 'Workspace name...', 'Название workspace...')}
+                      aria-label={tr('Yangi workspace nomi', 'New workspace name', 'Название нового workspace')}
                       className="h-8 text-xs"
                     />
                     <Button size="sm" onClick={handleCreate}>
-                      Yaratish
+                      {tr('Yaratish', 'Create', 'Создать')}
                     </Button>
                   </div>
                 ) : (
@@ -265,7 +271,7 @@ export default function Layout() {
                     className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-sm text-ink-3 hover:bg-surface-2 hover:text-accent"
                   >
                     <Plus aria-hidden className="h-4 w-4" />
-                    Yangi workspace
+                    {tr('Yangi workspace', 'New workspace', 'Новый workspace')}
                   </button>
                 )}
               </div>
@@ -275,7 +281,9 @@ export default function Layout() {
 
         {/* Navigatsiya */}
         <nav className="mt-3 flex flex-1 flex-col gap-1.5 px-3 md:items-center">
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {NAV.map(({ to, uz, en, ru, icon: Icon }) => {
+            const label = tr(uz, en, ru);
+            return (
             <NavLink
               key={to}
               to={to}
@@ -302,17 +310,19 @@ export default function Layout() {
                 {label}
               </span>
             </NavLink>
-          ))}
+            );
+          })}
         </nav>
 
         {/* Tarif va chiqish */}
         <div className="flex flex-col gap-1.5 border-t border-line p-3 md:items-center">
+          <LangToggle />
           <ThemeToggle />
 
           <Link
             to="/upgrade"
             onClick={() => setOpen(false)}
-            title={`Tarif: ${plan}`}
+            title={`${tr('Tarif', 'Plan', 'Тариф')}: ${plan}`}
             className="group relative flex h-[38px] w-full items-center gap-2 rounded-sm px-2.5 text-sm text-ink-3 hover:bg-surface-3 hover:text-accent md:w-[38px] md:justify-center md:px-0"
           >
             <Sparkles aria-hidden className="h-[18px] w-[18px] flex-none" />
@@ -323,22 +333,22 @@ export default function Layout() {
               role="tooltip"
               className="pointer-events-none absolute left-[52px] z-50 hidden whitespace-nowrap rounded-sm border border-line-2 bg-surface px-2 py-1 text-xs font-medium text-ink opacity-0 shadow-glow-xs transition-opacity duration-150 group-hover:opacity-100 md:block"
             >
-              Tarif: {plan} — yangilash
+              {tr('Tarif', 'Plan', 'Тариф')}: {plan} — {tr('yangilash', 'upgrade', 'улучшить')}
             </span>
           </Link>
 
           <button
             onClick={handleLogout}
-            title="Chiqish"
+            title={tr('Chiqish', 'Log out', 'Выйти')}
             className="group relative flex h-[38px] w-full items-center gap-2 rounded-sm px-2.5 text-sm text-ink-3 hover:bg-bad/10 hover:text-bad md:w-[38px] md:justify-center md:px-0"
           >
             <LogOut aria-hidden className="h-[18px] w-[18px] flex-none" />
-            <span className="md:hidden">Chiqish</span>
+            <span className="md:hidden">{tr('Chiqish', 'Log out', 'Выйти')}</span>
             <span
               role="tooltip"
               className="pointer-events-none absolute left-[52px] z-50 hidden whitespace-nowrap rounded-sm border border-line-2 bg-surface px-2 py-1 text-xs font-medium text-ink opacity-0 shadow-glow-xs transition-opacity duration-150 group-hover:opacity-100 md:block"
             >
-              Chiqish
+              {tr('Chiqish', 'Log out', 'Выйти')}
             </span>
           </button>
         </div>
@@ -361,7 +371,7 @@ export default function Layout() {
             <button
               className="text-ink-2 md:hidden"
               onClick={() => setOpen(true)}
-              aria-label="Menyuni ochish"
+              aria-label={tr('Menyuni ochish', 'Open menu', 'Открыть меню')}
             >
               {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>

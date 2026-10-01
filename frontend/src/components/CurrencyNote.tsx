@@ -13,6 +13,7 @@
  */
 import { AlertTriangle, ArrowLeftRight } from 'lucide-react';
 import type { CurrencyState } from '../types';
+import { trNow } from '../lib/til';
 
 function fmtRate(v: number | null): string {
   if (v === null) return '—';
@@ -50,9 +51,15 @@ export default function CurrencyNote({
         <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 flex-none text-warn" />
         <div className="text-ink-2">
           <span className="font-medium text-ink">
-            {state.reason ?? 'Valyutalar mos emas — ROAS hisoblanmadi.'}
+            {trNow(
+              state.reason ?? 'Valyutalar mos emas — ROAS hisoblanmadi.',
+              `Ad account in ${state.fb}, CRM revenue in ${state.crm}. No exchange rate — ROAS not computed.`
+            , `Рекламный аккаунт в ${state.fb}, выручка CRM в ${state.crm}. Курса нет — ROAS не рассчитан.`)}
           </span>{' '}
-          Boshqa ustunlar (xarajat, lid, CPL, CAC) o'z valyutasida to'g'ri qoladi.
+          {trNow(
+            "Boshqa ustunlar (xarajat, lid, CPL, CAC) o'z valyutasida to'g'ri qoladi.",
+            'Other columns (spend, leads, CPL, CAC) stay correct in their own currency.'
+          , 'Остальные столбцы (расход, лиды, CPL, CAC) корректны в своей валюте.')}
         </div>
       </div>
     );
@@ -66,14 +73,18 @@ export default function CurrencyNote({
     >
       <ArrowLeftRight aria-hidden className="mt-0.5 h-3.5 w-3.5 flex-none text-ink-3" />
       <div className="text-ink-2">
-        ROAS kurs bo'yicha hisoblangan:{' '}
+        {trNow("ROAS kurs bo'yicha hisoblangan:", 'ROAS converted at:', 'ROAS пересчитан по курсу:')}{' '}
         <span className="font-medium tabular-nums text-ink">
           1 {state.fb} = {fmtRate(state.rate)} {state.crm}
         </span>{' '}
         <span className="text-ink-3">
-          ({state.rateSource ?? 'manba noma\'lum'}, {state.rateDate ?? '—'})
+          ({state.rateSource ?? trNow("manba noma'lum", 'unknown source', 'источник неизвестен')}, {state.rateDate ?? '—'})
         </span>
-        . Xarajat ustuni {state.fb} da qoladi — Ads Manager bilan solishtirish uchun.
+        .{' '}
+        {trNow(
+          `Xarajat ustuni ${state.fb} da qoladi — Ads Manager bilan solishtirish uchun.`,
+          `Spend stays in ${state.fb} so it matches Ads Manager.`
+        , `Расход остаётся в ${state.fb} — для сверки с Ads Manager.`)}
       </div>
     </div>
   );

@@ -5,9 +5,12 @@ import { dashboardApi, TopMetric } from '../../services/api';
 import type { EntityRow } from '../../types';
 import { formatMoney, formatRoas, formatNumber, n } from '../../utils/format';
 import { Button, Card, EmptyState, Skeleton, cn } from '../ui';
+import { trNow } from '../../lib/til';
 
 const METRICS: TopMetric[] = ['roas', 'revenue', 'sales'];
 const LABELS: Record<TopMetric, string> = { roas: 'ROAS', revenue: 'Revenue', sales: 'Sales' };
+const LABELS_RU: Record<TopMetric, string> = { roas: 'ROAS', revenue: 'Выручка', sales: 'Продажи' };
+const metrikaNomi = (m: TopMetric) => trNow(LABELS[m], LABELS[m], LABELS_RU[m]);
 
 function metricValue(row: EntityRow, metric: TopMetric): number {
   if (metric === 'roas') return n(row.roas);
@@ -61,7 +64,7 @@ function TopList({
                   : 'text-ink-2 hover:bg-tint hover:text-accent'
               )}
             >
-              {LABELS[m]}
+              {metrikaNomi(m)}
             </button>
           ))}
         </div>
@@ -88,8 +91,8 @@ function TopList({
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<TrendingUp />}
-          title="No data"
-          hint={`${LABELS[metric]} · tanlangan oraliqda natija yo'q`}
+          title={trNow("Ma'lumot yo'q", 'No data', 'Нет данных')}
+          hint={`${metrikaNomi(metric)} · ${trNow("tanlangan oraliqda natija yo'q", 'no results in the selected range', 'нет результатов за выбранный период')}`}
         />
       ) : (
         <ul className="space-y-3">
@@ -120,13 +123,13 @@ export default function TopPerformers({ crmCurrency }: { crmCurrency: string | n
   return (
     <div className="space-y-6">
       <TopList
-        title="Top Campaigns"
+        title={trNow('Top kampaniyalar', 'Top Campaigns', 'Топ кампаний')}
         keyPrefix="top-campaigns"
         fetcher={dashboardApi.topCampaigns}
         crmCurrency={crmCurrency}
       />
       <TopList
-        title="Top Ad Sets"
+        title={trNow('Top ad set’lar', 'Top Ad Sets', 'Топ групп объявлений')}
         keyPrefix="top-adsets"
         fetcher={dashboardApi.topAdsets}
         crmCurrency={crmCurrency}

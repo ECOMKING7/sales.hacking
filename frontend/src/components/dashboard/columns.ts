@@ -1,6 +1,9 @@
+import { trNow } from '../../lib/til';
 export interface ColumnDef {
   key: string;
   label: string;
+  /** Ruscha nom. Yo'q bo'lsa (CPC, CTR, ROAS) — label hamma tilda bir xil. */
+  ru?: string;
   sortKey?: string; // backend ORDER BY whitelist key
   align?: 'right';
   always?: boolean; // can't be hidden
@@ -8,27 +11,32 @@ export interface ColumnDef {
 }
 
 // Full column set, mirroring Facebook Ads Manager's metric columns.
+/** Ustun nomi joriy tilda. O'zbekcha va inglizchada Ads Manager atamalari. */
+export function ustunNomi(c: ColumnDef): string {
+  return trNow(c.label, c.label, c.ru ?? c.label);
+}
+
 export const ALL_COLUMNS: ColumnDef[] = [
-  { key: 'name', label: 'Name', sortKey: 'name', always: true },
-  { key: 'status', label: 'Delivery', always: true },
-  { key: 'spend', label: 'Spent', sortKey: 'spend', align: 'right' },
+  { key: 'name', label: 'Name', ru: 'Название', sortKey: 'name', always: true },
+  { key: 'status', label: 'Delivery', ru: 'Показ', always: true },
+  { key: 'spend', label: 'Spent', ru: 'Расход', sortKey: 'spend', align: 'right' },
   { key: 'cpc', label: 'CPC', align: 'right' },
   { key: 'cpm', label: 'CPM', align: 'right' },
   { key: 'ctr', label: 'CTR', align: 'right' },
-  { key: 'clicks', label: 'Clicks', sortKey: 'clicks', align: 'right' },
-  { key: 'impressions', label: 'Impressions', align: 'right' },
-  { key: 'reach', label: 'Reach', align: 'right', unavailable: true },
-  { key: 'frequency', label: 'Frequency', align: 'right', unavailable: true },
+  { key: 'clicks', label: 'Clicks', ru: 'Клики', sortKey: 'clicks', align: 'right' },
+  { key: 'impressions', label: 'Impressions', ru: 'Показы', align: 'right' },
+  { key: 'reach', label: 'Reach', ru: 'Охват', align: 'right', unavailable: true },
+  { key: 'frequency', label: 'Frequency', ru: 'Частота', align: 'right', unavailable: true },
   // Natija = kampaniya maqsadidagi asosiy hodisa (lid, sotuv, klik...).
   // Bitta akkauntda turli maqsadli kampaniyalarni solishtirish uchun yagona
   // ustun; 'Cost/lead' faqat lid kampaniyalari uchun mos edi.
-  { key: 'results', label: 'Results', sortKey: 'results', align: 'right' },
-  { key: 'costPerResult', label: 'Cost/result', sortKey: 'costPerResult', align: 'right' },
-  { key: 'leads', label: 'Leads', sortKey: 'leads', align: 'right' },
-  { key: 'costPerLead', label: 'Cost/lead', align: 'right' },
-  { key: 'purchases', label: 'Purchases', sortKey: 'purchases', align: 'right' },
-  { key: 'costPerPurchase', label: 'Cost/purchase', align: 'right' },
-  { key: 'revenue', label: 'Revenue', sortKey: 'revenue', align: 'right' },
+  { key: 'results', label: 'Results', ru: 'Результаты', sortKey: 'results', align: 'right' },
+  { key: 'costPerResult', label: 'Cost/result', ru: 'Цена/результат', sortKey: 'costPerResult', align: 'right' },
+  { key: 'leads', label: 'Leads', ru: 'Лиды', sortKey: 'leads', align: 'right' },
+  { key: 'costPerLead', label: 'Cost/lead', ru: 'Цена/лид', align: 'right' },
+  { key: 'purchases', label: 'Purchases', ru: 'Продажи', sortKey: 'purchases', align: 'right' },
+  { key: 'costPerPurchase', label: 'Cost/purchase', ru: 'Цена/продажа', align: 'right' },
+  { key: 'revenue', label: 'Revenue', ru: 'Выручка', sortKey: 'revenue', align: 'right' },
   { key: 'roas', label: 'ROAS', sortKey: 'roas', align: 'right' },
 ];
 

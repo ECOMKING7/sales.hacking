@@ -8,6 +8,7 @@
  */
 import { type ReactNode } from 'react';
 import { Badge, Button, cn } from '../ui';
+import { useTr } from '../../lib/til';
 
 export function errMsg(err: unknown, fallback: string): string {
   return (
@@ -18,22 +19,24 @@ export function errMsg(err: unknown, fallback: string): string {
 
 /** Ulanish holati — CardHeader'ning action joyida turadi. */
 export function ConnectionBadge({ connected }: { connected: boolean }) {
+  const tr = useTr();
   return connected ? (
     <Badge tone="ok" dot>
-      Ulangan
+      {tr('Ulangan', 'Connected', 'Подключено')}
     </Badge>
   ) : (
-    <Badge tone="neutral">Ulanmagan</Badge>
+    <Badge tone="neutral">{tr('Ulanmagan', 'Not connected', 'Не подключено')}</Badge>
   );
 }
 
 /** Xato + qayta urinish. Har bo'lim shu bitta naqshdan foydalanadi. */
 export function ErrorRow({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const tr = useTr();
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3">
       <p className="text-sm text-bad">{message}</p>
       <Button variant="secondary" size="sm" onClick={onRetry}>
-        Qayta urinish
+        {tr('Qayta urinish', 'Retry', 'Повторить')}
       </Button>
     </div>
   );

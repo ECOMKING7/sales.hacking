@@ -17,15 +17,19 @@ import DataDeletionPage from './pages/legal/DataDeletionPage';
 import { ToastHost } from './components/ui';
 import AmoInstallPage from './pages/AmoInstallPage';
 import PendingAmoClaim from './components/PendingAmoClaim';
+import { useTil } from './lib/til';
 
 function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  /* Til almashganda butun daraxt qayta o'rnatiladi: `trNow` ishlatadigan
+     kichik komponentlar ham, memo qilinganlari ham yangi tilda chiziladi. */
+  const til = useTil((s) => s.til);
 
   return (
     <>
       <ToastHost />
       <PendingAmoClaim />
-      <Routes>
+      <Routes key={til}>
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}

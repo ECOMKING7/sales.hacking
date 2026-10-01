@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Columns3, ChevronDown } from 'lucide-react';
 import { ALL_COLUMNS } from './columns';
 import { Button, cn } from '../ui';
+import { trNow } from '../../lib/til';
+import { ustunNomi } from './columns';
 
 export default function ColumnsButton({
   visible,
@@ -42,7 +44,7 @@ export default function ColumnsButton({
           open && 'border-edge text-accent shadow-glow-xs'
         )}
       >
-        Columns
+        {trNow('Columns', 'Columns', 'Столбцы')}
       </Button>
 
       {open && (
@@ -62,10 +64,10 @@ export default function ColumnsButton({
                 )}
               >
                 <span className="flex items-center gap-2">
-                  {c.label}
+                  {ustunNomi(c)}
                   {c.unavailable && (
                     <span className="font-mono text-label uppercase tracking-[0.1em] text-ink-3">
-                      soon
+                      {trNow('tez orada', 'soon', 'скоро')}
                     </span>
                   )}
                 </span>

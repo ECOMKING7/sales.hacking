@@ -4,6 +4,7 @@ import { ChevronDown, Check, CircleDot, Megaphone } from 'lucide-react';
 import { facebookApi } from '../../services/api';
 import type { AdAccount } from '../../types';
 import { Button, Skeleton, cn } from '../ui';
+import { trNow } from '../../lib/til';
 
 export default function AdAccountSelector() {
   const [open, setOpen] = useState(false);
@@ -40,7 +41,7 @@ export default function AdAccountSelector() {
     queryClient.invalidateQueries({ queryKey: ['top-adsets'] });
   };
 
-  const label = selected?.name ?? (selectedId ? selectedId : 'No ad account');
+  const label = selected?.name ?? (selectedId ? selectedId : trNow('Reklama akkaunti yo‘q', 'No ad account', 'Нет рекламного аккаунта'));
 
   return (
     <div className="relative" ref={ref}>

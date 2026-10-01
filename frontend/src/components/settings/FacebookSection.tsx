@@ -3,10 +3,12 @@ import { ExternalLink, Megaphone } from 'lucide-react';
 import { facebookApi } from '../../services/api';
 import type { AdAccount, FbStatus } from '../../types';
 import { Button, Card, CardHeader, EmptyState, SkeletonText, cn, toast } from '../ui';
+import { useTr } from '../../lib/til';
 import { CardFooterRow, ConnectionBadge, ErrorRow, LABEL, SELECT, StatRow, errMsg } from './shared';
 
 // ---------- Facebook ----------
 export default function FacebookSection() {
+  const tr = useTr();
   const [status, setStatus] = useState<FbStatus | null>(null);
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
   const [selected, setSelected] = useState('');
@@ -54,7 +56,7 @@ export default function FacebookSection() {
     try {
       await facebookApi.selectAdAccount(selected);
       await load();
-      toast.ok('Reklama akkaunti saqlandi');
+      toast.ok(tr('Reklama akkaunti saqlandi', 'Ad account saved', 'Рекламный аккаунт сохранён'));
     } catch (err) {
       setError(errMsg(err, 'Failed to select ad account'));
     } finally {
@@ -66,7 +68,7 @@ export default function FacebookSection() {
     <Card padding="lg">
       <CardHeader
         title="Facebook Ads"
-        description="Ad spend and delivery metrics."
+        description={tr('Reklama xarajati va yetkazish metrikalari.', 'Ad spend and delivery metrics.', 'Расходы на рекламу и метрики показов.')}
         icon={<Megaphone className="h-5 w-5" />}
         action={<ConnectionBadge connected={Boolean(status?.connected)} />}
       />
@@ -78,9 +80,9 @@ export default function FacebookSection() {
       ) : status?.connected ? (
         <div>
           <dl className="mb-5">
-            <StatRow label="Ad account" value={status.adAccountId ?? '—'} />
+            <StatRow label={tr('Reklama akkaunti', 'Ad account', 'Рекламный аккаунт')} value={status.adAccountId ?? '—'} />
             <StatRow
-              label="Token expires"
+              label={tr('Token muddati', 'Token expires', 'Токен действует до')}
               value={
                 status.expiresAt ? new Date(status.expiresAt).toLocaleDateString() : '—'
               }
@@ -89,7 +91,7 @@ export default function FacebookSection() {
 
           <div>
             <label htmlFor="fb-ad-account" className={LABEL}>
-              Select ad account
+              {tr('Reklama akkauntini tanlang', 'Select ad account', 'Выберите рекламный аккаунт')}
             </label>
             {/* Mobilda ustma-ust, keng ekranda yonma-yon. Tugma qisqarmaydi
                 va balandligi select bilan bir xil (ikkalasi ham h-10). */}
@@ -101,7 +103,9 @@ export default function FacebookSection() {
                 className={cn(SELECT, 'min-w-0 sm:flex-1')}
               >
                 <option value="">
-                  {adAccounts.length ? '— tanlang —' : '— ro‘yxat bo‘sh —'}
+                  {adAccounts.length
+                    ? tr('— tanlang —', '— select —', '— выберите —')
+                    : tr('— ro‘yxat bo‘sh —', '— list is empty —', '— список пуст —')}
                 </option>
                 {adAccounts.map((a) => (
                   <option key={a.id} value={a.accountId || a.id}>
@@ -115,12 +119,15 @@ export default function FacebookSection() {
                 disabled={!selected}
                 className="flex-none sm:w-28"
               >
-                Save
+                {tr('Saqlash', 'Save', 'Сохранить')}
               </Button>
             </div>
             {!adAccounts.length && (
               <p className="mt-1.5 text-xs text-ink-3">
-                Ad account topilmadi — tokenni yangilash kerak bo‘lishi mumkin.
+                {tr(
+                  'Ad account topilmadi — Facebook’ni qayta ulang.',
+                  'No ad accounts found — reconnect Facebook.'
+                , 'Рекламные аккаунты не найдены — переподключите Facebook.')}
               </p>
             )}
           </div>
@@ -132,15 +139,15 @@ export default function FacebookSection() {
               onClick={connect}
               icon={<ExternalLink className="h-4 w-4" />}
             >
-              Reconnect Facebook
+              {tr('Facebook’ni qayta ulash', 'Reconnect Facebook', 'Переподключить Facebook')}
             </Button>
           </CardFooterRow>
         </div>
       ) : (
         <EmptyState
           icon={<Megaphone />}
-          title="Facebook Ads ulanmagan"
-          hint="xarajat yo'q · ROAS hisoblanmaydi"
+          title={tr('Facebook Ads ulanmagan', 'Facebook Ads is not connected', 'Facebook Ads не подключён')}
+          hint={tr("xarajat yo'q · ROAS hisoblanmaydi", 'no spend data · ROAS cannot be computed', 'нет данных о расходах · ROAS не рассчитывается')}
           action={
             <Button
               variant="secondary"
@@ -148,7 +155,7 @@ export default function FacebookSection() {
               icon={<Megaphone className="h-4 w-4" />}
               iconRight={<ExternalLink className="h-4 w-4" />}
             >
-              Connect Facebook Ads
+              {tr('Facebook Ads’ni ulash', 'Connect Facebook Ads', 'Подключить Facebook Ads')}
             </Button>
           }
         />

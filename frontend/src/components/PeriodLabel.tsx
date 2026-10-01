@@ -17,6 +17,7 @@
  * buni ko'rsatib turish halolroq.
  */
 import { CalendarRange } from 'lucide-react';
+import { trNow } from '../lib/til';
 
 export interface PeriodWindow {
   start: string | null;
@@ -35,7 +36,7 @@ export default function PeriodLabel({ window: win }: { window?: PeriodWindow }) 
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-ink-3">
         <CalendarRange aria-hidden className="h-3.5 w-3.5" />
-        Davr hali aniqlanmagan — birinchi sync kutilmoqda
+        {trNow('Davr hali aniqlanmagan — birinchi sync kutilmoqda', 'Period not known yet — waiting for the first sync', 'Период ещё не определён — ждём первую синхронизацию')}
       </span>
     );
   }
@@ -43,10 +44,13 @@ export default function PeriodLabel({ window: win }: { window?: PeriodWindow }) 
   return (
     <span
       className="inline-flex items-center gap-1.5 text-xs text-ink-3"
-      title="Facebook 37 oydan eskisini bermaydi. Akkaunt undan oldin ochilgan bo'lsa boshlanish sanasi shu chegara."
+      title={trNow(
+        "Facebook 37 oydan eskisini bermaydi. Akkaunt undan oldin ochilgan bo'lsa boshlanish sanasi shu chegara.",
+        'Facebook returns at most 37 months of history. For older accounts the start date is that limit.'
+      , 'Facebook отдаёт не более 37 месяцев истории. Для более старых аккаунтов дата начала — этот предел.')}
     >
       <CalendarRange aria-hidden className="h-3.5 w-3.5" />
-      Ma'lumot qamrovi:{' '}
+      {trNow("Ma'lumot qamrovi:", 'Data coverage:', 'Охват данных:')}{' '}
       <span className="font-medium tabular-nums text-ink-2">
         {uz(win.start)} → {uz(win.end)}
       </span>

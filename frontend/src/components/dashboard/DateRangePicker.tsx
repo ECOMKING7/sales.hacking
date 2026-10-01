@@ -9,6 +9,23 @@ import {
   formatRangeLabel,
 } from '../../utils/dateRanges';
 import { Button, Input, cn } from '../ui';
+import { trNow } from '../../lib/til';
+
+const PRESET_RU: Record<string, string> = {
+  today: 'Сегодня',
+  yesterday: 'Вчера',
+  last7: 'Последние 7 дней',
+  last14: 'Последние 14 дней',
+  last30: 'Последние 30 дней',
+  last90: 'Последние 90 дней',
+  thisMonth: 'Этот месяц',
+  lastMonth: 'Прошлый месяц',
+  thisYear: 'Этот год',
+  lastYear: 'Прошлый год',
+  maximum: 'Максимум',
+  custom: 'Свой период',
+};
+const presetNomi = (id: string, en: string) => trNow(en, en, PRESET_RU[id] ?? en);
 
 export default function DateRangePicker({
   value,
@@ -78,10 +95,10 @@ export default function DateRangePicker({
                       : 'text-ink-2 hover:bg-tint hover:text-accent'
                   )}
                 >
-                  {p.label}
+                  {presetNomi(p.id, p.label)}
                   {p.id === 'maximum' && (
                     <span className="font-mono text-label uppercase tracking-[0.1em] text-ink-3">
-                      lifetime
+                      {trNow('butun davr', 'lifetime', 'всё время')}
                     </span>
                   )}
                 </button>
@@ -91,7 +108,7 @@ export default function DateRangePicker({
 
           <div className="mt-2 border-t border-line pt-2">
             <p className="px-3 pb-1.5 font-mono text-label uppercase tracking-[0.1em] text-ink-3">
-              Custom range
+              {trNow('Boshqa oraliq', 'Custom range', 'Свой период')}
             </p>
             {/* Ustma-ust, yonma-yon emas: native `input[type=date]` ning eng
                 kichik kengligi ~135px (dd/mm/yyyy + kalendar ikonkasi), ikkitasi
@@ -99,7 +116,7 @@ export default function DateRangePicker({
             <div className="space-y-2 px-3">
               <Input
                 type="date"
-                label="Dan"
+                label={trNow('Dan', 'From', 'С')}
                 value={customFrom}
                 max={customTo || undefined}
                 onChange={(e) => setCustomFrom(e.target.value)}
@@ -107,7 +124,7 @@ export default function DateRangePicker({
               />
               <Input
                 type="date"
-                label="Gacha"
+                label={trNow('Gacha', 'To', 'По')}
                 value={customTo}
                 min={customFrom || undefined}
                 onChange={(e) => setCustomTo(e.target.value)}
@@ -122,7 +139,7 @@ export default function DateRangePicker({
               disabled={!customFrom || !customTo}
               className="mt-2"
             >
-              Apply custom range
+              {trNow('Qo‘llash', 'Apply custom range', 'Применить')}
             </Button>
           </div>
         </div>

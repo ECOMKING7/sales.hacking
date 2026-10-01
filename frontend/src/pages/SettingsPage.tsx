@@ -42,6 +42,7 @@ import TelegramSection from '../components/settings/TelegramSection';
 import { workspaceApi } from '../services/api';
 import type { IntegratsiyaHolat, IntegratsiyaHolatlari } from '../types';
 import { Badge, Modal, Skeleton, cn, toast } from '../components/ui';
+import { useTr, type Tr } from '../lib/til';
 
 type Kalit = keyof IntegratsiyaHolatlari;
 
@@ -49,6 +50,8 @@ interface Tarif {
   kalit: Kalit;
   nom: string;
   izoh: string;
+  izohEn: string;
+  izohRu: string;
   Belgi: LucideIcon;
   Bolim: () => React.ReactElement;
   /** Ichida ko'p ustun yoki jadval bo'lsa kengroq oyna. */
@@ -73,6 +76,8 @@ const TARIFLAR: Tarif[] = [
     kalit: 'facebook',
     nom: 'Facebook Ads',
     izoh: 'Reklama xarajati va yetkazish metrikalari',
+    izohEn: 'Ad spend and delivery metrics',
+    izohRu: 'Расходы на рекламу и метрики показов',
     Belgi: Megaphone,
     Bolim: FacebookSection,
   },
@@ -80,6 +85,8 @@ const TARIFLAR: Tarif[] = [
     kalit: 'amocrm',
     nom: 'amoCRM',
     izoh: 'Lidlar, etaplar va sotuvlar',
+    izohEn: 'Leads, pipeline stages and sales',
+    izohRu: 'Лиды, этапы и продажи',
     Belgi: Database,
     Bolim: AmocrmSection,
     keng: true,
@@ -88,6 +95,8 @@ const TARIFLAR: Tarif[] = [
     kalit: 'webhook',
     nom: 'Webhook',
     izoh: 'Yangi lid haqida CRM darhol xabar beradi',
+    izohEn: 'CRM notifies us about new leads instantly',
+    izohRu: 'CRM мгновенно сообщает о новых лидах',
     Belgi: Webhook,
     Bolim: WebhookSection,
   },
@@ -95,6 +104,8 @@ const TARIFLAR: Tarif[] = [
     kalit: 'leadAds',
     nom: 'Lead Ads',
     izoh: 'Lid qaysi reklamadan kelganini aniqlaydi',
+    izohEn: 'Identifies which ad each lead came from',
+    izohRu: 'Определяет, из какой рекламы пришёл лид',
     Belgi: Link2,
     Bolim: LeadAdsSection,
   },
@@ -102,6 +113,8 @@ const TARIFLAR: Tarif[] = [
     kalit: 'capi',
     nom: 'Meta Conversions API',
     izoh: 'CRM natijasini Meta algoritmiga qaytaradi',
+    izohEn: 'Sends CRM outcomes back to Meta',
+    izohRu: 'Возвращает результаты CRM в алгоритм Meta',
     Belgi: Radio,
     Bolim: MetaCapiSection,
     keng: true,
@@ -110,6 +123,8 @@ const TARIFLAR: Tarif[] = [
     kalit: 'telegram',
     nom: 'Telegram',
     izoh: 'Rejali hisobot va sotuv xabari',
+    izohEn: 'Scheduled reports and sale alerts',
+    izohRu: 'Отчёты по расписанию и уведомления о продажах',
     Belgi: Send,
     Bolim: TelegramSection,
     keng: true,
@@ -118,12 +133,15 @@ const TARIFLAR: Tarif[] = [
     kalit: 'pixel',
     nom: 'Piksel',
     izoh: 'Saytdagi fbclid → konversiya zanjiri',
+    izohEn: 'On-site fbclid → conversion chain',
+    izohRu: 'Цепочка fbclid → конверсия на сайте',
     Belgi: Code2,
     Bolim: PixelSection,
   },
 ];
 
 export default function SettingsPage() {
+  const tr = useTr();
   const [holatlar, setHolatlar] = useState<IntegratsiyaHolatlari | null>(null);
   const [ochiq, setOchiq] = useState<Kalit | null>(null);
 
@@ -222,15 +240,18 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-ink">Integratsiyalar</h1>
+        <h1 className="text-xl font-bold text-ink">{tr('Integratsiyalar', 'Integrations', 'Интеграции')}</h1>
         <p className="mt-1 text-sm text-ink-2">
-          Ma'lumot manbalari va xabarnomalar. Sozlash uchun kartani bosing.
+          {tr(
+            "Ma'lumot manbalari va xabarnomalar. Sozlash uchun kartani bosing.",
+            'Data sources and notifications. Click a card to set it up.'
+          , 'Источники данных и уведомления. Нажмите на карточку для настройки.')}
         </p>
       </div>
 
       {justConnected && (
         <div className="rounded-md border-[1.5px] border-ok/30 bg-ok/12 px-4 py-3 text-sm text-ok">
-          Ulanish muvaffaqiyatli.
+          {tr('Ulanish muvaffaqiyatli.', 'Connected successfully.', 'Успешно подключено.')}
         </div>
       )}
 
@@ -242,6 +263,7 @@ export default function SettingsPage() {
             holat={holatlar?.[t.kalit] ?? null}
             yuklanyapti={holatlar === null}
             onOch={() => setOchiq(t.kalit)}
+            tr={tr}
           />
         ))}
       </div>
@@ -274,24 +296,56 @@ export default function SettingsPage() {
  */
 const BELGI: Record<
   IntegratsiyaHolat['holat'],
-  { matn: string; tone: 'ok' | 'warn' | 'neutral'; nuqta: boolean }
+  { matn: string; en: string; ru: string; tone: 'ok' | 'warn' | 'neutral'; nuqta: boolean }
 > = {
-  ok: { matn: 'Ulangan', tone: 'ok', nuqta: true },
-  ogoh: { matn: "E'tibor kerak", tone: 'warn', nuqta: true },
-  yoq: { matn: 'Ulanmagan', tone: 'neutral', nuqta: false },
-  nomalum: { matn: 'Tekshirilmagan', tone: 'neutral', nuqta: false },
+  ok: { matn: 'Ulangan', en: 'Connected', ru: 'Подключено', tone: 'ok', nuqta: true },
+  ogoh: { matn: "E'tibor kerak", en: 'Needs attention', ru: 'Требует внимания', tone: 'warn', nuqta: true },
+  yoq: { matn: 'Ulanmagan', en: 'Not connected', ru: 'Не подключено', tone: 'neutral', nuqta: false },
+  nomalum: { matn: 'Tekshirilmagan', en: 'Not checked', ru: 'Не проверено', tone: 'neutral', nuqta: false },
 };
+
+/**
+ * Backend kartadagi bir qatorli izohni o'zbekcha qaytaradi. Inglizcha
+ * rejimda ma'lum shakllarni shu yerda o'giramiz; tanilmagani o'zicha qoladi
+ * (nom/ID kabi tilsiz qiymatlar ham shu yo'l bilan to'g'ri chiqadi).
+ */
+const IZOH_TARJIMA: Array<[RegExp, string, string]> = [
+  [/^Akkaunt (.+)$/, 'Account $1', 'Аккаунт $1'],
+  [/^Reklama akkaunti tanlanmagan$/, 'No ad account selected', 'Рекламный аккаунт не выбран'],
+  [/^Sotuv etaplari belgilanmagan.*$/, 'Won stages not set — revenue shows 0', 'Этапы продажи не заданы — выручка будет 0'],
+  [/^Avval amoCRM ulansin$/, 'Connect amoCRM first', 'Сначала подключите amoCRM'],
+  [/^Hali birorta signal kelmagan$/, 'No signal received yet', 'Сигналов ещё не было'],
+  [/^Oxirgi signal (\d+) kun oldin$/, 'Last signal $1 day(s) ago', 'Последний сигнал $1 дн. назад'],
+  [/^Oxirgi signal (\d+) soat oldin$/, 'Last signal $1 hour(s) ago', 'Последний сигнал $1 ч. назад'],
+  [/^Signal hozirgina keldi$/, 'Signal just received', 'Сигнал только что получен'],
+  [/^System User tokeni saqlangan$/, 'System User token saved', 'Токен System User сохранён'],
+  [/^Token kiritilmagan$/, 'No token entered', 'Токен не введён'],
+  [/^Bot sozlanmagan$/, 'Bot not configured', 'Бот не настроен'],
+  [/^Chat ulanmagan$/, 'No chat connected', 'Чат не подключён'],
+  [/^(\d+) ta chat \((\d+) to'xtatilgan\)$/, '$1 chat(s) ($2 paused)', 'Чатов: $1 ($2 приостановлено)'],
+  [/^(\d+) ta chat$/, '$1 chat(s)', 'Чатов: $1'],
+  [/^Kodni saytga joylang$/, 'Add the code to your website', 'Разместите код на сайте'],
+];
+
+function izohTarjima(izoh: string, tr: Tr): string {
+  for (const [re, en, ru] of IZOH_TARJIMA) {
+    if (re.test(izoh)) return tr(izoh, izoh.replace(re, en), izoh.replace(re, ru));
+  }
+  return izoh;
+}
 
 function IntegratsiyaKartasi({
   tarif,
   holat,
   yuklanyapti,
   onOch,
+  tr,
 }: {
   tarif: Tarif;
   holat: IntegratsiyaHolat | null;
   yuklanyapti: boolean;
   onOch: () => void;
+  tr: Tr;
 }) {
   const { Belgi } = tarif;
   const b = holat ? BELGI[holat.holat] : null;
@@ -318,23 +372,28 @@ function IntegratsiyaKartasi({
           <Skeleton className="h-5 w-20" />
         ) : b ? (
           <Badge tone={b.tone} dot={b.nuqta}>
-            {b.matn}
+            {tr(b.matn, b.en, b.ru)}
           </Badge>
         ) : null}
       </div>
 
-      <p className="text-base font-semibold text-ink">{tarif.nom}</p>
-      <p className="mt-1 text-sm leading-snug text-ink-2">{tarif.izoh}</p>
+      <p className="text-base font-semibold text-ink">
+        {tarif.kalit === 'pixel' ? tr('Piksel', 'Pixel', 'Пиксель') : tarif.nom}
+      </p>
+      <p className="mt-1 text-sm leading-snug text-ink-2">{tr(tarif.izoh, tarif.izohEn, tarif.izohRu)}</p>
 
       {/* Bir qatorli tafsilot — qaysi akkaunt, nechta chat va hokazo.
           `truncate` shart: akkaunt nomi uzun bo'lsa kartani cho'zib
           yuboradi va to'rdagi kartalar balandligi turlicha bo'lib qoladi. */}
       <p className="mt-3 min-h-[1.25rem] truncate text-xs text-ink-3">
-        {yuklanyapti ? '' : (holat?.izoh ?? '')}
+        {yuklanyapti || !holat?.izoh ? '' : izohTarjima(holat.izoh, tr)}
       </p>
 
       <span className="mt-3 text-sm font-medium text-accent">
-        {holat?.holat === 'ok' || holat?.holat === 'ogoh' ? 'Sozlash' : 'Ulash'} →
+        {holat?.holat === 'ok' || holat?.holat === 'ogoh'
+          ? tr('Sozlash', 'Configure', 'Настроить')
+          : tr('Ulash', 'Connect', 'Подключить')}{' '}
+        →
       </span>
     </button>
   );

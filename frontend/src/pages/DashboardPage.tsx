@@ -31,6 +31,7 @@ import {
   n,
 } from '../utils/format';
 import { Button, Input, cn, toast } from '../components/ui';
+import { useTr } from '../lib/til';
 
 type Model = 'first_click' | 'last_click';
 
@@ -43,17 +44,26 @@ interface KpiSpec {
   hero?: boolean;
 }
 
-const PILLS: Array<{ id: QuickFilter; label: string }> = [
-  { id: 'all', label: 'All ads' },
-  { id: 'active', label: 'Active ads' },
-  { id: 'delivery', label: 'Had delivery' },
+const PILLS: Array<{ id: QuickFilter; label: string; ru: string }> = [
+  { id: 'all', label: 'All ads', ru: 'Все объявления' },
+  { id: 'active', label: 'Active ads', ru: 'Активные' },
+  { id: 'delivery', label: 'Had delivery', ru: 'С показами' },
 ];
 
-const VIEW_TABS: Array<{ id: View; label: string; Icon: LucideIcon }> = [
-  { id: 'campaigns', label: 'Campaigns', Icon: Folder },
-  { id: 'adsets', label: 'Ad sets', Icon: LayoutGrid },
-  { id: 'ads', label: 'Ads', Icon: AppWindow },
+const VIEW_TABS: Array<{ id: View; label: string; ru: string; Icon: LucideIcon }> = [
+  { id: 'campaigns', label: 'Campaigns', ru: 'Кампании', Icon: Folder },
+  { id: 'adsets', label: 'Ad sets', ru: 'Группы', Icon: LayoutGrid },
+  { id: 'ads', label: 'Ads', ru: 'Объявления', Icon: AppWindow },
 ];
+
+/** KPI nomlari: o'zbekcha va inglizchada Ads Manager atamasi, ruschada tarjima. */
+const KPI_RU: Record<string, string> = {
+  'Amount Spent': 'Потрачено',
+  Revenue: 'Выручка',
+  'Conversion Rate': 'Конверсия',
+  'Deal Time': 'Время сделки',
+  'Revenue Growth': 'Рост выручки',
+};
 
 /* ═══════════════ Segmented control (Ads Manager naqshi) ═══════════════
 
@@ -77,6 +87,7 @@ const yolakTugma = (active: boolean) =>
   );
 
 export default function DashboardPage() {
+  const tr = useTr();
   const [preset, setPreset] = useState<PresetId>('last30');
   const [range, setRange] = useState(() => rangeForPreset('last30'));
   const [model, setModel] = useState<Model>('last_click');
@@ -165,12 +176,17 @@ export default function DashboardPage() {
     setDemoBusy(true);
     try {
       const r = await workspaceApi.demoYarat();
-      toast.ok(`Demo tayyor: ${r.kampaniya} kampaniya, ${r.lid} lid, ${r.sotuv} sotuv`);
+      toast.ok(
+        tr(
+          `Demo tayyor: ${r.kampaniya} kampaniya, ${r.lid} lid, ${r.sotuv} sotuv`,
+          `Demo ready: ${r.kampaniya} campaigns, ${r.lid} leads, ${r.sotuv} sales`
+        , `Демо готово: ${r.kampaniya} кампании, ${r.lid} лидов, ${r.sotuv} продаж`)
+      );
       await queryClient.invalidateQueries();
     } catch (err) {
       toast.bad(
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-          "Demo yaratilmadi. Qayta urinib ko'ring."
+          tr("Demo yaratilmadi. Qayta urinib ko'ring.", 'Could not create the demo. Please try again.', 'Не удалось создать демо. Попробуйте ещё раз.')
       );
     } finally {
       setDemoBusy(false);
@@ -200,14 +216,29 @@ export default function DashboardPage() {
     {
       title: 'Revenue',
       value: formatMoneyOrDash(d?.revenue, crmVal),
-      subtitle: kun ? d?.vaqt?.izoh : `${metaPct}% from Meta Ads`,
+      subtitle: kun
+        ? tr(
+            d?.vaqt?.izoh ?? '',
+            'All figures for the selected days: spend from Facebook, sales and revenue from the CRM (by close date).'
+          , 'Все цифры за выбранные дни: расход из Facebook, продажи и выручка из CRM (по дате закрытия).') || undefined
+        : tr(`${metaPct}% Meta Ads'dan`, `${metaPct}% from Meta Ads`, `${metaPct}% из Meta Ads`),
     },
     {
       title: 'ROAS',
       value: formatRoas(d?.roas),
       // Valyuta mos kelmasa qiymat "—" bo'ladi; sababsiz "—" esa
       // "ma'lumot yo'q" deb tushuniladi, shuning uchun sabab shu yerda.
-      subtitle: d?.currency?.mismatch ? d.currency.reason ?? undefined : undefined,
+      subtitle: d?.currency?.mismatch
+        ? tr(
+            d.currency.reason ?? '',
+            d.currency.rate
+              ? `Spend in ${d.currency.fb}, revenue in ${d.currency.crm}. Converted at 1 ${d.currency.fb} = ${d.currency.rate.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${d.currency.crm}${d.currency.rateSource ? ` (${d.currency.rateSource}, ${d.currency.rateDate ?? '—'})` : ''}.`
+              : `Ad account in ${d.currency.fb}, CRM revenue in ${d.currency.crm}. No exchange rate — ROAS not computed.`,
+            d.currency.rate
+              ? `Расход в ${d.currency.fb}, выручка в ${d.currency.crm}. Курс: 1 ${d.currency.fb} = ${d.currency.rate.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${d.currency.crm}${d.currency.rateSource ? ` (${d.currency.rateSource}, ${d.currency.rateDate ?? '—'})` : ''}.`
+              : `Рекламный аккаунт в ${d.currency.fb}, выручка CRM в ${d.currency.crm}. Курса нет — ROAS не рассчитан.`
+          ) || undefined
+        : undefined,
       hero: true,
     },
     // CAC = xarajat / sotuv → xarajat valyutasida.
@@ -221,7 +252,7 @@ export default function DashboardPage() {
       value: formatPercentOrDash(d?.revenueGrowth),
       // Yagona sanaga bog'liq katak: tanlangan oraliq ↔ undan oldingi
       // teng oraliq. Qolgan kataklar butun davr.
-      subtitle: `tanlangan oraliq vs oldingi`,
+      subtitle: tr('tanlangan oraliq vs oldingi', 'selected range vs previous', 'выбранный период vs предыдущий'),
       trend: n(d?.revenueGrowth),
     },
   ];
@@ -306,7 +337,7 @@ export default function DashboardPage() {
 
   /** Yorliq yozuvi: bitta tanlansa nomi, ko'p bo'lsa soni. */
   const tabChipLabel = (sel: Map<string, string>) =>
-    sel.size === 1 ? [...sel.values()][0] : `${sel.size} tanlandi`;
+    sel.size === 1 ? [...sel.values()][0] : tr(`${sel.size} tanlandi`, `${sel.size} selected`, `Выбрано: ${sel.size}`);
 
   return (
     <div className="space-y-5">
@@ -314,7 +345,11 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border-[1.5px] border-warn/30 bg-warn/12 px-4 py-3">
           <div className="flex items-center gap-2 text-sm text-warn">
             <AlertTriangle aria-hidden className="h-4 w-4 flex-none" />
-            Setup incomplete — connect Facebook Ads and your CRM to see real data.
+            {tr(
+              "Sozlash tugallanmagan — haqiqiy raqamlar uchun Facebook Ads va CRM'ni ulang.",
+              'Setup incomplete — connect Facebook Ads and your CRM to see real data.',
+              'Настройка не завершена — подключите Facebook Ads и CRM, чтобы видеть реальные данные.'
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {!demo.data?.demo && (
@@ -324,14 +359,14 @@ export default function DashboardPage() {
                 loading={demoBusy}
                 onClick={() => void demoniYoq()}
               >
-                Demo ma'lumot bilan ko'rish
+                {tr("Demo ma'lumot bilan ko'rish", 'View with demo data', 'Посмотреть на демо-данных')}
               </Button>
             )}
             <Link
               to="/onboarding"
               className="inline-flex h-8 items-center rounded-sm border-[1.5px] border-edge bg-surface px-3 text-xs font-semibold text-accent transition-shadow duration-200 hover:shadow-glow-xs"
             >
-              Finish setup
+              {tr('Sozlashni yakunlash', 'Finish setup', 'Завершить настройку')}
             </Link>
           </div>
         </div>
@@ -382,9 +417,11 @@ export default function DashboardPage() {
       {/* ── KPI cards (full width) ── */}
       {overview.isError ? (
         <div className="flex flex-wrap items-center gap-3 rounded-md border-[1.5px] border-line bg-surface px-4 py-3">
-          <p className="text-sm text-bad">Failed to load overview metrics.</p>
+          <p className="text-sm text-bad">
+            {tr('Ko‘rsatkichlar yuklanmadi.', 'Failed to load overview metrics.', 'Не удалось загрузить метрики.')}
+          </p>
           <Button variant="secondary" size="sm" onClick={() => void overview.refetch()}>
-            Qayta urinish
+            {tr('Qayta urinish', 'Retry', 'Повторить')}
           </Button>
         </div>
       ) : (
@@ -392,7 +429,7 @@ export default function DashboardPage() {
           {cards.map((c) => (
             <KpiCard
               key={c.title}
-              title={c.title}
+              title={tr(c.title, c.title, KPI_RU[c.title] ?? c.title)}
               value={c.value}
               subtitle={c.subtitle}
               trend={c.trend}
@@ -423,7 +460,7 @@ export default function DashboardPage() {
         {/* Daraja. Yorliq hech qachon bloklanmaydi: hech narsa
             tanlanmagan bo'lsa shu darajaning hammasi ko'rinadi. */}
         <div className={YOLAK}>
-          {VIEW_TABS.map(({ id, label, Icon }) => (
+          {VIEW_TABS.map(({ id, label, ru, Icon }) => (
             <button
               key={id}
               onClick={() => setView(id)}
@@ -431,7 +468,7 @@ export default function DashboardPage() {
               className={yolakTugma(view === id)}
             >
               <Icon aria-hidden className="h-4 w-4 flex-none" />
-              {label}
+              {tr(label, label, ru)}
             </button>
           ))}
         </div>
@@ -439,7 +476,8 @@ export default function DashboardPage() {
         {/* Tanlov chiplari — yo'lakdan TASHQARIDA.
             Ilgari ular yorliqqa yopishib turardi va yorliq kengligi
             tanlangan kampaniya nomiga qarab sakrardi. */}
-        {VIEW_TABS.map(({ id, label }) => {
+        {VIEW_TABS.map(({ id, label: en, ru }) => {
+          const label = tr(en, en, ru);
           const sel = id === 'campaigns' ? selCampaigns : id === 'adsets' ? selAdsets : null;
           if (!sel || sel.size === 0) return null;
           return (
@@ -451,7 +489,7 @@ export default function DashboardPage() {
               <span className="max-w-[10rem] truncate">{tabChipLabel(sel)}</span>
               <button
                 onClick={() => clearSelection(id)}
-                aria-label={`${label} tanlovini tozalash`}
+                aria-label={tr(`${label} tanlovini tozalash`, `Clear ${label} selection`, `Снять выбор: ${label}`)}
                 className="rounded-[3px] text-accent/70 hover:text-accent"
               >
                 <X aria-hidden className="h-3.5 w-3.5" />
@@ -471,7 +509,7 @@ export default function DashboardPage() {
               aria-pressed={filter === p.id}
               className={yolakTugma(filter === p.id)}
             >
-              {p.label}
+              {tr(p.label, p.label, p.ru)}
             </button>
           ))}
         </div>
@@ -481,8 +519,8 @@ export default function DashboardPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name…"
-              aria-label="Search by name"
+              placeholder={tr('Nom bo‘yicha qidirish…', 'Search by name…', 'Поиск по названию…')}
+              aria-label={tr('Nom bo‘yicha qidirish', 'Search by name', 'Поиск по названию')}
               icon={<Search className="h-4 w-4" />}
             />
           </div>
@@ -498,7 +536,9 @@ export default function DashboardPage() {
                 aria-pressed={model === m}
                 className={yolakTugma(model === m)}
               >
-                {m === 'first_click' ? 'First click' : 'Last click'}
+                {m === 'first_click'
+                  ? tr('First click', 'First click', 'Первый клик')
+                  : tr('Last click', 'Last click', 'Последний клик')}
               </button>
             ))}
           </div>
