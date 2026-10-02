@@ -99,6 +99,8 @@ interface WorkspaceCrmConfig {
   amocrm_lead_id_source: LeadIdManbasi;
   /** Qo'ng'iroq liniyasi qaysi maydonda. NULL — sozlanmagan. */
   amocrm_line_field: string | null;
+  /** Token bormi. Integratsiya o'chirilgan (disconnect hook) bo'lsa — false. */
+  ulangan: boolean;
 }
 
 /** Hodisaning (voronka:etap) kaliti. Ikkisi ham bo'lmasa — null. */
@@ -107,7 +109,8 @@ function pairKey(pipelineId: string | null, statusId: string | null): string | n
   return `${pipelineId}:${statusId}`;
 }
 
-async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrmConfig | null> {
+/** Shu subdomendagi BARCHA workspace'lar — ulanganlari birinchi. */
+async function workspacesBySubdomain(subdomain: string): Promise<WorkspaceCrmConfig[]> {
   const { rows } = await pool.query<WorkspaceCrmConfig>(
     `SELECT id, amocrm_pipeline_id,
             COALESCE(attribution_key, 'utm_term') AS attribution_key,
@@ -118,11 +121,18 @@ async function findWorkspaceBySubdomain(subdomain: string): Promise<WorkspaceCrm
             amocrm_webhook_secret,
             amocrm_lead_id_field,
             COALESCE(amocrm_lead_id_source, 'field') AS amocrm_lead_id_source,
-            amocrm_line_field
-       FROM workspaces WHERE amocrm_domain LIKE $1 LIMIT 1`,
-    [`${subdomain}.%`]
+            amocrm_line_field,
+            (amocrm_access_token IS NOT NULL) AS ulangan
+       FROM workspaces WHERE split_part(amocrm_domain, '.', 1) = $1
+       /* Bir domen ikki workspace'da bo'lishi mumkin: biri o'chirilgan
+          (token NULL, domen qolgan), ikkinchisi qayta ulangan. Ulangani
+          birinchi; qaysi biriniki ekanini webhook siri hal qiladi.
+          split_part — LIKE emas: subdomendagi "_"/"%" wildcard bo'lmasin. */
+      ORDER BY (amocrm_access_token IS NOT NULL) DESC, updated_at DESC
+      LIMIT 5`,
+    [subdomain]
   );
-  return rows[0] ?? null;
+  return rows;
 }
 
 /**
@@ -516,7 +526,13 @@ export async function amocrmWebhook(req: Request, res: Response): Promise<void> 
   // Workspace avval topiladi: sir har mijozga alohida bo'lgani uchun
   // tekshirishdan oldin kimning webhook'i kelganini bilish kerak.
   const subdomain = body.account?.subdomain;
-  const workspace = subdomain ? await findWorkspaceBySubdomain(subdomain) : null;
+  const nomzodlar = subdomain ? await workspacesBySubdomain(subdomain) : [];
+  /* Sir qaysi workspace'niki bo'lsa — hodisa o'shaniki. O'chirilgan va
+     qayta ulangan workspace'lar bir domenni bo'lishsa, eski webhook
+     (eski sir bilan) eski workspace'ga tushadi va pastda jim e'tiborsiz
+     qoldiriladi — 401 bilan amoCRM'ni qayta yuborishga majburlamaymiz. */
+  const workspace =
+    nomzodlar.find((w) => verifySignature(req, w.amocrm_webhook_secret)) ?? nomzodlar[0] ?? null;
 
   if (!verifySignature(req, workspace?.amocrm_webhook_secret ?? null)) {
     res.status(401).json({ error: 'Invalid webhook signature' });
@@ -527,6 +543,14 @@ export async function amocrmWebhook(req: Request, res: Response): Promise<void> 
     // Noma'lum subdomen. 200 qaytaramiz — aks holda amoCRM cheksiz
     // qayta yuborib turadi va bizning log'ni to'ldiradi.
     if (subdomain) console.warn('webhook: no workspace for subdomain', subdomain);
+    res.status(200).json({ ok: true, processed: false });
+    return;
+  }
+
+  /* Mijoz integratsiyani o'chirgan (amoCRM disconnect hook tokenni
+     tozalagan). Uning roziligi tugagan — hodisani qayta ishlamaymiz.
+     200: aks holda amoCRM qayta-qayta yuboradi. */
+  if (!workspace.ulangan) {
     res.status(200).json({ ok: true, processed: false });
     return;
   }

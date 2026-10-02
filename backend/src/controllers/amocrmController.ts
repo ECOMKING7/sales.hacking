@@ -29,6 +29,7 @@ import {
   publicCreds,
   validAmoDomain,
 } from '../services/amocrmPublic';
+import { akkauntIdniSaqla, amoUzishniQaytaIshla } from '../services/amocrmDisconnect';
 
 
 // ---- GET /api/auth/amocrm/connect (protected) ----
@@ -137,6 +138,9 @@ export async function callback(req: Request, res: Response): Promise<void> {
     } catch (err) {
       console.error('webhook taminlash xatosi:', (err as Error).message);
     }
+
+    // Disconnect hook faqat account_id yuboradi — uni hozir saqlab qo'yamiz.
+    if (creds.kind === 'public') await akkauntIdniSaqla(workspaceId);
 
     await demoniTozala(workspaceId);
     redirectTo('connected');
@@ -350,6 +354,9 @@ export async function claimInstall(req: Request, res: Response): Promise<void> {
   } catch (err) {
     console.error('webhook taminlash xatosi:', (err as Error).message);
   }
+
+  // Disconnect hook faqat account_id yuboradi — uni hozir saqlab qo'yamiz.
+  await akkauntIdniSaqla(workspaceId);
 
   await demoniTozala(workspaceId);
   res.json({ success: true, domain, webhook });
@@ -1033,5 +1040,32 @@ export async function ensureWebhook(req: Request, res: Response): Promise<void> 
   } catch (err) {
     console.error('ensureWebhook:', (err as Error).message);
     res.status(500).json({ error: "Webhook ta'minlanmadi" });
+  }
+}
+
+// ---- GET /api/auth/amocrm/disconnect (public; amoCRM "хук об отключении") ----
+/**
+ * Mijoz amoMarket'da McQueen AI'ni o'chirdi. Imzo to'g'ri bo'lsa shu
+ * amoCRM akkauntining tokenlarini tozalaymiz (services/amocrmDisconnect).
+ * Imzo noto'g'ri — 401: begona odam istalgan mijozni "uza" olmasin.
+ */
+export async function disconnectHook(req: Request, res: Response): Promise<void> {
+  const q = { ...(req.query as Record<string, string>), ...((req.body ?? {}) as Record<string, string>) };
+  try {
+    const n = await amoUzishniQaytaIshla({
+      account_id: q.account_id,
+      client_uuid: q.client_uuid,
+      client_id: q.client_id,
+      signature: q.signature,
+    });
+    if (!n.imzo) {
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
+    }
+    console.log(`amocrm disconnect: account ${q.account_id} — ${n.workspacelar} workspace, ${n.kutayotgan} pending tozalandi`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('amocrm disconnect error:', (err as Error).message);
+    res.status(500).json({ error: 'Internal error' });
   }
 }
