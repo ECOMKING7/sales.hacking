@@ -47,14 +47,34 @@ export function maskla(matn: string): string {
       .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer ***')
       // ?secret=... &token=... "access_token": "..."
       .replace(
-        /\b(secret|token|api_key|apikey|password|access_token|refresh_token|client_secret|code)\b(\s*[=:]\s*"?)([^&\s",}]+)/gi,
+        /\b(secret|token|api_key|apikey|password|access_token|refresh_token|client_secret|code|card_token|card_number|sms_code|karta|muddat|kod)\b("?\s*[=:]\s*"?)([^&\s",}]+)/gi,
         '$1$2***'
       )
       // Bitrix24 webhook: https://xxx.bitrix24.ru/rest/1/<kod>/
       .replace(/(\/rest\/\d+\/)[A-Za-z0-9]+/g, '$1***')
       // JWT (eyJ... bilan boshlanadi, uch qismli)
       .replace(/\beyJ[A-Za-z0-9._\-]{20,}/g, 'eyJ***')
+      // Karta raqami (PAN): 16 raqam, bo'sh joy/chiziq bilan ham. Faqat Luhn'dan
+      // o'tganlari — aks holda Meta Lead ID kabi uzun ID'lar ham yo'qolib, log
+      // diagnostikaga yaramay qolardi.
+      .replace(/\b(?:\d[ -]?){15}\d\b/g, (m) => (luhn(m) ? `${m.replace(/\D/g, '').slice(0, 4)}********${m.replace(/\D/g, '').slice(-4)}` : m))
   );
+}
+
+/** Luhn tekshiruvi — karta raqamini tasodifiy uzun sondan ajratadi. */
+export function luhn(raqam: string): boolean {
+  const r = raqam.replace(/\D/g, '');
+  if (r.length < 13 || r.length > 19) return false;
+  let jami = 0;
+  for (let i = 0; i < r.length; i++) {
+    let d = Number(r[r.length - 1 - i]);
+    if (i % 2 === 1) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    jami += d;
+  }
+  return jami % 10 === 0;
 }
 
 /** Sentry ni bir marta yoqadi. DSN yo'q bo'lsa — null qaytaradi. */
@@ -78,7 +98,12 @@ function sentryYoq(): SentryModule | null {
       // PII: IP, cookie, so'rov tanasi YUBORILMAYDI.
       sendDefaultPii: false,
       // Oxirgi to'siq: yuborilayotgan hamma matn maskadan o'tadi.
-      beforeSend: (event: unknown) => tozala(event),
+      // So'rov tanasi umuman ketmaydi (karta raqami, SMS kod bo'lishi mumkin).
+      beforeSend: (event: unknown) => {
+        const e = event as { request?: { data?: unknown } };
+        if (e?.request) delete e.request.data;
+        return tozala(event);
+      },
     });
     sentry = mod;
     return sentry;

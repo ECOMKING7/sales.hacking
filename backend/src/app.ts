@@ -17,6 +17,7 @@ import webhookRoutes from './routes/webhooks';
 import attributionRoutes from './routes/attribution';
 import pixelRoutes from './routes/pixel';
 import dashboardRoutes from './routes/dashboard';
+import billingRoutes from './routes/billing';
 
 /**
  * Express ilovasi. Bu fayl SERVER OCHMAYDI va cron ISHGA TUSHIRMAYDI —
@@ -124,6 +125,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/attribution', attributionRoutes);
 app.use('/api/pixel', pixelRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/billing', billingRoutes);
 
 /**
  * Topilmagan marshrut. Express'ning standart javobi HTML sahifa bo'lib,
@@ -160,6 +162,14 @@ app.use((err: Error & { status?: number }, req: Request, res: Response, next: Ne
   }
 
   const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
+
+  /* Buzuq JSON: body-parser xabari tananing bir qismini aks ettiradi
+     (masalan karta raqami). Na logga, na javobga — doimiy matn. */
+  if ((err as { type?: string }).type === 'entity.parse.failed') {
+    console.error(`So'rov xatosi [400] ${req.method} ${req.path}: invalid JSON`);
+    res.status(400).json({ error: 'Invalid JSON' });
+    return;
+  }
 
   /**
    * 4xx — mijozning xatosi (noto'g'ri so'rov, ruxsat yo'q). Bu kutilgan
