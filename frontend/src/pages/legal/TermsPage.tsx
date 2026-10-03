@@ -113,7 +113,40 @@ export default function TermsPage() {
         </p>
       </Bolim>
 
-      <Bolim raqam={8} nom="To'xtatish va bekor qilish">
+      <Bolim raqam={8} nom="To'lov va avtomatik yangilanish">
+        <p>
+          Pullik tariflar oylik obuna asosida ishlaydi. Narx so'mda, "Tariflar va to'lov"
+          sahifasida ko'rsatiladi. To'lov Payme yoki Click orqali Uzcard/Humo karta bilan
+          qabul qilinadi.
+        </p>
+        <p>
+          Birinchi to'lov obuna boshlanganda yechiladi. Keyin{' '}
+          <strong className="text-ink">har oy o'sha sanada shu kartadan avtomatik
+          yechiladi</strong> — buning uchun to'lov oynasida alohida rozilik beriladi.
+          Har yechishdan <strong className="text-ink">7 kun oldin</strong> akkaunt
+          emailiga summa va sana ko'rsatilgan xat yuboriladi.
+        </p>
+        <p>
+          Avto-yangilashni yoki kartani istalgan payt "Tariflar va to'lov" sahifasida
+          o'chirishingiz mumkin; to'langan davr oxirigacha tarif ishlab turadi, keyin
+          Free tarifiga o'tadi. To'lov o'tmasa 1 va 3 kundan keyin qayta urinamiz;
+          uchinchi urinish ham o'tmasa obuna to'xtatiladi. Ma'lumotlaringiz o'chirilmaydi.
+        </p>
+        <p>
+          Karta raqami bizning serverlarimizda saqlanmaydi — faqat to'lov tizimi bergan
+          token saqlanadi. Xato yechilgan to'lov bo'yicha 14 kun ichida{' '}
+          {HUQUQIY.email ? (
+            <a href={`mailto:${HUQUQIY.email}`} className="text-accent hover:underline">
+              {HUQUQIY.email}
+            </a>
+          ) : (
+            'qo\'llab-quvvatlash xizmatiga'
+          )}{' '}
+          murojaat qiling.
+        </p>
+      </Bolim>
+
+      <Bolim raqam={9} nom="To'xtatish va bekor qilish">
         <p>
           Siz istalgan vaqtda ulanishni uzishingiz yoki akkauntni o'chirishingiz mumkin —{' '}
           <a href="/data-deletion" className="text-accent hover:underline">
@@ -128,7 +161,7 @@ export default function TermsPage() {
         </p>
       </Bolim>
 
-      <Bolim raqam={9} nom="O'zgarishlar va nizolar">
+      <Bolim raqam={10} nom="O'zgarishlar va nizolar">
         <p>
           Shartlar o'zgarsa yuqoridagi sana yangilanadi; muhim o'zgarishda email yuboriladi.
         </p>

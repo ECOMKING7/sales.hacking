@@ -510,3 +510,34 @@ export interface IntegratsiyaHolatlari {
   telegram: IntegratsiyaHolat;
   pixel: IntegratsiyaHolat;
 }
+
+// ---- Billing (obuna, avto-yechish) ----
+export type PullikPlan = 'pro' | 'agency';
+export type BillingHolat = 'none' | 'active' | 'past_due' | 'expired' | 'canceled';
+export interface BillingTolov {
+  id: string;
+  kind: 'initial' | 'renewal';
+  plan: PullikPlan;
+  amount_uzs: number;
+  status: 'pending' | 'paid' | 'failed' | 'unknown';
+  provider: 'payme' | 'click';
+  period_start: string;
+  period_end: string;
+  created_at: string;
+  paid_at: string | null;
+}
+export interface BillingMalumot {
+  obuna: {
+    plan: Plan;
+    billing_plan: PullikPlan | null;
+    billing_status: BillingHolat;
+    paid_until: string | null;
+    auto_renew: boolean;
+    billing_next_attempt_at: string | null;
+    billing_amount_uzs: number | null;
+  } | null;
+  karta: { provider: 'payme' | 'click'; masked: string | null; phone_masked: string | null; verified: boolean } | null;
+  tolovlar: BillingTolov[];
+  narxlar: Record<PullikPlan, number | null>;
+  provayderlar: { payme: { merchantId: string; test: boolean } | null; click: boolean };
+}

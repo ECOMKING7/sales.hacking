@@ -25,6 +25,8 @@ import type {
   IntegratsiyaHolatlari,
   WebhookRoyxat,
   WebhookTamin,
+  BillingMalumot,
+  PullikPlan,
 } from '../types';
 
 const api = axios.create({
@@ -382,4 +384,22 @@ export const telegramApi = {
         `/api/workspace/telegram/chat/${id}/sinov`
       )
       .then((r) => r.data),
+};
+
+// ---- Billing ----
+export const billingApi = {
+  holat: () => api.get<BillingMalumot>('/api/billing').then((r) => r.data),
+  paymeKarta: (token: string) =>
+    api.post<{ ok: boolean; masked: string | null }>('/api/billing/payme/karta', { token }).then((r) => r.data),
+  clickKarta: (karta: string, muddat: string) =>
+    api.post<{ ok: boolean; telefon: string | null }>('/api/billing/click/karta', { karta, muddat }).then((r) => r.data),
+  clickTasdiq: (kod: string) => api.post<{ ok: boolean }>('/api/billing/click/tasdiq', { kod }).then((r) => r.data),
+  /** 200 = to'landi; 202 = jarayonda (keyin tekshiriladi). */
+  /** `summa` — ekranda ko'rsatilgan narx; backend joriy narx bilan solishtiradi. */
+  obuna: (plan: PullikPlan, rozilik: boolean, summa: number) =>
+    api
+      .post<{ ok?: boolean; paidUntil?: string; jarayonda?: boolean; error?: string }>('/api/billing/obuna', { plan, rozilik, summa })
+      .then((r) => ({ ...r.data, status: r.status })),
+  avto: (yoqilsin: boolean) => api.post<{ ok: boolean }>('/api/billing/avto', { yoqilsin }).then((r) => r.data),
+  kartaOchir: () => api.delete<{ ok: boolean }>('/api/billing/karta').then((r) => r.data),
 };
