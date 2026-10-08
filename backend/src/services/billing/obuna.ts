@@ -3,8 +3,10 @@ import { encrypt, decrypt } from '../../utils/encryption';
 import { xatoQayd } from '../../utils/xatolar';
 import { emailYubor } from '../email';
 import { billingSxemasiniTaminla } from './sxema';
+import { eskiCheckoutlarniBekor } from './checkout';
 import {
   JAMI_URINISH,
+  billingUrl,
   PLAN_NOMI,
   QAYTA_URINISH_KUN,
   birOyKeyin,
@@ -56,10 +58,7 @@ import { CLICK_TOLANGAN, ClickXato, clickTokenOchir, clickTolovHolati, clickYech
    ulanishni band qilib turish butun API'ni to'xtatardi.
    ───────────────────────────────────────────────────────────── */
 
-export function billingUrl(): string {
-  const f = (process.env.FRONTEND_URL ?? '').split(',')[0]?.trim() || 'https://www.mcqueen.uz';
-  return `${f.replace(/\/$/, '')}/upgrade`;
-}
+export { billingUrl } from './qoidalar';
 
 interface KartaQator {
   id: string;
@@ -184,7 +183,7 @@ export async function tolovniYakunla(tolovId: string, ref?: string): Promise<boo
     `WITH t AS (
        UPDATE billing_payments
           SET status = 'paid', paid_at = now(), provider_ref = COALESCE($2, provider_ref), error = NULL
-        WHERE id = $1 AND status IN ('pending', 'unknown')
+        WHERE id = $1 AND status IN ('pending', 'unknown') AND kind <> 'onetime'
         RETURNING workspace_id, plan, period_end, amount_uzs, card_id, kind
      ), w AS (
        UPDATE workspaces ws
@@ -504,13 +503,26 @@ export async function billingHolati(workspaceId: string) {
     ),
     pool.query(
       `SELECT id, kind, plan, amount_uzs, status, provider, period_start, period_end, created_at, paid_at
-         FROM billing_payments WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 24`,
+         FROM billing_payments
+        WHERE workspace_id = $1
+          -- Ochilib to'lanmagan checkout'lar tarixda ko'rinmaydi (mijoz Payme
+          -- sahifasini yopib ketgan bo'lishi mumkin) — faqat to'langani.
+          AND NOT (kind = 'onetime' AND status <> 'paid')
+        ORDER BY created_at DESC LIMIT 24`,
       [workspaceId]
     ),
   ]);
   const p = paymeSozlama();
   const o = ws.rows[0];
+  // Mijoz Payme sahifasidan qaytgan, Perform hali kelmagan bo'lishi mumkin —
+  // frontend shu bayroq bilan holatni qayta so'raydi.
+  const kutilmoqda = await pool.query(
+    `SELECT 1 FROM payme_transactions pt JOIN billing_checkout bc ON bc.id = pt.checkout_id
+      WHERE bc.workspace_id = $1 AND pt.state = 1 LIMIT 1`,
+    [workspaceId]
+  );
   return {
+    checkoutKutilmoqda: Boolean(kutilmoqda.rowCount),
     obuna: o ? { ...o, billing_amount_uzs: o.billing_amount_uzs === null ? null : Number(o.billing_amount_uzs) } : null,
     karta: karta.rows[0] ?? null,
     tolovlar: tolovlar.rows.map((t) => ({ ...t, amount_uzs: Number(t.amount_uzs) })),
@@ -519,6 +531,8 @@ export async function billingHolati(workspaceId: string) {
       // Kassa ID — ochiq ma'lumot (Payme brauzer formasi aynan shu bilan ishlaydi). Kalit QAYTARILMAYDI.
       payme: p ? { merchantId: p.id, test: p.test } : null,
       click: Boolean(clickSozlama()),
+      // Bir martalik to'lov (havola/QR) — Payme Merchant API. Subscribe'siz ham ishlaydi.
+      paymeCheckout: Boolean(p),
     },
   };
 }
@@ -544,6 +558,9 @@ export async function billingCron(hozir = new Date()): Promise<CronNatija> {
   const vaqtBor = () => Date.now() - boshi < VAQT_BYUDJETI_MS;
   const n: CronNatija = { eslatma: 0, yechildi: 0, otmadi: 0, tugatildi: 0, aniqlandi: 0, vaqtTugadi: false };
   for (const [nom, qadam] of [
+    ['checkout', async () => {
+      n.aniqlandi += await eskiCheckoutlarniBekor(hozir.getTime());
+    }],
     ['aniqla', () => osilganlarniAniqla(n, vaqtBor)],
     ['eslatma', () => eslatmalar(n, hozir)],
     ['yechish', () => yangilashlar(n, hozir, vaqtBor)],
@@ -639,6 +656,11 @@ async function yangilashlar(n: CronNatija, hozir: Date, vaqtBor: () => boolean):
              AND (w2.billing_next_attempt_at IS NULL OR w2.billing_next_attempt_at <= $1::timestamptz)
              AND NOT EXISTS (SELECT 1 FROM billing_payments p
                               WHERE p.workspace_id = w2.id AND p.status IN ('pending', 'unknown'))
+             -- Mijoz shu payt Payme checkout orqali o'zi to'layapti — kartadan
+             -- yechib, bir davrni ikki marta to'latmaymiz (checkout.ts).
+             AND NOT EXISTS (SELECT 1 FROM payme_transactions pt
+                               JOIN billing_checkout bc ON bc.id = pt.checkout_id
+                              WHERE bc.workspace_id = w2.id AND pt.state = 1)
              AND (w2.billing_status = 'past_due' OR EXISTS (
                    SELECT 1 FROM billing_notices b
                     WHERE b.workspace_id = w2.id AND b.kind = 'eslatma_7kun'
@@ -744,6 +766,9 @@ async function osilganlarniAniqla(n: CronNatija, vaqtBor: () => boolean): Promis
             created_at < now() - interval '1 hour' AS eski
        FROM billing_payments
       WHERE status IN ('pending', 'unknown')
+        -- Checkout (Payme Merchant API) to'lovini Payme o'zi yakunlaydi yoki
+        -- 12 soatda bekor qilinadi — bu yerda chek holati so'ralmaydi.
+        AND kind <> 'onetime'
         AND created_at < now() - interval '10 minutes'
         AND created_at > now() - interval '7 days'
       ORDER BY created_at
@@ -803,6 +828,11 @@ async function nomalumDeb(id: string, workspaceId: string, sabab: string): Promi
  */
 export async function tolovniQoldaHalQil(tolovId: string, natija: 'paid' | 'failed'): Promise<boolean> {
   await billingSxemasiniTaminla();
+  // Checkout (onetime) to'lovi payme_transactions bilan bog'liq: uni faqat Payme
+  // (Perform/Cancel) yoki 12 soatlik timeout yopadi. Qo'lda yopish tranzaksiya
+  // bilan nomuvofiqlik yaratardi — pul olinib tarif berilmasligi yoki teskarisi.
+  const { rows } = await pool.query<{ kind: string }>(`SELECT kind FROM billing_payments WHERE id = $1`, [tolovId]);
+  if (rows[0]?.kind === 'onetime') return false;
   if (natija === 'paid') return tolovniYakunla(tolovId);
   const r = await pool.query(
     `UPDATE billing_payments SET status = 'failed', error = COALESCE(error, 'Qo''lda: to''lanmagan')

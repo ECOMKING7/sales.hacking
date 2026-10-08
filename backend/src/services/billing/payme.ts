@@ -98,7 +98,7 @@ export const PAYME_BEKOR = 50;
  * ⚠ Tekshirilishi kerak: aniq IKPU va package_code ni soliq maslahatchisi
  *   yoki Payme menejeri bilan tasdiqlang. Env bo'sh bo'lsa detail yuborilmaydi.
  */
-function fiskalDetail(somSumma: number, nom: string, env: NodeJS.ProcessEnv) {
+export function fiskalDetail(somSumma: number, nom: string, env: NodeJS.ProcessEnv) {
   const code = (env.BILLING_IKPU_KOD ?? '').trim();
   const packageCode = (env.BILLING_PACKAGE_KOD ?? '').trim();
   if (!code || !packageCode) return undefined;

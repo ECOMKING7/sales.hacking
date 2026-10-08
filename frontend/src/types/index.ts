@@ -516,7 +516,7 @@ export type PullikPlan = 'pro' | 'agency';
 export type BillingHolat = 'none' | 'active' | 'past_due' | 'expired' | 'canceled';
 export interface BillingTolov {
   id: string;
-  kind: 'initial' | 'renewal';
+  kind: 'initial' | 'renewal' | 'onetime';
   plan: PullikPlan;
   amount_uzs: number;
   status: 'pending' | 'paid' | 'failed' | 'unknown';
@@ -527,6 +527,8 @@ export interface BillingTolov {
   paid_at: string | null;
 }
 export interface BillingMalumot {
+  /** Payme checkout'da to'lov kutilmoqda (mijoz Payme sahifasidan qaytgan bo'lishi mumkin). */
+  checkoutKutilmoqda?: boolean;
   obuna: {
     plan: Plan;
     billing_plan: PullikPlan | null;
@@ -539,5 +541,5 @@ export interface BillingMalumot {
   karta: { provider: 'payme' | 'click'; masked: string | null; phone_masked: string | null; verified: boolean } | null;
   tolovlar: BillingTolov[];
   narxlar: Record<PullikPlan, number | null>;
-  provayderlar: { payme: { merchantId: string; test: boolean } | null; click: boolean };
+  provayderlar: { payme: { merchantId: string; test: boolean } | null; click: boolean; paymeCheckout?: boolean };
 }

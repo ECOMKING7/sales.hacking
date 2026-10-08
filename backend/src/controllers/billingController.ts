@@ -21,6 +21,7 @@ import {
   tokenniProvayderdaOchir,
 } from '../services/billing/obuna';
 import { decrypt } from '../utils/encryption';
+import { checkoutYarat, paymeMerchant } from '../services/billing/checkout';
 
 /* ─────────────────────────────────────────────────────────────
    /api/billing — obuna, karta, avto-yechish.
@@ -288,4 +289,49 @@ export async function cron(req: Request, res: Response): Promise<void> {
     'billing-cron'
   );
   res.status(202).json({ ok: true, accepted: true });
+}
+
+/* ───────────── Bir martalik to'lov (Payme checkout: havola / QR) ───────────── */
+
+/** POST /api/billing/checkout {plan, summa} → {url}. Karta saqlanmaydi, avto-yechish yo'q. */
+export async function checkout(req: Request, res: Response): Promise<void> {
+  try {
+    const ws = await egami(req, res);
+    if (!ws) return;
+    const plan = req.body?.plan;
+    if (!pullikPlanmi(plan)) {
+      res.status(400).json({ error: 'plan: pro | agency' });
+      return;
+    }
+    const summa = Number(req.body?.summa);
+    if (!Number.isInteger(summa) || summa <= 0) {
+      res.status(400).json({ error: "summa kerak (ekranda ko'rsatilgan narx)" });
+      return;
+    }
+    const r = await checkoutYarat(ws, plan, summa);
+    if (!r.ok) {
+      res.status(r.narxOzgardi ? 409 : 400).json({ error: r.xato });
+      return;
+    }
+    res.json({ ok: true, url: r.url, buyurtmaId: r.buyurtmaId });
+  } catch (err) {
+    xato(res, err, 'billing-checkout');
+  }
+}
+
+/**
+ * POST /api/billing/payme/merchant — Payme serveridan JSON-RPC.
+ * JWT EMAS: himoya — Basic auth (Paycom:<kassa kaliti>), checkout.ts tekshiradi.
+ * Javob HAR DOIM 200: Payme xatoni JSON-RPC `error` dan o'qiydi.
+ */
+export async function paymeMerchantRpc(req: Request, res: Response): Promise<void> {
+  if (req.method !== 'POST') {
+    res.status(200).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32300, message: { uz: "Faqat POST", ru: 'Метод запроса не POST', en: 'Request method must be POST' } },
+    });
+    return;
+  }
+  res.status(200).json(await paymeMerchant(req.body, req.header('authorization')));
 }

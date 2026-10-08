@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, CreditCard, X } from 'lucide-react';
@@ -364,10 +364,27 @@ export default function UpgradePage() {
     retry: (n, e) => !status403(e) && n < 1,
     // To'lov "tekshirilmoqda" bo'lsa — natija o'zi ko'rinsin, sahifani yangilash shart emas.
     refetchInterval: (q) =>
-      q.state.data?.tolovlar.some((t) => t.status === 'pending' || t.status === 'unknown') ? 10_000 : false,
+      q.state.data?.checkoutKutilmoqda ||
+      q.state.data?.tolovlar.some((t) => t.status === 'pending' || t.status === 'unknown')
+        ? 10_000
+        : false,
   });
   const [oyna, setOyna] = useState<Oyna>(null);
   const [band, setBand] = useState(false);
+  /** Qaysi tarif uchun Payme sahifasi ochilmoqda — spinner faqat o'sha tugmada. */
+  const [checkoutPlan, setCheckoutPlan] = useState<PullikPlan | null>(null);
+
+  // Payme'dan "Orqaga" bilan qaytilganda sahifa bfcache'dan tiklanadi:
+  // tugma "yuklanmoqda"da qotib qolmasin va holat yangilansin.
+  useEffect(() => {
+    const qaytdi = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      setCheckoutPlan(null);
+      void qc.invalidateQueries({ queryKey: ['billing'] });
+    };
+    window.addEventListener('pageshow', qaytdi);
+    return () => window.removeEventListener('pageshow', qaytdi);
+  }, [qc]);
 
   const b = billing.data;
   const o = b?.obuna;
@@ -387,6 +404,20 @@ export default function UpgradePage() {
       toast.bad(xatoMatni(e, tr));
     } finally {
       setBand(false);
+    }
+  }
+
+  /** Bir martalik to'lov: Payme sahifasiga o'tadi (karta yoki QR). Qaytgach holat avtomatik yangilanadi. */
+  async function birOyTola(plan: PullikPlan) {
+    const narx = b?.narxlar[plan];
+    if (!narx || checkoutPlan) return;
+    setCheckoutPlan(plan);
+    try {
+      const r = await billingApi.checkout(plan, narx);
+      window.location.assign(r.url);
+    } catch (e) {
+      toast.bad(xatoMatni(e, tr));
+      setCheckoutPlan(null);
     }
   }
 
@@ -435,7 +466,20 @@ export default function UpgradePage() {
               </Button>
             </div>
           ) : (
-            b && <HolatQatori b={b} tr={tr} />
+            b && (
+              <>
+                <HolatQatori b={b} tr={tr} />
+                {b.checkoutKutilmoqda && (
+                  <p className="mt-1 text-xs text-ink-3" aria-live="polite">
+                    {tr(
+                      "Payme to'lovi tekshirilmoqda — to'langan bo'lsa, tarif bir necha soniyada yoqiladi.",
+                      'Checking your Payme payment — if paid, the plan turns on in a few seconds.',
+                      'Проверяем оплату Payme — если оплачено, тариф включится через несколько секунд.'
+                    )}
+                  </p>
+                )}
+              </>
+            )
           )}
         </div>
       </div>
@@ -482,6 +526,29 @@ export default function UpgradePage() {
                       ? tr("To'lov tez orada", 'Payments coming soon', 'Оплата скоро')
                       : tr("Obuna bo'lish", 'Subscribe', 'Подписаться')}
                 </Button>
+              )}
+              {p.id !== 'free' && !egaEmas && b?.provayderlar.paymeCheckout && narx !== null && (
+                <>
+                  <Button
+                    className="mt-2"
+                    variant="ghost"
+                    fullWidth
+                    loading={checkoutPlan === p.id}
+                    disabled={billing.isLoading || (checkoutPlan !== null && checkoutPlan !== p.id)}
+                    onClick={() => void birOyTola(p.id as PullikPlan)}
+                  >
+                    {joriy
+                      ? tr("Yana 1 oyga to'lash · Payme / QR", 'Pay 1 more month · Payme / QR', 'Оплатить ещё 1 месяц · Payme / QR')
+                      : tr("1 oyga to'lash · Payme / QR", 'Pay 1 month · Payme / QR', 'Оплатить 1 месяц · Payme / QR')}
+                  </Button>
+                  <p className="mt-1 text-center text-xs text-ink-3">
+                    {tr(
+                      "Karta saqlanmaydi, avto-yechish yo'q — keyingi oy qayta to'laysiz",
+                      'Card is not saved, no auto-charge — pay again next month',
+                      'Карта не сохраняется, без автосписания'
+                    )}
+                  </p>
+                </>
               )}
             </Card>
           );
@@ -559,6 +626,7 @@ export default function UpgradePage() {
                 <li key={t.id} className="flex flex-wrap items-center gap-3 py-2">
                   <span className="tabular-nums text-ink-2">{sana(t.created_at)}</span>
                   <span className="capitalize text-ink">{t.plan}</span>
+                  {t.kind === 'onetime' && <Badge tone="neutral">{tr('Bir martalik', 'One-time', 'Разовый')}</Badge>}
                   <span className="tabular-nums text-ink">
                     {som(t.amount_uzs)} {tr("so'm", 'UZS', 'сум')}
                   </span>

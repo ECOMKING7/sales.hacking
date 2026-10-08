@@ -12,6 +12,11 @@ router.post('/click/tasdiq', verifyToken, b.clickTasdiq);
 router.post('/obuna', verifyToken, b.obuna);
 router.post('/avto', verifyToken, b.avto);
 router.delete('/karta', verifyToken, b.kartaOchir);
+router.post('/checkout', verifyToken, b.checkout);
+
+// Payme serveri (Merchant API) — JWT emas, Basic auth (Paycom:<kalit>).
+// Kassa sozlamasida "Endpoint URL": https://api.mcqueen.uz/api/billing/payme/merchant
+router.all('/payme/merchant', b.paymeMerchantRpc);
 
 // Tashqi rejalashtiruvchi (cron-job.org) — JWT emas, CRON_SECRET.
 router.post('/cron', b.cron);

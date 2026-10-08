@@ -140,3 +140,41 @@ test('maskla: Luhn\'dan o\'tgan karta raqami niqoblanadi, Meta Lead ID kabi son 
   assert.equal(maskla('lead 1234567890123456'), 'lead 1234567890123456'); // Luhn'dan o'tmaydi
   assert.match(maskla('{"card_token":"abc-123","sms_code":"55555"}'), /card_token":"\*\*\*".*sms_code":"\*\*\*"/);
 });
+
+import { paymeCheckoutUrl, paymeAuthTogrimi, merchantKalitlari, TRANZAKSIYA_TIMEOUT_MS } from './checkout';
+
+test('paymeCheckoutUrl: base64 parametrlar, tiyin, test/prod domen', () => {
+  const url = paymeCheckoutUrl({
+    merchantId: 'abc123',
+    hisobMaydoni: 'order_id',
+    buyurtmaId: '11111111-2222-3333-4444-555555555555',
+    somSumma: 400000,
+    qaytishUrl: 'https://www.mcqueen.uz/upgrade',
+    test: false,
+  });
+  assert.match(url, /^https:\/\/checkout\.paycom\.uz\//);
+  const ochiq = Buffer.from(url.split('/').pop()!, 'base64').toString('utf8');
+  assert.equal(
+    ochiq,
+    'm=abc123;ac.order_id=11111111-2222-3333-4444-555555555555;a=40000000;c=https://www.mcqueen.uz/upgrade;l=uz'
+  );
+  const t = paymeCheckoutUrl({ merchantId: 'm', hisobMaydoni: 'o', buyurtmaId: 'x', somSumma: 1000, qaytishUrl: 'https://a/b;c', test: true });
+  assert.match(t, /^https:\/\/checkout\.test\.paycom\.uz\//);
+  assert.doesNotMatch(Buffer.from(t.split('/').pop()!, 'base64').toString(), /b;c/); // ";" URL'dan olib tashlanadi
+});
+
+test('paymeAuthTogrimi: faqat "Paycom:<kalit>", har ikki kalit, buzuq sarlavha rad', () => {
+  const b = (s: string) => 'Basic ' + Buffer.from(s).toString('base64');
+  assert.equal(paymeAuthTogrimi(b('Paycom:KALIT'), ['KALIT']), true);
+  assert.equal(paymeAuthTogrimi(b('Paycom:TEST'), ['KALIT', 'TEST']), true);
+  assert.equal(paymeAuthTogrimi(b('Paycom:boshqa'), ['KALIT']), false);
+  assert.equal(paymeAuthTogrimi(b('Admin:KALIT'), ['KALIT']), false);
+  assert.equal(paymeAuthTogrimi(b('Paycom:KALIT'), []), false); // kalit sozlanmagan — hech kim kirmaydi
+  assert.equal(paymeAuthTogrimi(undefined, ['KALIT']), false);
+  assert.equal(paymeAuthTogrimi('Bearer xyz', ['KALIT']), false);
+});
+
+test('merchantKalitlari: bo\'sh qiymatlar tashlanadi', () => {
+  assert.deepEqual(merchantKalitlari({ PAYME_KEY: ' a ', PAYME_TEST_KEY: '' }), ['a']);
+  assert.equal(TRANZAKSIYA_TIMEOUT_MS, 12 * 3600 * 1000);
+});

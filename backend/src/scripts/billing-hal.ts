@@ -21,7 +21,7 @@ async function main(): Promise<void> {
     const { rows } = await pool.query(
       `SELECT p.id, p.status, p.provider, p.provider_ref, p.amount_uzs, p.kind, p.created_at, w.name
          FROM billing_payments p JOIN workspaces w ON w.id = p.workspace_id
-        WHERE p.status IN ('pending', 'unknown') ORDER BY p.created_at`
+        WHERE p.status IN ('pending', 'unknown') AND p.kind <> 'onetime' ORDER BY p.created_at`
     );
     if (!rows.length) console.log("Ochiq to'lov yo'q.");
     else console.table(rows);
@@ -33,7 +33,11 @@ async function main(): Promise<void> {
     return;
   }
   const ok = await tolovniQoldaHalQil(id, natija);
-  console.log(ok ? `✓ ${id} → ${natija}` : `To'lov topilmadi yoki allaqachon yopilgan: ${id}`);
+  console.log(
+    ok
+      ? `✓ ${id} → ${natija}`
+      : `To'lov topilmadi, allaqachon yopilgan yoki bu Payme checkout (onetime) to'lovi — uni faqat Payme yakunlaydi: ${id}`
+  );
 }
 
 main()

@@ -122,3 +122,9 @@ export function yangilashDavrBoshi(paidUntil: Date, hozir: Date): Date {
 export function eslatmaSanasi(paidUntil: Date, hozir: Date): Date {
   return new Date(Math.max(paidUntil.getTime(), hozir.getTime() + ESLATMA_KUN * 86_400_000));
 }
+
+/** To'lov sahifasi (email havolalari, Payme'dan qaytish). FRONTEND_URL ning birinchisi. */
+export function billingUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const f = (env.FRONTEND_URL ?? '').split(',')[0]?.trim() || 'https://www.mcqueen.uz';
+  return `${f.replace(/\/$/, '')}/upgrade`;
+}

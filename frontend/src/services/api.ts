@@ -402,4 +402,7 @@ export const billingApi = {
       .then((r) => ({ ...r.data, status: r.status })),
   avto: (yoqilsin: boolean) => api.post<{ ok: boolean }>('/api/billing/avto', { yoqilsin }).then((r) => r.data),
   kartaOchir: () => api.delete<{ ok: boolean }>('/api/billing/karta').then((r) => r.data),
+  /** Bir martalik to'lov: Payme checkout havolasi (karta yoki QR, avto-yechish yo'q). */
+  checkout: (plan: PullikPlan, summa: number) =>
+    api.post<{ ok: boolean; url: string }>('/api/billing/checkout', { plan, summa }).then((r) => r.data),
 };

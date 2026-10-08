@@ -165,6 +165,15 @@ app.use((err: Error & { status?: number }, req: Request, res: Response, next: Ne
 
   /* Buzuq JSON: body-parser xabari tananing bir qismini aks ettiradi
      (masalan karta raqami). Na logga, na javobga — doimiy matn. */
+  if ((err as { type?: string }).type === 'entity.parse.failed' && req.path === '/api/billing/payme/merchant') {
+    // Payme JSON-RPC: buzuq JSON ham 200 + RPC xato (-32700) bo'lishi kerak.
+    res.status(200).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32700, message: { uz: 'JSON xato', ru: 'Ошибка парсинга JSON', en: 'Parse error' } },
+    });
+    return;
+  }
   if ((err as { type?: string }).type === 'entity.parse.failed') {
     console.error(`So'rov xatosi [400] ${req.method} ${req.path}: invalid JSON`);
     res.status(400).json({ error: 'Invalid JSON' });
