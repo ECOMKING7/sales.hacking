@@ -122,8 +122,79 @@ export async function status(req: Request, res: Response): Promise<void> {
       /* 042 hali yo'q */
     }
 
+    /* XATO SABABLARI — "xato: 20" degan son nimani tuzatishni aytmaydi.
+       Meta'ning javob matni (token yo'q — metaCapi.ts uni kesadi). */
+    let xatoSabablari: Array<{ hodisa: string; sabab: string; soni: number; oxirgi: Date | null }> = [];
+    try {
+      const x = await pool.query<{ event_name: string; sabab: string | null; soni: string; oxirgi: Date | null }>(
+        `SELECT event_name, LEFT(COALESCE(error, '(sabab yozilmagan)'), 240) AS sabab,
+                COUNT(*)::text AS soni, MAX(sent_at) AS oxirgi
+           FROM capi_events
+          WHERE workspace_id = $1 AND status <> 'ok'
+            AND sent_at > now() - interval '60 days'
+          GROUP BY 1, 2
+          ORDER BY COUNT(*) DESC
+          LIMIT 20`,
+        [req.user.workspaceId]
+      );
+      xatoSabablari = x.rows.map((r) => ({
+        hodisa: r.event_name,
+        sabab: r.sabab ?? '',
+        soni: Number(r.soni),
+        oxirgi: r.oxirgi,
+      }));
+    } catch {
+      /* diagnostika — asosiy javobni to'xtatmaydi */
+    }
+
+    /* JIM YO'QOTISH — hodisa umuman yuborilmagan (capi_events'da qator
+       yo'q). Eng ko'p sabab: hodisa vaqti 7 kundan eski deb
+       hisoblangan va metaCapi uni jimgina o'tkazib yuborgan. */
+    let yuborilmagan: Record<string, number> | null = null;
+    try {
+      const y = await pool.query<{
+        sifatli_30k: string;
+        sifatli_capisiz_30k: string;
+        sifatli_vaqti_yaratilganga_teng: string;
+        sotuv_30k: string;
+        sotuv_capisiz_30k: string;
+        sotuv_telefonsiz_30k: string;
+      }>(
+        `SELECT
+           COUNT(*) FILTER (WHERE l.qualified_at > now() - interval '30 days')::text AS sifatli_30k,
+           COUNT(*) FILTER (WHERE l.qualified_at > now() - interval '30 days'
+             AND NOT EXISTS (SELECT 1 FROM capi_events c WHERE c.lead_id = l.id AND c.event_name = w.ev_q))::text AS sifatli_capisiz_30k,
+           -- Sifatli, lekin "sifatli bo'lgan vaqti" lid yaratilgan vaqtga teng
+           -- (import shunday yozadi) — webhook kelganda COALESCE uni
+           -- almashtirmaydi va hodisa "7 kundan eski" deb o'tib ketadi.
+           COUNT(*) FILTER (WHERE l.created_at > now() - interval '30 days'
+             AND l.qualified_at IS NOT NULL
+             AND l.qualified_at <= COALESCE(l.crm_created_at, l.qualified_at)
+             AND NOT EXISTS (SELECT 1 FROM capi_events c WHERE c.lead_id = l.id AND c.event_name = w.ev_q))::text AS sifatli_vaqti_yaratilganga_teng,
+           COUNT(*) FILTER (WHERE l.status = 'won' AND l.won_at > now() - interval '30 days')::text AS sotuv_30k,
+           COUNT(*) FILTER (WHERE l.status = 'won' AND l.won_at > now() - interval '30 days'
+             AND NOT EXISTS (SELECT 1 FROM capi_events c WHERE c.lead_id = l.id AND c.event_name = w.ev_p))::text AS sotuv_capisiz_30k,
+           COUNT(*) FILTER (WHERE l.status = 'won' AND l.won_at > now() - interval '30 days'
+             AND l.phone_hash IS NULL AND l.email_hash IS NULL)::text AS sotuv_telefonsiz_30k
+         FROM leads l
+         CROSS JOIN (SELECT COALESCE(capi_event_qualified, 'QualifiedLead') AS ev_q,
+                            COALESCE(capi_event_purchase, 'Purchase') AS ev_p
+                       FROM workspaces WHERE id = $1) w
+        WHERE l.workspace_id = $1 AND COALESCE(l.is_demo, false) = false`,
+        [req.user.workspaceId]
+      );
+      const r = y.rows[0];
+      yuborilmagan = r
+        ? Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v)]))
+        : null;
+    } catch (err) {
+      console.warn('CAPI yuborilmagan tashxisi:', (err as Error).message);
+    }
+
     res.json({
       kanallar,
+      xatoSabablari,
+      yuborilmagan,
       enabled: Boolean(ws?.meta_capi_enabled),
       datasetId: ws?.meta_dataset_id ?? null,
       currency: ws?.currency ?? 'UZS',
