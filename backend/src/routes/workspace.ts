@@ -27,6 +27,8 @@ import {
   status as metaCapiStatus,
   save as metaCapiSave,
   test as metaCapiTest,
+  yetishmayotganSana as metaCapiYetishmayotganSana,
+  yetishmayotganYubor as metaCapiYetishmayotganYubor,
 } from '../controllers/metaCapiController';
 import * as demo from '../controllers/demoController';
 import * as qongiroq from '../controllers/qongiroqController';
@@ -68,6 +70,8 @@ router.get('/meta-capi', verifyToken, metaCapiStatus);
 router.post('/meta-capi', verifyToken, metaCapiSave);
 // Sinov hodisasi — Events Manager > Test Events da ko'rinadi, statistikaga tushmaydi
 router.post('/meta-capi/test', verifyToken, metaCapiTest);
+router.get('/meta-capi/yetishmayotgan', verifyToken, metaCapiYetishmayotganSana);
+router.post('/meta-capi/yetishmayotgan', verifyToken, metaCapiYetishmayotganYubor);
 
 // Qo'ng'iroq voronkasi → call kampaniya (046)
 router.get('/qongiroq-voronka', verifyToken, qongiroq.holat);
