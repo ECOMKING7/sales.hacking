@@ -18,7 +18,12 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { encrypt } from '../utils/encryption';
-import { sendCapiTest, tokenTashxisi } from '../services/metaCapi';
+import {
+  sendCapiTest,
+  tokenTashxisi,
+  yetishmayotganlarniSana,
+  yetishmayotganlarniYubor,
+} from '../services/metaCapi';
 
 interface CapiStatusRow {
   meta_dataset_id: string | null;
@@ -376,5 +381,47 @@ export async function test(req: Request, res: Response): Promise<void> {
     }
     console.error('meta capi test error:', e.message);
     res.status(500).json({ error: 'Sinov hodisasini yuborib bo\'lmadi' });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GET  /api/workspace/meta-capi/yetishmayotgan — faqat sanaydi
+   POST /api/workspace/meta-capi/yetishmayotgan — oxirgi 7 kundagi
+        yetkazilmagan sifatli lid va sotuvlarni Meta'ga yuboradi.
+   Cron ham har 30 daqiqada shuni chaqiradi; bu tugma — kutmasdan.
+   ═══════════════════════════════════════════════════════════════════════ */
+export async function yetishmayotganSana(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const n = await yetishmayotganlarniSana(req.user.workspaceId);
+    if (!n) {
+      res.status(400).json({ error: "CAPI sozlanmagan yoki o'chirilgan" });
+      return;
+    }
+    res.json(n);
+  } catch (err) {
+    console.error('CAPI yetishmayotgan (sana):', (err as Error).message);
+    res.status(500).json({ error: "Hisoblab bo'lmadi" });
+  }
+}
+
+export async function yetishmayotganYubor(req: Request, res: Response): Promise<void> {
+  if (!req.user?.workspaceId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const n = await yetishmayotganlarniYubor(req.user.workspaceId, 40);
+    if (!n) {
+      res.status(400).json({ error: "CAPI sozlanmagan yoki o'chirilgan" });
+      return;
+    }
+    res.json(n);
+  } catch (err) {
+    console.error('CAPI yetishmayotgan (yubor):', (err as Error).message);
+    res.status(500).json({ error: 'Yuborilmadi' });
   }
 }

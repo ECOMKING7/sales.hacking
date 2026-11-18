@@ -7,6 +7,7 @@ import { DateRange } from '../services/facebookAdsService';
 import { fbUsage } from '../services/fbRateLimit';
 import { ensureFreshFxRates } from '../services/fxRates';
 import { importChunk } from '../services/amocrmImport';
+import { yetishmayotganlarniYubor } from '../services/metaCapi';
 import { bolakniYukla } from '../services/kunlikInsights';
 import { hisobotlarniYubor } from '../services/telegramHisobot';
 import { runInBackground } from '../utils/background';
@@ -307,6 +308,17 @@ async function hammaniSinxronla(): Promise<{
       const message = err instanceof Error ? err.message : 'Unknown error';
       xatoQayd(err, { joy: 'sync-cron', workspaceId: ws.id });
       results.push({ workspaceId: ws.id, ok: false, error: message });
+    }
+    /* Yetkazilmagan sifatli lid / sotuv (oxirgi 7 kun) — Meta'ga.
+       Alohida try: bu yiqilsa sinxron natijasi "xato" bo'lmasin. */
+    try {
+      await yetishmayotganlarniYubor(ws.id, 20);
+    } catch (err) {
+      xatoQayd(err, {
+        joy: 'sync-cron',
+        workspaceId: ws.id,
+        qoshimcha: { bosqich: 'capi-yetishmayotgan' },
+      });
     }
   }
 
