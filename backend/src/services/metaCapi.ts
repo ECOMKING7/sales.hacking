@@ -36,6 +36,7 @@ import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
 import { GRAPH_URL } from '../config/graph';
 import { qongiroqSxemasiniTaminla } from './qongiroq';
+import { getLead, getContact, hashPhone, hashEmail } from './amocrmService';
 
 /** Meta `event_time` ni 7 kundan eskisini qabul qilmaydi. */
 const MAX_EVENT_AGE_SEC = 7 * 24 * 60 * 60;
@@ -423,18 +424,40 @@ export async function sendCapiEvent(
       ? await pool.query(
           `INSERT INTO capi_events (workspace_id, lead_id, event_name, event_id, status, kanal, action_source)
                 VALUES ($1, $2, $3, $4, 'pending', $5, $6)
-           ON CONFLICT (workspace_id, event_id, event_name) DO NOTHING
+           ON CONFLICT (workspace_id, event_id, event_name) DO UPDATE
+                 SET status = 'pending', error = NULL, sent_at = now()
+               -- Faqat XATO qatorni qayta urinamiz. 'ok' — allaqachon
+               -- yetkazilgan, 'pending' — boshqa jarayon hozir yuboryapti.
+               WHERE capi_events.status = 'error'
              RETURNING id`,
           [workspaceId, lead.id, eventName, eventId, kanal, actionSource]
         )
       : await pool.query(
           `INSERT INTO capi_events (workspace_id, lead_id, event_name, event_id, status)
                 VALUES ($1, $2, $3, $4, 'pending')
-           ON CONFLICT (workspace_id, event_id, event_name) DO NOTHING
+           ON CONFLICT (workspace_id, event_id, event_name) DO UPDATE
+                 SET status = 'pending', error = NULL, sent_at = now()
+               -- Faqat XATO qatorni qayta urinamiz. 'ok' — allaqachon
+               -- yetkazilgan, 'pending' — boshqa jarayon hozir yuboryapti.
+               WHERE capi_events.status = 'error'
              RETURNING id`,
           [workspaceId, lead.id, eventName, eventId]
         );
     if (!claimed.rowCount) return false; // allaqachon yuborilgan
+
+    /* Moslik kaliti yo'q — kontakt lidga KEYINROQ biriktirilgan bo'lishi
+       mumkin (telefoniya lidni ochadi, kontakt keyin qo'shiladi; add
+       webhook'i paytida kontakt hali yo'q edi). amoCRM'dan hozir o'qib
+       olamiz — faqat GET. O'lchangan: 30 kunda 20 sotuvdan 15 tasi
+       shu sababli Meta'ga ketmagan. */
+    if (!lead.phone_hash && !lead.email_hash && !lead.fbclid && !lead.fb_lead_id) {
+      const k = await kontaktKalitlariniTop(workspaceId, lead);
+      if (k) {
+        lead.phone_hash = k.phone_hash;
+        lead.email_hash = k.email_hash;
+        if (k.crm_contact_id) lead.crm_contact_id = k.crm_contact_id;
+      }
+    }
 
     const userData: Record<string, unknown> = {};
     // Eng kuchli kalit birinchi: Meta Lead ID bo'lsa moslik deyarli
@@ -749,4 +772,128 @@ export async function tokenTashxisi(workspaceId: string): Promise<TokenTashxisi>
   }
 
   return { manba, uzunlik, meta_shaklida: metaShaklida, bosh_joy_bor: boshJoy, shifr_ochilmadi: shifrOchilmadi, izoh };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KONTAKTDAN KALIT TIKLASH
+
+   Lidda telefon/email xeshi yo'q bo'lsa — amoCRM'dan lid → kontakt
+   o'qiladi va xesh bazaga yoziladi. Faqat GET (§4.3). Xato bo'lsa
+   null: CAPI oqimi to'xtamaydi, hodisa "kalit yo'q" bo'lib qoladi.
+   ═══════════════════════════════════════════════════════════════════════ */
+export async function kontaktKalitlariniTop(
+  workspaceId: string,
+  lead: Pick<CapiLead, 'id' | 'crm_lead_id'>
+): Promise<{ phone_hash: string | null; email_hash: string | null; crm_contact_id: string | null } | null> {
+  if (!lead.crm_lead_id) return null;
+  try {
+    const full = await getLead(workspaceId, lead.crm_lead_id);
+    const contactId = full._embedded?.contacts?.[0]?.id ?? null;
+    if (!contactId) return null;
+    const contact = await getContact(workspaceId, contactId);
+    const cc = await pool.query<{ cc: string }>(
+      `SELECT COALESCE(phone_country_code, '998') AS cc FROM workspaces WHERE id = $1`,
+      [workspaceId]
+    );
+    const phoneHash = contact.phone ? hashPhone(contact.phone, cc.rows[0]?.cc ?? '998') : null;
+    const emailHash = contact.email ? hashEmail(contact.email) : null;
+    if (!phoneHash && !emailHash) return null;
+    await pool.query(
+      `UPDATE leads
+          SET phone_hash = COALESCE(phone_hash, $3),
+              email_hash = COALESCE(email_hash, $4),
+              crm_contact_id = COALESCE(crm_contact_id, $5)
+        WHERE workspace_id = $1 AND id = $2`,
+      [workspaceId, lead.id, phoneHash, emailHash, String(contactId)]
+    );
+    return { phone_hash: phoneHash, email_hash: emailHash, crm_contact_id: String(contactId) };
+  } catch (err) {
+    console.warn(`CAPI: lead ${lead.id} kontaktini o'qib bo'lmadi —`, (err as Error).message);
+    return null;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   YETISHMAYOTGAN HODISALAR — oxirgi 7 kun
+
+   O'lchangan (2026-11-18): 30 kunda 17 sifatli liddan 17 tasi, 20
+   sotuvdan 20 tasi Meta'ga yetkazilmagan (yo qator yo'q, yo xato).
+   Sabab qanday bo'lmasin (webhook o'tkazib yuborgan, import qo'ygan,
+   kontakt kech biriktirilgan) — bu funksiya oxirgi 7 kunda bo'lgan,
+   lekin 'ok' bo'lmagan sifatli lid va sotuvlarni topadi va yuboradi.
+
+   7 kun — Meta chegarasi; eskisi baribir qabul qilinmaydi.
+   Takror xavfi yo'q: event_id o'zgarmaydi va 'ok' qator qayta ketmaydi.
+   ═══════════════════════════════════════════════════════════════════════ */
+export interface YetishmayotganNatija {
+  sifatli: number;
+  sotuv: number;
+  yuborildi: number;
+  otmadi: number;
+}
+
+async function yetishmayotganlar(
+  workspaceId: string,
+  cfg: CapiConfig,
+  limit: number
+): Promise<Array<{ id: string; stage: CapiStage }>> {
+  const { rows } = await pool.query<{ id: string; stage: CapiStage }>(
+    `SELECT l.id, 'purchase' AS stage
+       FROM leads l
+      WHERE l.workspace_id = $1 AND l.status = 'won'
+        AND l.won_at > now() - interval '7 days'
+        AND COALESCE(l.is_demo, false) = false
+        AND NOT EXISTS (SELECT 1 FROM capi_events c
+                         WHERE c.workspace_id = l.workspace_id AND c.lead_id = l.id
+                           AND c.event_name = $2 AND c.status IN ('ok', 'pending'))
+     UNION ALL
+     SELECT l.id, 'qualified' AS stage
+       FROM leads l
+      WHERE l.workspace_id = $1
+        AND l.qualified_at > now() - interval '7 days'
+        AND COALESCE(l.is_demo, false) = false
+        AND NOT EXISTS (SELECT 1 FROM capi_events c
+                         WHERE c.workspace_id = l.workspace_id AND c.lead_id = l.id
+                           AND c.event_name = $3 AND c.status IN ('ok', 'pending'))
+     LIMIT $4`,
+    [workspaceId, cfg.eventNames.purchase, cfg.eventNames.qualified, limit]
+  );
+  return rows;
+}
+
+/** Faqat sanaydi — Meta'ga hech narsa yubormaydi. */
+export async function yetishmayotganlarniSana(
+  workspaceId: string
+): Promise<{ sifatli: number; sotuv: number } | null> {
+  const cfg = await loadCapiConfig(workspaceId);
+  if (!cfg) return null;
+  const r = await yetishmayotganlar(workspaceId, cfg, 1000);
+  return {
+    sifatli: r.filter((x) => x.stage === 'qualified').length,
+    sotuv: r.filter((x) => x.stage === 'purchase').length,
+  };
+}
+
+/** Yuboradi. `limit` — bitta chaqiruvda (serverless vaqt chegarasi). */
+export async function yetishmayotganlarniYubor(
+  workspaceId: string,
+  limit = 30
+): Promise<YetishmayotganNatija | null> {
+  const cfg = await loadCapiConfig(workspaceId);
+  if (!cfg) return null;
+  const royxat = await yetishmayotganlar(workspaceId, cfg, limit);
+  const natija: YetishmayotganNatija = {
+    sifatli: royxat.filter((x) => x.stage === 'qualified').length,
+    sotuv: royxat.filter((x) => x.stage === 'purchase').length,
+    yuborildi: 0,
+    otmadi: 0,
+  };
+  for (const r of royxat) {
+    const lead = await loadCapiLead(workspaceId, r.id);
+    if (!lead) continue;
+    const ok = await sendCapiEvent(workspaceId, lead, r.stage, cfg);
+    if (ok) natija.yuborildi++;
+    else natija.otmadi++;
+  }
+  return natija;
 }
