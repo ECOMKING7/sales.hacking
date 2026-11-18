@@ -10,7 +10,7 @@ import {
   type CapiStage,
 } from '../services/metaCapi';
 import { processLeadAttribution } from '../services/attributionEngine';
-import { extractUtm, matchLeadToAd } from '../services/leadMatcher';
+import { extractUtm, matchLeadToAd, type MatchResult } from '../services/leadMatcher';
 import { leadIdniOl, extractLine, type LeadIdManbasi } from '../services/amocrmFields';
 import { lidReklamasiniTop } from '../services/metaLeadAds';
 import { hashBoyichaReklama } from '../services/metaSahifalar';
@@ -18,6 +18,11 @@ import { sotuvXabariniYubor } from '../services/telegramSotuv';
 import { cacheDelPattern, overviewCachePattern } from '../utils/cache';
 import { awaitWithDeadline } from '../utils/background';
 import { xatoQayd } from '../utils/xatolar';
+import {
+  qongiroqKampaniyasi,
+  qongiroqXaritasiniYukla,
+  qongiroqReklamasiniTop,
+} from '../services/qongiroq';
 
 // AmoCRM's default "closed - lost" status id.
 const DEFAULT_LOST_STATUS_ID = '143';
@@ -169,10 +174,14 @@ async function handleLeadAdd(
   // Meta Lead ID va qo'ng'iroq liniyasi — konfiguratsiyadagi maydondan.
   let fbLeadId: string | null = null;
   let sourceLine: string | null = null;
+  // Lid QAYSI voronkada yaratilgan — add hodisasidagi qiymat. Bu
+  // qo'ng'iroq belgisi: keyin boshqa voronkaga ko'chirilsa ham o'zgarmaydi.
+  let yaratilganVoronka: string | null = lead.pipeline_id ? String(lead.pipeline_id) : null;
 
   // Enrich with contact info + UTM from the AmoCRM API (needs a valid token).
   try {
     const full = await getLead(workspaceId, lead.id);
+    if (!yaratilganVoronka && full.pipeline_id != null) yaratilganVoronka = String(full.pipeline_id);
     // UTM lid maydonlarida keladi — atribusiyaning asosiy kaliti (§5).
     utm = extractUtm(full.custom_fields_values);
     fbLeadId = leadIdniOl(full, config.amocrm_lead_id_source, config.amocrm_lead_id_field);
@@ -226,10 +235,46 @@ async function handleLeadAdd(
     );
   }
 
+  /* Qo'ng'iroq voronkasi → call kampaniya. Faqat boshqa kalit (Lead ID,
+     fbclid, UTM) YO'Q bo'lsa: u holda lid formadan/saytdan kelgan. */
+  const xarita = await qongiroqXaritasiniYukla(workspaceId);
+  const qongiroqKampaniya = qongiroqKampaniyasi(yaratilganVoronka, xarita, {
+    fbLeadId,
+    fbclid: utm.fbclid,
+    utmSource: utm.utm_source,
+  });
+  let qongiroqAd: Awaited<ReturnType<typeof qongiroqReklamasiniTop>> = null;
+  if (qongiroqKampaniya) {
+    try {
+      qongiroqAd = await qongiroqReklamasiniTop(
+        pool,
+        workspaceId,
+        qongiroqKampaniya,
+        lead.created_at ? new Date(Number(lead.created_at) * 1000) : null
+      );
+      if (!qongiroqAd) {
+        console.warn(
+          `lead ${lead.id}: qo'ng'iroq kampaniyasi ${qongiroqKampaniya} da ad topilmadi (sync bo'lmaganmi?)`
+        );
+      }
+    } catch (err) {
+      console.error(`lead ${lead.id}: qo'ng'iroq reklamasi topilmadi:`, (err as Error).message);
+    }
+  }
+
   // Reklamani darhol topamiz — sotuvni kutmasdan. Shunda lid hali yangi
   // bo'lganda ham "qaysi reklamadan keldi" ma'lum bo'ladi va voronkaning
   // birinchi bosqichi ishlaydi.
-  const match = await matchLeadToAd(
+  const match: MatchResult = qongiroqAd
+    ? {
+        adId: qongiroqAd.adId,
+        adsetId: qongiroqAd.adsetId,
+        campaignId: qongiroqAd.campaignId,
+        method: 'qongiroq',
+        ambiguous: false,
+        note: null,
+      }
+    : await matchLeadToAd(
     workspaceId,
     {
       fbAdId,
@@ -293,6 +338,29 @@ async function handleLeadAdd(
       sourceLine,
     ]
   );
+
+  /* Kanal bir marta yoziladi (COALESCE): keyingi add/import uni
+     o'zgartirmaydi. Ustunlar qongiroqXaritasiniYukla ichida ta'minlangan —
+     xarita bo'sh bo'lmasa ular bor. */
+  if (qongiroqKampaniya) {
+    try {
+      const { rows } = await pool.query<{ id: string }>(
+        `UPDATE leads
+            SET kanal              = COALESCE(kanal, 'qongiroq'),
+                qongiroq_kampaniya = COALESCE(qongiroq_kampaniya, $3),
+                yaratilgan_voronka = COALESCE(yaratilgan_voronka, $4)
+          WHERE workspace_id = $1 AND crm_lead_id = $2
+          RETURNING id`,
+        [workspaceId, lead.id, qongiroqKampaniya, yaratilganVoronka]
+      );
+      /* Touchpoint yaratiladi — shunda lid funnel/dashboard'da shu
+         kampaniya ostida ko'rinadi va keyingi sotuv o'sha ad'ga yoziladi.
+         Idempotent: qayta chaqirilsa natija o'zgarmaydi. */
+      if (rows[0] && qongiroqAd) await processLeadAttribution(rows[0].id, workspaceId);
+    } catch (err) {
+      xatoQayd(err, { joy: 'qongiroq-kanal', workspaceId, qoshimcha: { crmLeadId: lead.id } });
+    }
+  }
 
   // Meta'ga "yangi lid" signali. Moslik kaliti bo'lmasa (telefon ham,
   // email ham, fbclid ham yo'q) metaCapi o'zi o'tkazib yuboradi.

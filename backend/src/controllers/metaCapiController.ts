@@ -275,6 +275,8 @@ const testSchema = z.object({
     .max(64)
     .regex(/^[A-Za-z0-9_-]+$/, 'Test kodida faqat harf, raqam, _ va - bo\'ladi'),
   stage: z.enum(['lead', 'qualified', 'purchase']).optional(),
+  /** 046: qo'ng'iroq lidi sifatida sinash (action_source = phone_call). */
+  kanal: z.enum(['qongiroq']).optional(),
 });
 
 export async function test(req: Request, res: Response): Promise<void> {
@@ -291,7 +293,8 @@ export async function test(req: Request, res: Response): Promise<void> {
     const natija = await sendCapiTest(
       req.user.workspaceId,
       parsed.data.testEventCode,
-      parsed.data.stage ?? 'lead'
+      parsed.data.stage ?? 'lead',
+      parsed.data.kanal ?? null
     );
     res.json(natija);
   } catch (err) {
