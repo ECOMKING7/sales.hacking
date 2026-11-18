@@ -37,7 +37,11 @@ type Bajaruvchi = Pick<typeof pool, 'query'>;
  * keladi, link esa yo'q).
  */
 /** `lead_form` — Lead ID'siz lid, leadgen webhook'idagi telefon/email hash orqali (041). */
-export type MatchMethod = 'lead_id' | 'utm' | 'fbclid' | 'lead_form' | 'contact';
+/**
+ * `qongiroq` — lid qo'ng'iroq voronkasida yaratilgan (046). Kampaniya
+ * aniq, ad esa TAXMINIY (services/qongiroq.ts).
+ */
+export type MatchMethod = 'lead_id' | 'utm' | 'fbclid' | 'lead_form' | 'contact' | 'qongiroq';
 
 export interface MatchResult {
   adId: string | null;

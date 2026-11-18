@@ -35,6 +35,7 @@ import crypto from 'crypto';
 import { pool } from '../db/pool';
 import { decrypt } from '../utils/encryption';
 import { GRAPH_URL } from '../config/graph';
+import { qongiroqSxemasiniTaminla } from './qongiroq';
 
 /** Meta `event_time` ni 7 kundan eskisini qabul qilmaydi. */
 const MAX_EVENT_AGE_SEC = 7 * 24 * 60 * 60;
@@ -71,6 +72,8 @@ export interface CapiLead {
   crm_contact_id?: string | null;
   /** Qo'ng'iroq lidi qaysi liniyaga tushgan (030). */
   source_line?: string | null;
+  /** Lid yaratilgan paytdagi kanal (046): 'qongiroq' — qo'ng'iroq voronkasi. */
+  kanal?: string | null;
   utm_source?: string | null;
   phone_hash: string | null;
   email_hash: string | null;
@@ -118,6 +121,12 @@ interface CapiConfig {
   adLines: string[];
   /** custom_data.lead_event_source — manba tizim nomi. */
   leadEventSource: string;
+  /**
+   * Qo'ng'iroq lidi uchun alohida nom (046). `null` — oddiy `lead` nomi.
+   * Alohida nom Ads Manager'da forma lidlari va qo'ng'iroqlarni bir
+   * ustunda aralashtirmaslik uchun.
+   */
+  callEventName: string | null;
 }
 
 /**
@@ -155,6 +164,7 @@ function tokenFor(secretKey: string | null, shifrlangan: string | null): string 
  * dataset yo'q yoki token qo'yilmagan). Bu xato emas: CAPI ixtiyoriy.
  */
 export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | null> {
+  const qongiroqUstuni = await qongiroqSxemasiniTaminla();
   const { rows } = await pool.query<{
     meta_dataset_id: string | null;
     meta_capi_enabled: boolean;
@@ -167,6 +177,7 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     capi_lead_event_source: string | null;
     meta_capi_token: string | null;
     amocrm_ad_lines: string[] | null;
+    capi_event_call: string | null;
   }>(
     `SELECT meta_dataset_id, meta_capi_enabled, secret_key,
             COALESCE(currency, 'UZS')              AS currency,
@@ -176,7 +187,8 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
             NULLIF(TRIM(capi_action_source), '')             AS capi_action_source,
             COALESCE(capi_lead_event_source, 'amoCRM')       AS capi_lead_event_source,
             meta_capi_token,
-            amocrm_ad_lines
+            amocrm_ad_lines,
+            ${qongiroqUstuni ? "NULLIF(TRIM(capi_event_call), '')" : 'NULL::text'} AS capi_event_call
        FROM workspaces WHERE id = $1`,
     [workspaceId]
   );
@@ -203,6 +215,7 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
     actionSource: ws.capi_action_source ?? null,
     adLines: ws.amocrm_ad_lines ?? [],
     leadEventSource: ws.capi_lead_event_source ?? 'amoCRM',
+    callEventName: ws.capi_event_call ?? null,
   };
 }
 
@@ -216,9 +229,14 @@ export async function loadCapiConfig(workspaceId: string): Promise<CapiConfig | 
  *   4. qolgani                 → boshqa
  */
 export function kanalAniqla(
-  lead: Pick<CapiLead, 'fb_lead_id' | 'source_line' | 'fbclid' | 'utm_source'>,
+  lead: Pick<CapiLead, 'fb_lead_id' | 'source_line' | 'fbclid' | 'utm_source'> & {
+    kanal?: string | null;
+  },
   adLines: string[] = []
 ): CapiKanal {
+  // 046: qo'ng'iroq voronkasida yaratilgan — lid yaratilgan paytda
+  // aniqlangan, eng ishonchli belgi.
+  if (lead.kanal === 'qongiroq') return 'qongiroq';
   if (lead.fb_lead_id) return 'forma';
   const liniya = lead.source_line?.trim();
   if (liniya && (adLines.length === 0 || adLines.includes(liniya))) return 'qongiroq';
@@ -362,7 +380,10 @@ export async function sendCapiEvent(
     // Meta'ga ketadigan nom konfiguratsiyadan. Dedup kaliti ham
     // shu nomga tayanadi: nom o'zgarsa hodisa yangi signal sifatida
     // bir marta qayta ketadi, bu ataylab shunday.
-    eventName = cfg.eventNames[stage];
+    eventName =
+      stage === 'lead' && lead.kanal === 'qongiroq' && cfg.callEventName
+        ? cfg.callEventName
+        : cfg.eventNames[stage];
     eventId = `${lead.crm_lead_id ?? lead.id}:${eventName}`;
 
     // Vaqtni DEDUP QATORIDAN OLDIN tekshiramiz: eski hodisa uchun
@@ -515,8 +536,10 @@ export async function loadCapiLead(
   workspaceId: string,
   leadId: string
 ): Promise<CapiLead | null> {
+  const qongiroqUstuni = await qongiroqSxemasiniTaminla();
   const { rows } = await pool.query<CapiLead>(
     `SELECT id, crm_lead_id, crm_contact_id, source_line, utm_source,
+            ${qongiroqUstuni ? 'kanal' : 'NULL::text AS kanal'},
             phone_hash, email_hash, fbclid, fb_lead_id,
             revenue, crm_created_at, qualified_at, won_at
        FROM leads
@@ -566,7 +589,9 @@ export interface CapiTestNatija {
 export async function sendCapiTest(
   workspaceId: string,
   testCode: string,
-  stage: CapiStage = 'lead'
+  stage: CapiStage = 'lead',
+  /** 'qongiroq' — qo'ng'iroq lidi kabi: phone_call va qo'ng'iroq nomi. */
+  kanal: 'qongiroq' | null = null
 ): Promise<CapiTestNatija> {
   const cfg = await loadCapiConfig(workspaceId);
   if (!cfg) {
@@ -578,7 +603,10 @@ export async function sendCapiTest(
     );
   }
 
-  const eventName = cfg.eventNames[stage];
+  const eventName =
+    kanal === 'qongiroq' && stage === 'lead' && cfg.callEventName
+      ? cfg.callEventName
+      : cfg.eventNames[stage];
   // SHA-256 — Meta talabi. Qiymat o'ylab topilgan raqam, real emas.
   const { createHash } = await import('node:crypto');
   const soxtaTelefon = '998000000000';
@@ -588,7 +616,8 @@ export async function sendCapiTest(
     event_name: eventName,
     event_time: Math.floor(Date.now() / 1000),
     event_id: `test:${Date.now()}`,
-    action_source: cfg.actionSource ?? 'system_generated',
+    action_source:
+      cfg.actionSource ?? (kanal === 'qongiroq' ? actionSourceFor('qongiroq') : 'system_generated'),
     user_data: { ph: [ph] },
     custom_data: {
       event_source: 'crm',

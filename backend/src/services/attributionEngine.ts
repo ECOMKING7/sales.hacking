@@ -1,6 +1,7 @@
 import { pool } from '../db/pool';
 import { PoolClient } from 'pg';
-import { matchLeadToAd } from './leadMatcher';
+import { matchLeadToAd, type MatchResult } from './leadMatcher';
+import { qongiroqReklamasiniTop, qongiroqSxemasiniTaminla } from './qongiroq';
 
 export type AttributionModel = 'first_click' | 'last_click' | 'linear' | 'time_decay';
 
@@ -169,6 +170,8 @@ interface LeadRow {
   crm_created_at: string | null;
   /** Meta Lead ID — Instant Form lidida yagona ishlaydigan kalit. */
   fb_lead_id: string | null;
+  /** Qo'ng'iroq voronkasida yaratilgan lid — FB kampaniya ID (046). */
+  qongiroq_kampaniya: string | null;
 }
 
 /**
@@ -184,6 +187,9 @@ export async function processLeadAttribution(
   workspaceId: string,
   model: AttributionModel = 'last_click'
 ): Promise<{ touches: number; firstAdId: string | null; lastAdId: string | null }> {
+  // Tranzaksiyadan OLDIN: serverless'da pool max 1, ichkarida chaqirilsa
+  // o'zini o'zi kutib qoladi.
+  const qongiroqUstuni = await qongiroqSxemasiniTaminla();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -191,7 +197,8 @@ export async function processLeadAttribution(
     const leadRes = await client.query<LeadRow>(
       `SELECT id, revenue, won_at, first_click_ad_id,
               utm_term, utm_content, utm_campaign, fbclid, phone_hash, email_hash,
-              crm_created_at, fb_lead_id
+              crm_created_at, fb_lead_id,
+              ${qongiroqUstuni ? 'qongiroq_kampaniya' : 'NULL::text AS qongiroq_kampaniya'}
          FROM leads WHERE id = $1 AND workspace_id = $2 FOR UPDATE`,
       [leadId, workspaceId]
     );
@@ -291,8 +298,21 @@ export async function processLeadAttribution(
          ID'siz chaqiradi va Instant Form lidida hech bir kalit
          ishlamagani uchun `match_method = NULL` yozib, allaqachon
          topilgan bog'lanishni O'CHIRADI. Aynan shu sodir bo'lgandi. */
+      /* Qo'ng'iroq lidi — kampaniya aniq (voronka), ad taxminiy.
+         Boshqa kalitlardan OLDIN: qo'ng'iroqda ular baribir yo'q, bor
+         bo'lsa webhook bu lidni qo'ng'iroq deb belgilamagan bo'lardi. */
+      let qongiroq: Awaited<ReturnType<typeof qongiroqReklamasiniTop>> = null;
+      if (lead.qongiroq_kampaniya) {
+        qongiroq = await qongiroqReklamasiniTop(
+          client,
+          workspaceId,
+          lead.qongiroq_kampaniya,
+          lead.crm_created_at
+        );
+      }
+
       let fbAdId: string | null = null;
-      if (lead.fb_lead_id) {
+      if (!qongiroq && lead.fb_lead_id) {
         const la = await client.query<{ fb_ad_id: string | null }>(
           `SELECT fb_ad_id FROM fb_lead_ads
             WHERE workspace_id = $1 AND fb_lead_id = $2 AND holat = 'ok'`,
@@ -309,7 +329,7 @@ export async function processLeadAttribution(
          paydo bo'ladi. Ustun hali yo'q bo'lsa so'rov yiqiladi va butun
          tranzaksiyani buzardi — savepoint faqat shu qadamni bekor qiladi. */
       let formAdId: string | null = null;
-      if (!fbAdId && (lead.phone_hash || lead.email_hash)) {
+      if (!qongiroq && !fbAdId && (lead.phone_hash || lead.email_hash)) {
         await client.query('SAVEPOINT lead_ads_hash');
         try {
           const lh = await client.query<{ fb_ad_id: string | null }>(
@@ -331,7 +351,16 @@ export async function processLeadAttribution(
         }
       }
 
-      const m = await matchLeadToAd(
+      const m: MatchResult = qongiroq
+        ? {
+            adId: qongiroq.adId,
+            adsetId: qongiroq.adsetId,
+            campaignId: qongiroq.campaignId,
+            method: 'qongiroq',
+            ambiguous: false,
+            note: null,
+          }
+        : await matchLeadToAd(
         workspaceId,
         {
           fbAdId,
