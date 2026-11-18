@@ -147,6 +147,40 @@ export const amocrmApi = {
       .then((r) => r.data),
 };
 
+// ---- Qo'ng'iroq voronkasi → call kampaniya (046) ----
+export interface QongiroqHolat {
+  /** voronka ID -> FB kampaniya ID */
+  xarita: Record<string, string>;
+  capiEventCall: string | null;
+  voronkalar: { id: string; nom: string }[];
+  voronkaXato: string | null;
+  kampaniyalar: { id: string; nom: string; holat: string | null; xarajat: number }[];
+  /** Daromad valyutasi (CRM) */
+  valyuta: string;
+  /** voronka ID -> "sotildi" etapi won_pairs'da bormi */
+  sotuvJuftligi: Record<string, boolean>;
+  statistika: {
+    davr_kun: number;
+    lidlar: number;
+    reklamaga_boglangan: number;
+    sotuvlar: number;
+    daromad: number;
+    capi_ok: number;
+    capi_xato: number;
+  };
+}
+
+export const qongiroqApi = {
+  holat: () => api.get<QongiroqHolat>('/api/workspace/qongiroq-voronka').then((r) => r.data),
+  saqla: (payload: { xarita: Record<string, string>; capiEventCall?: string | null }) =>
+    api
+      .post<{ success: boolean; xarita: Record<string, string>; capiEventCall: string | null }>(
+        '/api/workspace/qongiroq-voronka',
+        payload
+      )
+      .then((r) => r.data),
+};
+
 // ---- Meta Conversions API ----
 export const leadAdsApi = {
   status: () => api.get<LeadAdsStatus>('/api/workspace/lead-ads').then((r) => r.data),
@@ -200,7 +234,11 @@ export const metaCapiApi = {
    * Manager > Test Events tabidan olinadi; usiz hodisa haqiqiy
    * statistikaga tushib ketardi.
    */
-  test: (testEventCode: string, stage?: 'lead' | 'qualified' | 'purchase') =>
+  test: (
+    testEventCode: string,
+    stage?: 'lead' | 'qualified' | 'purchase',
+    kanal?: 'qongiroq'
+  ) =>
     api
       .post<{
         yuborildi: boolean;
@@ -208,7 +246,7 @@ export const metaCapiApi = {
         event_name: string;
         dataset_id: string;
         test_event_code: string;
-      }>('/api/workspace/meta-capi/test', { testEventCode, stage })
+      }>('/api/workspace/meta-capi/test', { testEventCode, stage, kanal })
       .then((r) => r.data),
 };
 
