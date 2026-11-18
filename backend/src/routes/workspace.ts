@@ -29,6 +29,7 @@ import {
   test as metaCapiTest,
 } from '../controllers/metaCapiController';
 import * as demo from '../controllers/demoController';
+import * as qongiroq from '../controllers/qongiroqController';
 import { verifyToken } from '../middleware/auth';
 
 const router = Router();
@@ -67,6 +68,10 @@ router.get('/meta-capi', verifyToken, metaCapiStatus);
 router.post('/meta-capi', verifyToken, metaCapiSave);
 // Sinov hodisasi — Events Manager > Test Events da ko'rinadi, statistikaga tushmaydi
 router.post('/meta-capi/test', verifyToken, metaCapiTest);
+
+// Qo'ng'iroq voronkasi → call kampaniya (046)
+router.get('/qongiroq-voronka', verifyToken, qongiroq.holat);
+router.post('/qongiroq-voronka', verifyToken, qongiroq.saqlash);
 
 // Sozlamalar to'ri: hamma ulanishning holati BITTA so'rovda.
 // Tashqi API chaqirilmaydi — faqat baza (integratsiyalarController).
