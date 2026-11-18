@@ -6,6 +6,7 @@ import type { AmocrmStatus, Pipeline } from '../../types';
 import { Button, Card, CardHeader, EmptyState, Input, SkeletonText, cn, toast } from '../ui';
 import { CardFooterRow, ConnectionBadge, ErrorRow, LABEL, errMsg } from './shared';
 import LeadIdField from './LeadIdField';
+import QongiroqVoronka from './QongiroqVoronka';
 import { HUQUQIY } from '../../config/huquqiy';
 
 const CONNECT_STEPS = [
@@ -611,6 +612,8 @@ export default function AmocrmSection() {
           )}
 
           <LeadIdField />
+
+          <QongiroqVoronka />
 
           <CardFooterRow>
             <Button
